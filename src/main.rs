@@ -4,6 +4,7 @@ mod i18n;
 mod model;
 mod scanner;
 mod speedtest;
+mod storage;
 mod telemetry;
 mod theme;
 

@@ -292,3 +292,107 @@ fn test_speedtest_structures() {
     let stage = SpeedTestStage::default();
     assert_eq!(stage, SpeedTestStage::Idle);
 }
+
+#[test]
+fn test_storage_persistence() {
+    use netlens::i18n::Language;
+    use netlens::model::{Device, DeviceCategory, DeviceStatus};
+    use netlens::speedtest::SpeedTestResult;
+    use netlens::storage::{AppState, Storage};
+    use std::collections::HashMap;
+    use std::net::Ipv4Addr;
+
+    let mut metadata = HashMap::new();
+    Storage::update_device_meta(
+        &mut metadata,
+        "d8:ec:5e:9c:77:1b",
+        Some("Router Principal".to_string()),
+        Some(DeviceCategory::Router),
+    );
+    Storage::update_device_meta(
+        &mut metadata,
+        "c0:23:8d:66:79:fe",
+        Some("Mi SmartTV Samsung".to_string()),
+        Some(DeviceCategory::SmartTv),
+    );
+
+    let dev1 = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 1),
+        mac: "D8:EC:5E:9C:77:1B".to_string(), // Test case insensitivity
+        vendor: "Belkin".to_string(),
+        hostname: Some("myrouter".to_string()),
+        category: DeviceCategory::Unknown,
+        is_randomized_mac: false,
+        is_gateway: true,
+        is_current_host: false,
+        interface: "eno1".to_string(),
+        latency_ms: Some(0.5),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: chrono::Local::now(),
+        last_seen: chrono::Local::now(),
+        custom_alias: None,
+    };
+
+    let dev2 = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 100),
+        mac: "c0:23:8d:66:79:fe".to_string(),
+        vendor: "Samsung".to_string(),
+        hostname: None,
+        category: DeviceCategory::Unknown,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "eno1".to_string(),
+        latency_ms: Some(2.1),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: chrono::Local::now(),
+        last_seen: chrono::Local::now(),
+        custom_alias: None,
+    };
+
+    let mut list = vec![dev1, dev2];
+    Storage::apply_metadata(&mut list, &metadata);
+
+    assert_eq!(list[0].custom_alias, Some("Router Principal".to_string()));
+    assert_eq!(list[0].category, DeviceCategory::Router);
+    assert_eq!(list[1].custom_alias, Some("Mi SmartTV Samsung".to_string()));
+    assert_eq!(list[1].category, DeviceCategory::SmartTv);
+
+    let state = AppState {
+        language: Language::French,
+        theme: "Nord".to_string(),
+        devices: list.clone(),
+        device_metadata: metadata.clone(),
+        last_speed_test: Some(SpeedTestResult {
+            ping_ms: 15.2,
+            download_mbps: 245.8,
+            upload_mbps: 24.5,
+            timestamp: "03:15:00".to_string(),
+            server: "Netflix Open Connect (Tigo, SV)".to_string(),
+        }),
+    };
+
+    let json = serde_json::to_string_pretty(&state).expect("Failed to serialize state");
+    let loaded: AppState = serde_json::from_str(&json).expect("Failed to deserialize state");
+
+    assert_eq!(loaded.language, Language::French);
+    assert_eq!(loaded.theme, "Nord");
+    assert_eq!(loaded.devices.len(), 2);
+    assert_eq!(loaded.devices[0].custom_alias, Some("Router Principal".to_string()));
+    assert_eq!(loaded.last_speed_test.as_ref().unwrap().download_mbps, 245.8);
+    assert_eq!(loaded.last_speed_test.as_ref().unwrap().server, "Netflix Open Connect (Tigo, SV)");
+
+    // Test disk persistence
+    let test_dir = std::env::temp_dir().join(format!("netlens_test_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&test_dir);
+    let test_file = test_dir.join("state.json");
+    std::fs::write(&test_file, &json).expect("Failed to write test state");
+    let read_back = std::fs::read_to_string(&test_file).expect("Failed to read test state");
+    let state_from_disk: AppState = serde_json::from_str(&read_back).expect("Failed to parse disk state");
+    assert_eq!(state_from_disk.theme, "Nord");
+    assert_eq!(state_from_disk.language, Language::French);
+    assert_eq!(state_from_disk.devices.len(), 2);
+    let _ = std::fs::remove_dir_all(&test_dir);
+}

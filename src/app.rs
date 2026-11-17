@@ -3,6 +3,7 @@ use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
 use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
+use crate::storage::{AppState, DeviceMetadata, Storage};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use iced::futures::channel::mpsc;
@@ -12,6 +13,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Color, Element, Length, Padding, Subscription, Task, Theme};
 use mac_oui::Oui;
+use std::collections::HashMap;
 use std::fmt;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -27,6 +29,34 @@ pub const AVAILABLE_THEMES: &[Theme] = &[
     Theme::SolarizedDark,
     Theme::GruvboxDark,
 ];
+
+pub fn theme_to_string(theme: &Theme) -> &'static str {
+    match theme {
+        Theme::TokyoNight => "TokyoNight",
+        Theme::CatppuccinMocha => "CatppuccinMocha",
+        Theme::Nord => "Nord",
+        Theme::Dracula => "Dracula",
+        Theme::Dark => "Dark",
+        Theme::Light => "Light",
+        Theme::SolarizedDark => "SolarizedDark",
+        Theme::GruvboxDark => "GruvboxDark",
+        _ => "TokyoNight",
+    }
+}
+
+pub fn theme_from_string(s: &str) -> Theme {
+    match s {
+        "TokyoNight" => Theme::TokyoNight,
+        "CatppuccinMocha" => Theme::CatppuccinMocha,
+        "Nord" => Theme::Nord,
+        "Dracula" => Theme::Dracula,
+        "Dark" => Theme::Dark,
+        "Light" => Theme::Light,
+        "SolarizedDark" => Theme::SolarizedDark,
+        "GruvboxDark" => Theme::GruvboxDark,
+        _ => Theme::TokyoNight,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortOption {
@@ -198,6 +228,7 @@ pub struct App {
     pub speed_test_download: Option<f64>,
     pub speed_test_upload: Option<f64>,
     pub speed_test_result: Option<SpeedTestResult>,
+    pub device_metadata: HashMap<String, DeviceMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -259,7 +290,27 @@ impl App {
         let network = Scanner::detect_network_context();
         let oui_db = Oui::default().ok().map(Arc::new);
         let telemetry = Telemetry::new(&network.interface);
-        let language = Language::Spanish;
+
+        // Cargar estado guardado de configuración persistente (idioma, tema, dispositivos, metadata)
+        let saved = Storage::load();
+        let current_theme = theme_from_string(&saved.theme);
+        let language = saved.language;
+        let mut devices = saved.devices;
+        let device_metadata = saved.device_metadata;
+        Storage::apply_metadata(&mut devices, &device_metadata);
+
+        let speed_test_result = saved.last_speed_test;
+        let (speed_test_stage, speed_test_ping, speed_test_download, speed_test_upload) =
+            if let Some(res) = &speed_test_result {
+                (
+                    SpeedTestStage::Completed,
+                    Some(res.ping_ms),
+                    Some(res.download_mbps),
+                    Some(res.upload_mbps),
+                )
+            } else {
+                (SpeedTestStage::Idle, None, None, None)
+            };
 
         let status = if let Some(gw) = network.gateway_ip {
             AppStatus::ConnectedTo {
@@ -273,7 +324,7 @@ impl App {
 
         let app = Self {
             network,
-            devices: Vec::new(),
+            devices,
             oui_db,
             telemetry,
             is_scanning: false,
@@ -289,18 +340,33 @@ impl App {
             deep_ports: Vec::new(),
             notification: None,
             alias_input: String::new(),
-            current_theme: Theme::TokyoNight,
+            current_theme,
             language,
             is_settings_open: false,
             is_speed_test_open: false,
-            speed_test_stage: SpeedTestStage::Idle,
-            speed_test_ping: None,
-            speed_test_download: None,
-            speed_test_upload: None,
-            speed_test_result: None,
+            speed_test_stage,
+            speed_test_ping,
+            speed_test_download,
+            speed_test_upload,
+            speed_test_result,
+            device_metadata,
         };
 
         (app, Task::done(Message::StartScan))
+    }
+
+    /// Guarda el estado actual de la aplicación de manera persistente en disco
+    pub fn save_state(&self) {
+        let state = AppState {
+            language: self.language,
+            theme: theme_to_string(&self.current_theme).to_string(),
+            devices: self.devices.clone(),
+            device_metadata: self.device_metadata.clone(),
+            last_speed_test: self.speed_test_result.clone(),
+        };
+        if let Err(e) = Storage::save(&state) {
+            eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
+        }
     }
 
     /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada y señal
@@ -335,6 +401,7 @@ impl App {
 
             Message::LanguageChanged(lang) => {
                 self.language = lang;
+                self.save_state();
                 let notif_msg = match lang {
                     Language::Spanish => format!("Idioma cambiado a {}", lang.native_name()),
                     Language::English => format!("Language changed to {}", lang.native_name()),
@@ -353,6 +420,7 @@ impl App {
 
             Message::ThemeChanged(theme) => {
                 self.current_theme = theme;
+                self.save_state();
                 Task::none()
             }
 
@@ -415,12 +483,16 @@ impl App {
                     self.speed_test_upload = Some(ul);
                     Task::none()
                 }
+                SpeedTestEvent::DownloadProgress { .. } | SpeedTestEvent::UploadProgress { .. } => {
+                    Task::none()
+                }
                 SpeedTestEvent::Finished(result) => {
                     self.speed_test_stage = SpeedTestStage::Completed;
                     self.speed_test_ping = Some(result.ping_ms);
                     self.speed_test_download = Some(result.download_mbps);
                     self.speed_test_upload = Some(result.upload_mbps);
                     self.speed_test_result = Some(result);
+                    self.save_state();
                     Task::none()
                 }
                 SpeedTestEvent::Error(err) => {
@@ -433,7 +505,14 @@ impl App {
             Message::ChangeDeviceCategory(ip, new_category) => {
                 if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
                     dev.category = new_category;
+                    Storage::update_device_meta(
+                        &mut self.device_metadata,
+                        &dev.mac,
+                        None,
+                        Some(new_category),
+                    );
                 }
+                self.save_state();
                 let notif_msg = match self.language {
                     Language::Spanish => format!(
                         "Tipo de dispositivo actualizado a: {}",
@@ -524,7 +603,20 @@ impl App {
                     self.scan_progress = scanned as f32 / total as f32;
                     Task::none()
                 }
-                ScanEvent::HostFound(device) => {
+                ScanEvent::HostFound(mut device) => {
+                    // Reaplicar metadatos guardados si existen para esta MAC
+                    let mac_key = device.mac.trim().to_lowercase();
+                    if let Some(meta) = self.device_metadata.get(&mac_key) {
+                        if let Some(alias) = &meta.custom_alias {
+                            if !alias.trim().is_empty() {
+                                device.custom_alias = Some(alias.clone());
+                            }
+                        }
+                        if let Some(cat) = meta.category {
+                            device.category = cat;
+                        }
+                    }
+
                     if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
                         let prev_alias = existing.custom_alias.clone();
                         let prev_category = existing.category;
@@ -532,7 +624,7 @@ impl App {
                         if existing.custom_alias.is_none() {
                             existing.custom_alias = prev_alias;
                         }
-                        if prev_category != DeviceCategory::Unknown {
+                        if prev_category != DeviceCategory::Unknown && existing.category == DeviceCategory::Unknown {
                             existing.category = prev_category;
                         }
                     } else {
@@ -550,6 +642,7 @@ impl App {
                         total_found,
                         duration_secs: duration_ms as f32 / 1000.0,
                     };
+                    self.save_state();
                     Task::none()
                 }
                 ScanEvent::Error(err) => {
@@ -699,12 +792,20 @@ impl App {
             Message::SaveAlias(ip) => {
                 let trimmed = self.alias_input.trim().to_string();
                 if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
-                    dev.custom_alias = if trimmed.is_empty() {
+                    let alias_opt = if trimmed.is_empty() {
                         None
                     } else {
                         Some(trimmed.clone())
                     };
+                    dev.custom_alias = alias_opt.clone();
+                    Storage::update_device_meta(
+                        &mut self.device_metadata,
+                        &dev.mac,
+                        alias_opt,
+                        None,
+                    );
                 }
+                self.save_state();
                 let notif_msg = match self.language {
                     Language::Spanish => format!("Alias guardado para {}.", ip),
                     Language::English => format!("Alias saved for {}.", ip),
@@ -1183,7 +1284,12 @@ impl App {
                     .size(12)
                     .color(CustomStyles::text_muted())
                     .width(130),
-                text("Cloudflare Anycast Global CDN")
+                text(
+                    self.speed_test_result
+                        .as_ref()
+                        .map(|r| r.server.as_str())
+                        .unwrap_or("Netflix Open Connect / Cloudflare CDN"),
+                )
                     .size(12)
                     .color(CustomStyles::text_primary()),
             ],
