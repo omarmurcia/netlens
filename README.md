@@ -31,7 +31,25 @@
      - 🖨️ **Impresoras de Red**
      - 🖧 **Servidores y NAS**
 
-2. **Panel Inspector Detallado:**
+4. **Panel de Configuración y Personalización (Settings):**
+   - **Selector de Idiomas (Top 10 Mundial):** Interfaz completamente localizada en los 10 idiomas más hablados del planeta:
+     - 🇪🇸 **Español** (Español)
+     - 🇬🇧 **English** (Inglés)
+     - 🇨🇳 **中文** (Chino Mandarín)
+     - 🇮🇳 **हिन्दी** (Hindi)
+     - 🇸🇦 **العربية** (Árabe Estándar)
+     - 🇫🇷 **Français** (Francés)
+     - 🇧🇩 **বাংলা** (Bengalí)
+     - 🇧🇷 **Português** (Portugués)
+     - 🇷🇺 **Русский** (Ruso)
+     - 🇵🇰 **اردو** (Urdu)
+   - **Selector de Temas:** Cambia al instante entre temas de alta estética (`TokyoNight`, `CatppuccinMocha`, `Nord`, `Dracula`, `Dark`, `Light`, `SolarizedDark`, `GruvboxDark`).
+
+5. **Clasificación y Override Manual de Dispositivos:**
+   - En el panel de detalles/inspector, los usuarios pueden seleccionar o corregir libremente la categoría del dispositivo (`Router`, `Smartphone`, `Computer`, `Smart TV`, `IoT`, `Printer`, `Server`, `Generic`).
+   - Los cambios persisten en memoria durante la sesión y actualizan dinámicamente los contadores globales y los iconos en tiempo real.
+
+6. **Panel Inspector Detallado:**
    - **Ficha Técnica Completa:** IP, MAC, Fabricante, Hostname DNS, Tipo de MAC, Interfaz de red y hora de última respuesta.
    - **Editor de Alias y Notas:** Asigna un apodo personalizado a cada dispositivo (ej. *"Móvil de Juan"*, *"Enchufe Lámpara Salón"*).
    - **Herramienta de Ping en Vivo:** Envía 4 paquetes ICMP y calcula paquetes transmitidos, recibidos, porcentaje de pérdida y latencia mínima, media y máxima.
@@ -40,19 +58,11 @@
    - **Wake-on-LAN (WoL):** Envía paquetes mágicos de broadcast UDP para encender equipos remotamente.
    - **Botones de Copiado:** Copia al portapapeles la IP o la MAC con un solo clic.
 
-3. **Interfaz de Usuario Moderna (Iced 0.14):**
-   - **Soporte Nativo Wayland y X11** acelerado por hardware (`wgpu`).
-   - **Selector de Temas:** Cambia al instante entre temas oscuros de alta estética (`TokyoNight`, `CatppuccinMocha`, `Nord`, `Dracula`, `Dark`).
-   - **Buscador en Tiempo Real:** Filtra simultáneamente por IP, nombre, fabricante, MAC o alias.
-   - **Filtros por Categoría:** Botones rápidos para mostrar solo Routers, Móviles, PCs, TVs o Domótica.
-   - **Criterios de Ordenación:** Ordena por IP, Latencia (Ping), Nombre, Fabricante o Categoría.
-   - **Métricas Globales:** Tarjetas superiores con total de equipos, datos de la puerta de enlace, host actual y recuento por tipos.
-
-4. **Exportación de Informes:**
+7. **Exportación de Informes:**
    - **JSON estructurado:** Exporta el mapa completo de la red con marcas de tiempo y metadatos.
    - **CSV estándar:** Exporta una tabla delimitada por comas para abrir en LibreOffice Calc, Excel u otras herramientas.
 
-5. **Doble Modo (GUI y CLI):**
+8. **Doble Modo (GUI y CLI):**
    - Ejecución gráfica estándar o escaneo directo por terminal con la bandera `--scan` o `--cli`.
 
 ---
@@ -100,10 +110,12 @@ netlens/
 ├── netlens.desktop          # Lanzador para el menú de aplicaciones de Linux
 ├── README.md                # Documentación del proyecto
 ├── src/
-│   ├── main.rs              # Punto de entrada (enrutamiento GUI / CLI)
+│   ├── main.rs              # Punto de entrada (enrutamiento GUI / CLI y runtime Tokio)
 │   ├── lib.rs               # Exportación de módulos para biblioteca y pruebas
 │   ├── model.rs             # Modelos de datos (Device, DeviceCategory, NetworkContext, PortInfo)
 │   ├── scanner.rs           # Motor de escaneo asíncrono, ARP, Ping, DNS inverso y WoL
+│   ├── telemetry.rs         # Telemetría de ancho de banda (/proc/net/dev) y señal Wi-Fi (iw)
+│   ├── i18n.rs              # Sistema de internacionalización (Top 10 idiomas mundiales)
 │   ├── export.rs            # Generador de informes en JSON y CSV
 │   ├── theme.rs             # Paleta de colores, estilos visuales y tarjetas
 │   └── app.rs               # Lógica de la GUI en Iced (State, Message, Update, View)
