@@ -16,6 +16,7 @@ pub struct WifiStatus {
 }
 
 impl WifiStatus {
+    #[allow(dead_code)]
     pub fn signal_label(&self) -> &'static str {
         if self.signal_percent >= 80 {
             "Excelente"

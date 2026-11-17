@@ -184,20 +184,71 @@ fn test_i18n_top_10_languages() {
 
     assert_eq!(Language::ALL.len(), 10, "Deben soportarse los 10 idiomas más hablados");
 
+    let now = Local::now();
+    let test_dev = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 100),
+        mac: "02:11:22:33:44:55".to_string(),
+        vendor: "TestVendor".to_string(),
+        hostname: Some("testhost".to_string()),
+        category: DeviceCategory::Computer,
+        is_randomized_mac: true,
+        is_gateway: false,
+        is_current_host: true,
+        interface: "wlan0".to_string(),
+        latency_ms: Some(15.2),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: now,
+        last_seen: now,
+        custom_alias: None,
+    };
+
     for &lang in Language::ALL {
         assert!(!lang.native_name().is_empty());
+        assert!(!Translations::window_title(lang).is_empty());
+        assert!(!Translations::app_subtitle(lang).is_empty());
         assert!(!Translations::scan_network(lang).is_empty());
         assert!(!Translations::settings(lang).is_empty());
         assert!(!Translations::download(lang).is_empty());
         assert!(!Translations::upload(lang).is_empty());
         assert!(!Translations::signal_wifi(lang).is_empty());
+        assert!(!Translations::network_and_router(lang).is_empty());
+        assert!(!Translations::devices_count(5, lang).is_empty());
+        assert!(!Translations::gateway_label(lang).is_empty());
         assert!(!Translations::search_placeholder(lang).is_empty());
         assert!(!Translations::device_details(lang).is_empty());
         assert!(!Translations::device_type_label(lang).is_empty());
+        assert!(!Translations::badge_router(lang).is_empty());
+        assert!(!Translations::badge_local_host(lang).is_empty());
+        assert!(!Translations::badge_privacy(lang).is_empty());
+        assert!(!Translations::vendor_private(lang).is_empty());
+        assert!(!Translations::vendor_generic(lang).is_empty());
+        assert!(!Translations::details_btn(lang).is_empty());
+        assert!(!Translations::spec_ip(lang).is_empty());
+        assert!(!Translations::spec_mac(lang).is_empty());
+        assert!(!Translations::spec_vendor(lang).is_empty());
+        assert!(!Translations::spec_hostname(lang).is_empty());
+        assert!(!Translations::spec_mac_type(lang).is_empty());
+        assert!(!Translations::spec_link_quality(lang).is_empty());
+        assert!(!Translations::spec_interface(lang).is_empty());
+        assert!(!Translations::spec_status(lang).is_empty());
+        assert!(!Translations::spec_last_seen(lang).is_empty());
+        assert!(!Translations::section_latency(lang).is_empty());
+        assert!(!Translations::btn_ping_test(lang).is_empty());
+        assert!(!Translations::section_ports(lang).is_empty());
+        assert!(!Translations::btn_scan_ports(lang).is_empty());
+
+        let sub = Translations::device_subtitle(&test_dev, lang);
+        assert!(!sub.is_empty(), "Subtítulo vacío para idioma {:?}", lang);
+
+        let link_q = Translations::link_quality_desc(Some(12.0), lang);
+        assert!(!link_q.is_empty(), "Calidad de enlace vacía para idioma {:?}", lang);
 
         for &cat in DeviceCategory::all() {
             let cat_str = Translations::category_name(cat, lang);
             assert!(!cat_str.is_empty(), "Categoría {:?} vacía en idioma {:?}", cat, lang);
+            let short_cat = Translations::category_short_name(cat, lang);
+            assert!(!short_cat.is_empty(), "Categoría corta {:?} vacía en idioma {:?}", cat, lang);
         }
     }
 }

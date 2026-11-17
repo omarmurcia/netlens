@@ -73,6 +73,7 @@ pub enum DeviceStatus {
 }
 
 impl DeviceStatus {
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             DeviceStatus::Online => "En línea",
@@ -136,6 +137,7 @@ impl Device {
     }
 
     /// Subtítulo con información técnica
+    #[allow(dead_code)]
     pub fn subtitle(&self) -> String {
         let mut parts = Vec::new();
         if self.is_gateway {

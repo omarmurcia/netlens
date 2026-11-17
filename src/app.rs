@@ -51,9 +51,121 @@ impl fmt::Display for SortOption {
         match self {
             SortOption::Ip => write!(f, "🌐 IP"),
             SortOption::Latency => write!(f, "⚡ Ping"),
-            SortOption::Name => write!(f, "📝 Nombre"),
-            SortOption::Vendor => write!(f, "🏭 Fabricante"),
-            SortOption::Category => write!(f, "🏷️ Tipo"),
+            SortOption::Name => write!(f, "📝 Name"),
+            SortOption::Vendor => write!(f, "🏭 Vendor"),
+            SortOption::Category => write!(f, "🏷️ Type"),
+        }
+    }
+}
+
+/// Envoltorio para mostrar opciones de ordenación localizadas dinámicamente
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalizedSortOption {
+    pub sort: SortOption,
+    pub lang: Language,
+}
+
+impl fmt::Display for LocalizedSortOption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", Translations::sort_label(self.sort, self.lang))
+    }
+}
+
+/// Envoltorio para mostrar categorías de dispositivos localizadas dinámicamente
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalizedCategory {
+    pub category: DeviceCategory,
+    pub lang: Language,
+}
+
+impl fmt::Display for LocalizedCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {}",
+            self.category.icon(),
+            Translations::category_name(self.category, self.lang)
+        )
+    }
+}
+
+/// Estado descriptivo de la aplicación para renderizar reactivamente en cualquier idioma
+#[derive(Debug, Clone)]
+pub enum AppStatus {
+    Ready,
+    ScanningSubnet(String),
+    ProbingHosts { total: usize, subnet: String },
+    ScanFinished { total_found: usize, duration_secs: f32 },
+    ConnectedTo { gw: String, iface: String, subnet: String },
+    ContextUpdated { iface: String, subnet: String },
+    Error(String),
+}
+
+impl AppStatus {
+    pub fn render(&self, lang: Language) -> String {
+        match self {
+            AppStatus::Ready => Translations::empty_initial(lang).to_string(),
+            AppStatus::ScanningSubnet(subnet) => match lang {
+                Language::Spanish => format!("Escaneando subred {}...", subnet),
+                Language::English => format!("Scanning subnet {}...", subnet),
+                Language::Chinese => format!("正在扫描子网 {}...", subnet),
+                Language::Hindi => format!("सबनेट {} स्कैन हो रहा है...", subnet),
+                Language::Arabic => format!("جاري فحص الشبكة الفرعية {}...", subnet),
+                Language::French => format!("Scan du sous-réseau {}...", subnet),
+                Language::Bengali => format!("সাবনেট {} স্ক্যান হচ্ছে...", subnet),
+                Language::Portuguese => format!("Escaneando sub-rede {}...", subnet),
+                Language::Russian => format!("Сканирование подсети {}...", subnet),
+                Language::Urdu => format!("سب نیٹ {} اسکین ہو رہا ہے...", subnet),
+            },
+            AppStatus::ProbingHosts { total, subnet } => match lang {
+                Language::Spanish => format!("Sondeando {} hosts en {}...", total, subnet),
+                Language::English => format!("Probing {} hosts on {}...", total, subnet),
+                Language::Chinese => format!("正在探测 {} 上的 {} 台主机...", subnet, total),
+                Language::Hindi => format!("{} पर {} होस्ट की जांच...", subnet, total),
+                Language::Arabic => format!("جاري فحص {} جهاز على {}...", total, subnet),
+                Language::French => format!("Sondage de {} hôtes sur {}...", total, subnet),
+                Language::Bengali => format!("{} তে {} টি হোস্ট স্ক্যান হচ্ছে...", subnet, total),
+                Language::Portuguese => format!("Sondando {} hosts em {}...", total, subnet),
+                Language::Russian => format!("Опрос {} узлов в {}...", total, subnet),
+                Language::Urdu => format!("{} پر {} ہوسٹس کی جانچ...", subnet, total),
+            },
+            AppStatus::ScanFinished { total_found, duration_secs } => match lang {
+                Language::Spanish => format!("Escaneo finalizado: {} dispositivos detectados en {:.2} s", total_found, duration_secs),
+                Language::English => format!("Scan complete: {} devices detected in {:.2} s", total_found, duration_secs),
+                Language::Chinese => format!("扫描完成：在 {:.2} 秒内发现 {} 台设备", duration_secs, total_found),
+                Language::Hindi => format!("स्कैन पूर्ण: {:.2} सेकंड में {} उपकरण मिले", duration_secs, total_found),
+                Language::Arabic => format!("اكتمل الفحص: تم اكتشاف {} جهاز خلال {:.2} ثانية", total_found, duration_secs),
+                Language::French => format!("Scan terminé : {} appareils détectés en {:.2} s", total_found, duration_secs),
+                Language::Bengali => format!("স্ক্যান সম্পন্ন: {:.2} সেকেন্ডে {} টি ডিভাইস শনাক্ত", duration_secs, total_found),
+                Language::Portuguese => format!("Escaneamento concluído: {} dispositivos detectados em {:.2} s", total_found, duration_secs),
+                Language::Russian => format!("Сканирование завершено: обнаружено {} устройств за {:.2} с", total_found, duration_secs),
+                Language::Urdu => format!("اسکین مکمل: {:.2} سیکنڈ میں {} آلات ملے", duration_secs, total_found),
+            },
+            AppStatus::ConnectedTo { gw, iface, subnet } => match lang {
+                Language::Spanish => format!("Conectado a {} mediante {} (Subred {})", gw, iface, subnet),
+                Language::English => format!("Connected to {} via {} (Subnet {})", gw, iface, subnet),
+                Language::Chinese => format!("已通过 {} 连接至 {} (子网 {})", iface, gw, subnet),
+                Language::Hindi => format!("{} के माध्यम से {} से कनेक्टेड (सबनेट {})", iface, gw, subnet),
+                Language::Arabic => format!("متصل بـ {} عبر {} (الشبكة الفرعية {})", gw, iface, subnet),
+                Language::French => format!("Connecté à {} via {} (Sous-réseau {})", gw, iface, subnet),
+                Language::Bengali => format!("{} এর মাধ্যমে {} এর সাথে সংযুক্ত (সাবনেট {})", iface, gw, subnet),
+                Language::Portuguese => format!("Conectado a {} via {} (Sub-rede {})", gw, iface, subnet),
+                Language::Russian => format!("Подключено к {} через {} (Подсеть {})", gw, iface, subnet),
+                Language::Urdu => format!("{} کے ذریعے {} سے منسلک (سب نیٹ {})", iface, gw, subnet),
+            },
+            AppStatus::ContextUpdated { iface, subnet } => match lang {
+                Language::Spanish => format!("Contexto de red actualizado: {} ({})", iface, subnet),
+                Language::English => format!("Network context updated: {} ({})", iface, subnet),
+                Language::Chinese => format!("网络状态已更新：{} ({})", iface, subnet),
+                Language::Hindi => format!("नेटवर्क संदर्भ अपडेट किया गया: {} ({})", iface, subnet),
+                Language::Arabic => format!("تم تحديث سياق الشبكة: {} ({})", iface, subnet),
+                Language::French => format!("Contexte réseau actualisé : {} ({})", iface, subnet),
+                Language::Bengali => format!("নেটওয়ার্ক স্থিতি আপডেট হয়েছে: {} ({})", iface, subnet),
+                Language::Portuguese => format!("Contexto de rede atualizado: {} ({})", iface, subnet),
+                Language::Russian => format!("Контекст сети обновлен: {} ({})", iface, subnet),
+                Language::Urdu => format!("نیٹ ورک کی صورتحال اپ ڈیٹ ہو گئی: {} ({})", iface, subnet),
+            },
+            AppStatus::Error(e) => format!("Error: {}", e),
         }
     }
 }
@@ -65,7 +177,7 @@ pub struct App {
     pub telemetry: Telemetry,
     pub is_scanning: bool,
     pub scan_progress: f32,
-    pub status_text: String,
+    pub status: AppStatus,
     pub search_query: String,
     pub selected_category: Option<DeviceCategory>,
     pub sort_by: SortOption,
@@ -136,13 +248,14 @@ impl App {
         let telemetry = Telemetry::new(&network.interface);
         let language = Language::Spanish;
 
-        let initial_status = if let Some(gw) = network.gateway_ip {
-            format!(
-                "Conectado a {} mediante {} (Subred {})",
-                gw, network.interface, network.subnet_cidr
-            )
+        let status = if let Some(gw) = network.gateway_ip {
+            AppStatus::ConnectedTo {
+                gw: gw.to_string(),
+                iface: network.interface.clone(),
+                subnet: network.subnet_cidr.clone(),
+            }
         } else {
-            "Red detectada. Listo para iniciar escaneo.".to_string()
+            AppStatus::Ready
         };
 
         let app = Self {
@@ -152,7 +265,7 @@ impl App {
             telemetry,
             is_scanning: false,
             scan_progress: 0.0,
-            status_text: initial_status,
+            status,
             search_query: String::new(),
             selected_category: None,
             sort_by: SortOption::Ip,
@@ -168,7 +281,6 @@ impl App {
             is_settings_open: false,
         };
 
-        // Iniciar un escaneo automático al arrancar
         (app, Task::done(Message::StartScan))
     }
 
@@ -204,10 +316,19 @@ impl App {
 
             Message::LanguageChanged(lang) => {
                 self.language = lang;
-                self.notification = Some((
-                    format!("Idioma cambiado a {}", lang.native_name()),
-                    true,
-                ));
+                let notif_msg = match lang {
+                    Language::Spanish => format!("Idioma cambiado a {}", lang.native_name()),
+                    Language::English => format!("Language changed to {}", lang.native_name()),
+                    Language::Chinese => format!("语言已切换为 {}", lang.native_name()),
+                    Language::Hindi => format!("भाषा बदलकर {} कर दी गई", lang.native_name()),
+                    Language::Arabic => format!("تم تغيير اللغة إلى {}", lang.native_name()),
+                    Language::French => format!("Langue changée en {}", lang.native_name()),
+                    Language::Bengali => format!("ভাষা পরিবর্তন করে {} করা হয়েছে", lang.native_name()),
+                    Language::Portuguese => format!("Idioma alterado para {}", lang.native_name()),
+                    Language::Russian => format!("Язык изменен на {}", lang.native_name()),
+                    Language::Urdu => format!("زبان تبدیل ہو کر {} ہو گئی", lang.native_name()),
+                };
+                self.notification = Some((notif_msg, true));
                 Task::none()
             }
 
@@ -220,23 +341,59 @@ impl App {
                 if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
                     dev.category = new_category;
                 }
-                self.notification = Some((
-                    format!(
+                let notif_msg = match self.language {
+                    Language::Spanish => format!(
                         "Tipo de dispositivo actualizado a: {}",
                         Translations::category_name(new_category, self.language)
                     ),
-                    true,
-                ));
+                    Language::English => format!(
+                        "Device type updated to: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Chinese => format!(
+                        "设备类型已更新为：{}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Hindi => format!(
+                        "डिवाइस प्रकार बदलकर किया गया: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Arabic => format!(
+                        "تم تحديث نوع الجهاز إلى: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::French => format!(
+                        "Type d'appareil mis à jour : {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Bengali => format!(
+                        "ডিভাইসের ধরন আপডেট হয়েছে: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Portuguese => format!(
+                        "Tipo de dispositivo atualizado para: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Russian => format!(
+                        "Тип устройства обновлен: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    Language::Urdu => format!(
+                        "ڈیوائس کی قسم تبدیل ہو گئی: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                };
+                self.notification = Some((notif_msg, true));
                 Task::none()
             }
 
             Message::RefreshNetwork => {
                 self.network = Scanner::detect_network_context();
                 self.telemetry.update_sample(&self.network.interface);
-                self.status_text = format!(
-                    "Contexto de red actualizado: {} ({})",
-                    self.network.interface, self.network.subnet_cidr
-                );
+                self.status = AppStatus::ContextUpdated {
+                    iface: self.network.interface.clone(),
+                    subnet: self.network.subnet_cidr.clone(),
+                };
                 Task::none()
             }
 
@@ -247,7 +404,7 @@ impl App {
 
                 self.is_scanning = true;
                 self.scan_progress = 0.0;
-                self.status_text = format!("Escaneando subred {}...", self.network.subnet_cidr);
+                self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                 self.notification = None;
 
                 let ctx = self.network.clone();
@@ -264,8 +421,10 @@ impl App {
 
             Message::ScanEventReceived(event) => match event {
                 ScanEvent::Started { total_hosts, subnet } => {
-                    self.status_text =
-                        format!("Sondeando {} hosts en {}...", total_hosts, subnet);
+                    self.status = AppStatus::ProbingHosts {
+                        total: total_hosts,
+                        subnet,
+                    };
                     Task::none()
                 }
                 ScanEvent::Progress { scanned, total } => {
@@ -273,7 +432,6 @@ impl App {
                     Task::none()
                 }
                 ScanEvent::HostFound(device) => {
-                    // Si ya existe la IP, actualizar datos conservando alias y categoría personalizada previos
                     if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
                         let prev_alias = existing.custom_alias.clone();
                         let prev_category = existing.category;
@@ -295,16 +453,15 @@ impl App {
                 } => {
                     self.is_scanning = false;
                     self.scan_progress = 1.0;
-                    self.status_text = format!(
-                        "Escaneo finalizado: {} dispositivos detectados en {:.2} s",
+                    self.status = AppStatus::ScanFinished {
                         total_found,
-                        duration_ms as f32 / 1000.0
-                    );
+                        duration_secs: duration_ms as f32 / 1000.0,
+                    };
                     Task::none()
                 }
                 ScanEvent::Error(err) => {
                     self.is_scanning = false;
-                    self.status_text = format!("Error durante el escaneo: {}", err);
+                    self.status = AppStatus::Error(err.clone());
                     self.notification = Some((err, false));
                     Task::none()
                 }
@@ -360,14 +517,13 @@ impl App {
                 self.is_pinging = false;
                 match result {
                     Ok(stats) => {
-                        // Actualizar la latencia en el dispositivo
                         if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == stats.ip) {
                             dev.latency_ms = Some(stats.avg_ms);
                         }
                         self.inspector_ping_stats = Some(stats);
                     }
                     Err(err) => {
-                        self.notification = Some((format!("Error de ping: {}", err), false));
+                        self.notification = Some((format!("Ping error: {}", err), false));
                     }
                 }
                 Task::none()
@@ -402,13 +558,22 @@ impl App {
             Message::WolFinished(res) => {
                 match res {
                     Ok(_) => {
-                        self.notification = Some((
-                            "Paquete mágico Wake-on-LAN enviado con éxito.".to_string(),
-                            true,
-                        ));
+                        let msg = match self.language {
+                            Language::Spanish => "Paquete mágico Wake-on-LAN enviado con éxito.",
+                            Language::English => "Wake-on-LAN magic packet sent successfully.",
+                            Language::Chinese => "Wake-on-LAN 唤醒数据包发送成功。",
+                            Language::Hindi => "वेक-ऑन-लैन पैकेट सफलतापूर्वक भेजा गया।",
+                            Language::Arabic => "تم إرسال حزمة Wake-on-LAN بنجاح.",
+                            Language::French => "Paquet magique Wake-on-LAN envoyé avec succès.",
+                            Language::Bengali => "Wake-on-LAN প্যাকেট সফলভাবে পাঠানো হয়েছে।",
+                            Language::Portuguese => "Pacote mágico Wake-on-LAN enviado com sucesso.",
+                            Language::Russian => "Пакет Wake-on-LAN успешно отправлен.",
+                            Language::Urdu => "Wake-on-LAN جادوئی پیکٹ کامیابی سے بھیج دیا گیا۔",
+                        };
+                        self.notification = Some((msg.to_string(), true));
                     }
                     Err(err) => {
-                        self.notification = Some((format!("Fallo al enviar WoL: {}", err), false));
+                        self.notification = Some((format!("WoL error: {}", err), false));
                     }
                 }
                 Task::none()
@@ -417,7 +582,19 @@ impl App {
             Message::OpenInBrowser(ip) => {
                 let url = format!("http://{}", ip);
                 let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
-                self.notification = Some((format!("Abriendo {} en el navegador...", url), true));
+                let notif_msg = match self.language {
+                    Language::Spanish => format!("Abriendo {} en el navegador...", url),
+                    Language::English => format!("Opening {} in browser...", url),
+                    Language::Chinese => format!("正在浏览器中打开 {}...", url),
+                    Language::Hindi => format!("ब्राउज़र में {} खोला जा रहा है...", url),
+                    Language::Arabic => format!("جاري فتح {} في المتصفح...", url),
+                    Language::French => format!("Ouverture de {} dans le navigateur...", url),
+                    Language::Bengali => format!("ব্রাউজারে {} খোলা হচ্ছে...", url),
+                    Language::Portuguese => format!("Abrindo {} no navegador...", url),
+                    Language::Russian => format!("Открытие {} в браузере...", url),
+                    Language::Urdu => format!("براؤزر میں {} کھولا جا رہا ہے...", url),
+                };
+                self.notification = Some((notif_msg, true));
                 Task::none()
             }
 
@@ -435,22 +612,55 @@ impl App {
                         Some(trimmed.clone())
                     };
                 }
-                self.notification =
-                    Some((format!("Alias guardado para {}.", ip), true));
+                let notif_msg = match self.language {
+                    Language::Spanish => format!("Alias guardado para {}.", ip),
+                    Language::English => format!("Alias saved for {}.", ip),
+                    Language::Chinese => format!("已为 {} 保存别名。", ip),
+                    Language::Hindi => format!("{} के लिए उपनाम सहेजा गया।", ip),
+                    Language::Arabic => format!("تم حفظ اللقب لـ {}.", ip),
+                    Language::French => format!("Surnom enregistré pour {}.", ip),
+                    Language::Bengali => format!("{} এর জন্য ডাকনাম সংরক্ষিত হয়েছে।", ip),
+                    Language::Portuguese => format!("Apelido salvo para {}.", ip),
+                    Language::Russian => format!("Псевдоним сохранен для {}.", ip),
+                    Language::Urdu => format!("{} کے لیے عرفیت محفوظ کر لی گئی۔", ip),
+                };
+                self.notification = Some((notif_msg, true));
                 Task::none()
             }
 
             Message::CopyToClipboard(text_to_copy, label) => {
-                self.notification = Some((format!("{} copiado al portapapeles.", label), true));
+                let notif_msg = match self.language {
+                    Language::Spanish => format!("{} copiado al portapapeles.", label),
+                    Language::English => format!("{} copied to clipboard.", label),
+                    Language::Chinese => format!("{} 已复制到剪贴板。", label),
+                    Language::Hindi => format!("{} क्लिपबोर्ड पर कॉपी किया गया।", label),
+                    Language::Arabic => format!("تم نسخ {} إلى الحافظة.", label),
+                    Language::French => format!("{} copié dans le presse-papiers.", label),
+                    Language::Bengali => format!("{} ক্লিপবোর্ডে কপি করা হয়েছে।", label),
+                    Language::Portuguese => format!("{} copiado para a área de transferência.", label),
+                    Language::Russian => format!("{} скопировано в буфер обмена.", label),
+                    Language::Urdu => format!("{} کلپ بورڈ پر کاپی ہو گیا۔", label),
+                };
+                self.notification = Some((notif_msg, true));
                 iced::clipboard::write(text_to_copy)
             }
 
             Message::ExportJson => match Exporter::export_json(&self.devices, &self.network) {
                 Ok(path) => {
-                    self.notification = Some((
-                        format!("Exportado con éxito a {:?}", path.file_name().unwrap_or_default()),
-                        true,
-                    ));
+                    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("JSON");
+                    let notif_msg = match self.language {
+                        Language::Spanish => format!("Exportado con éxito a {}", fname),
+                        Language::English => format!("Successfully exported to {}", fname),
+                        Language::Chinese => format!("已成功导出至 {}", fname),
+                        Language::Hindi => format!("सफलतापूर्वक निर्यात किया गया: {}", fname),
+                        Language::Arabic => format!("تم التصدير بنجاح إلى {}", fname),
+                        Language::French => format!("Exporté avec succès vers {}", fname),
+                        Language::Bengali => format!("সফলভাবে রপ্তানি হয়েছে: {}", fname),
+                        Language::Portuguese => format!("Exportado com sucesso para {}", fname),
+                        Language::Russian => format!("Успешно экспортировано в {}", fname),
+                        Language::Urdu => format!("کامیابی سے برآمد کر دیا گیا: {}", fname),
+                    };
+                    self.notification = Some((notif_msg, true));
                     Task::none()
                 }
                 Err(err) => {
@@ -461,10 +671,20 @@ impl App {
 
             Message::ExportCsv => match Exporter::export_csv(&self.devices) {
                 Ok(path) => {
-                    self.notification = Some((
-                        format!("Exportado CSV a {:?}", path.file_name().unwrap_or_default()),
-                        true,
-                    ));
+                    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("CSV");
+                    let notif_msg = match self.language {
+                        Language::Spanish => format!("Exportado CSV a {}", fname),
+                        Language::English => format!("CSV exported to {}", fname),
+                        Language::Chinese => format!("CSV 文件已导出至 {}", fname),
+                        Language::Hindi => format!("सीएसवी निर्यात किया गया: {}", fname),
+                        Language::Arabic => format!("تم تصدير CSV إلى {}", fname),
+                        Language::French => format!("CSV exporté vers {}", fname),
+                        Language::Bengali => format!("CSV রপ্তানি হয়েছে: {}", fname),
+                        Language::Portuguese => format!("CSV exportado para {}", fname),
+                        Language::Russian => format!("CSV экспортирован в {}", fname),
+                        Language::Urdu => format!("CSV برآمد کر دیا گیا: {}", fname),
+                    };
+                    self.notification = Some((notif_msg, true));
                     Task::none()
                 }
                 Err(err) => {
@@ -481,7 +701,7 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = Column::new().spacing(14).padding(18);
+        let mut content = Column::new().spacing(14).padding(16);
 
         // 1. Cabecera principal (Título, botón de Ajustes, botones de escaneo y exportación)
         content = content.push(self.view_header());
@@ -525,10 +745,10 @@ impl App {
         let main_area: Element<'_, Message> = if let Some(selected_ip) = self.selected_device_ip {
             if let Some(selected_device) = self.devices.iter().find(|d| d.ip == selected_ip) {
                 row![
-                    container(device_list).width(Length::FillPortion(3)),
-                    space::horizontal().width(14),
+                    container(device_list).width(Length::Fill),
+                    space::horizontal().width(12),
                     container(self.view_inspector(selected_device))
-                        .width(Length::FillPortion(2))
+                        .width(Length::Fixed(390.0))
                         .style(|_| CustomStyles::inspector_panel())
                         .padding(14),
                 ]
@@ -552,13 +772,13 @@ impl App {
     fn view_header(&self) -> Element<'_, Message> {
         let title_col = column![
             row![
-                text("⚡ NetLens").size(24).color(CustomStyles::accent_cyan()),
-                text(format!(" | {}", Translations::app_subtitle(self.language))).size(15).color(CustomStyles::text_secondary()),
+                text("⚡ NetLens").size(22).color(CustomStyles::accent_cyan()),
+                text(format!(" | {}", Translations::app_subtitle(self.language))).size(14).color(CustomStyles::text_secondary()),
             ]
             .align_y(Alignment::Center)
             .spacing(8),
             row![
-                text(&self.status_text)
+                text(self.status.render(self.language))
                     .size(12)
                     .color(CustomStyles::text_muted()),
                 button(text("🔄").size(11))
@@ -648,7 +868,7 @@ impl App {
         let theme_row = row![
             column![
                 text(Translations::theme_label(self.language)).size(14).color(CustomStyles::text_primary()),
-                text("Personaliza los colores y el estilo visual de NetLens").size(11).color(CustomStyles::text_muted()),
+                text(Translations::theme_desc(self.language)).size(11).color(CustomStyles::text_muted()),
             ]
             .width(Length::Fill),
             pick_list(
@@ -664,7 +884,7 @@ impl App {
         let lang_row = row![
             column![
                 text(Translations::language_label(self.language)).size(14).color(CustomStyles::text_primary()),
-                text("Soporte para los 10 idiomas con mayor número de hablantes del mundo").size(11).color(CustomStyles::text_muted()),
+                text(Translations::language_desc(self.language)).size(11).color(CustomStyles::text_muted()),
             ]
             .width(Length::Fill),
             pick_list(
@@ -678,18 +898,18 @@ impl App {
 
         // Resumen técnico del sistema
         let info_col = column![
-            text("Información de Conectividad del Sistema").size(13).color(CustomStyles::accent_cyan()),
+            text(Translations::sys_info_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
             row![
-                text("Interfaz Activa:").size(12).color(CustomStyles::text_muted()).width(130),
+                text(Translations::sys_active_iface(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
                 text(&self.network.interface).size(12).color(CustomStyles::text_primary()),
             ],
             row![
-                text("Subred Local:").size(12).color(CustomStyles::text_muted()).width(130),
+                text(Translations::sys_subnet(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
                 text(&self.network.subnet_cidr).size(12).color(CustomStyles::text_primary()),
             ],
             row![
-                text("Puerta de Enlace:").size(12).color(CustomStyles::text_muted()).width(130),
-                text(self.network.gateway_ip.map(|g| g.to_string()).unwrap_or_else(|| "No detectado".to_string())).size(12).color(CustomStyles::text_primary()),
+                text(Translations::sys_gateway(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
+                text(self.network.gateway_ip.map(|g| g.to_string()).unwrap_or_else(|| Translations::not_detected(self.language).to_string())).size(12).color(CustomStyles::text_primary()),
             ],
         ]
         .spacing(6);
@@ -729,7 +949,7 @@ impl App {
                     text(Translations::live(self.language)).size(9).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
-                text(rx_speed_str).size(22).color(CustomStyles::accent_emerald()),
+                text(rx_speed_str).size(20).color(CustomStyles::accent_emerald()),
                 text(format!("{}: {}", Translations::session(self.language), rx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
@@ -750,7 +970,7 @@ impl App {
                     text(Translations::live(self.language)).size(9).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
-                text(tx_speed_str).size(22).color(CustomStyles::accent_purple()),
+                text(tx_speed_str).size(20).color(CustomStyles::accent_purple()),
                 text(format!("{}: {}", Translations::session(self.language), tx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
@@ -767,18 +987,18 @@ impl App {
                 "{} • {} • {}",
                 wifi.ssid.as_deref().unwrap_or("Wi-Fi"),
                 wifi.band_label(),
-                wifi.signal_label()
+                Translations::wifi_quality_label(wifi.signal_percent, self.language)
             );
             (Translations::signal_wifi(self.language), big, sub)
         } else if let Some(eth) = &self.telemetry.ethernet {
             let big = eth.display_summary();
-            let sub = format!("Interfaz {} (Cable)", eth.interface);
+            let sub = format!("{} ({})", eth.interface, Translations::ethernet_cable(self.language));
             (Translations::ethernet_cable(self.language), big, sub)
         } else {
             (
-                "🌐 CONEXIÓN",
-                format!("Interfaz {}", self.network.interface),
-                "Enlace activo".to_string(),
+                "🌐 LINK",
+                format!("{} {}", self.network.interface, Translations::spec_interface(self.language)),
+                Translations::link_quality_desc(None, self.language).to_string(),
             )
         };
 
@@ -805,23 +1025,23 @@ impl App {
             .network
             .gateway_ip
             .map(|ip| ip.to_string())
-            .unwrap_or_else(|| "No detectado".to_string());
+            .unwrap_or_else(|| Translations::not_detected(self.language).to_string());
 
         let gw_device = self.devices.iter().find(|d| d.is_gateway);
         let gw_name = gw_device
             .map(|d| d.display_name())
-            .unwrap_or_else(|| "Puerta de Enlace".to_string());
+            .unwrap_or_else(|| Translations::gateway_label(self.language).to_string());
 
         let card_gateway = container(
             column![
                 row![
-                    text("🌐 RED Y ROUTER").size(11).color(CustomStyles::accent_cyan()),
+                    text(Translations::network_and_router(self.language)).size(11).color(CustomStyles::accent_cyan()),
                     space::horizontal(),
                     text(&self.network.subnet_cidr).size(10).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
                 row![
-                    text(format!("{} Equipos", total_devices)).size(18).color(CustomStyles::text_primary()),
+                    text(Translations::devices_count(total_devices, self.language)).size(18).color(CustomStyles::text_primary()),
                     text(format!("(GW: {})", gw_ip_str)).size(12).color(CustomStyles::accent_cyan()),
                 ]
                 .align_y(Alignment::Center)
@@ -847,12 +1067,11 @@ impl App {
         )
         .on_input(Message::SearchChanged)
         .padding(Padding::from([7, 10]))
-        .width(Length::FillPortion(2));
+        .width(Length::FillPortion(1));
 
-        // Botones de categoría tipo "pills"
+        // Botones de categoría tipo "pills" compactos y estilizados
         let mut category_pills = row![].spacing(6).align_y(Alignment::Center);
 
-        // Botón "Todos"
         let is_all_active = self.selected_category.is_none();
         category_pills = category_pills.push(
             button(text(Translations::all_filter(self.language)).size(12))
@@ -875,11 +1094,7 @@ impl App {
             DeviceCategory::Iot,
         ] {
             let is_active = self.selected_category == Some(cat);
-            let cat_name = Translations::category_name(cat, self.language)
-                .split('/')
-                .next()
-                .unwrap_or("");
-            let label = format!("{} {}", cat.icon(), cat_name);
+            let label = Translations::category_short_name(cat, self.language);
             category_pills = category_pills.push(
                 button(text(label).size(12))
                     .style(move |_, _| {
@@ -894,11 +1109,24 @@ impl App {
             );
         }
 
-        // Selector de ordenación
+        // Selector de ordenación reactivo localizado
+        let sort_options: Vec<LocalizedSortOption> = SortOption::ALL
+            .iter()
+            .map(|&s| LocalizedSortOption {
+                sort: s,
+                lang: self.language,
+            })
+            .collect();
+
+        let selected_sort = LocalizedSortOption {
+            sort: self.sort_by,
+            lang: self.language,
+        };
+
         let sort_picker = pick_list(
-            SortOption::ALL,
-            Some(self.sort_by),
-            Message::SortChanged,
+            sort_options,
+            Some(selected_sort),
+            |loc| Message::SortChanged(loc.sort),
         );
 
         row![
@@ -916,11 +1144,11 @@ impl App {
     fn view_device_list<'a>(&'a self, devices: &[&'a Device]) -> Element<'a, Message> {
         if devices.is_empty() {
             let empty_text = if self.is_scanning {
-                "Escaneando la red en segundo plano... Los dispositivos aparecerán aquí pronto."
+                Translations::empty_scanning(self.language)
             } else if !self.search_query.is_empty() || self.selected_category.is_some() {
-                "No hay dispositivos que coincidan con los filtros seleccionados."
+                Translations::empty_filtered(self.language)
             } else {
-                "No se han detectado dispositivos aún. Haz clic en 'Escanear Red'."
+                Translations::empty_initial(self.language)
             };
 
             return container(
@@ -953,15 +1181,15 @@ impl App {
         scrollable(list_col).height(Length::Fill).into()
     }
 
-    /// Tarjeta individual para cada dispositivo
+    /// Tarjeta individual para cada dispositivo con jerarquía visual de 2 niveles (sin desbordamientos ni solapamientos)
     fn view_device_card<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
         let is_selected = self.selected_device_ip == Some(device.ip);
 
-        // Icono y categoría
-        let icon_text = text(device.category.icon()).size(26);
+        // Icono de categoría
+        let icon_widget = text(device.category.icon()).size(28);
 
-        // Nombre y subtítulo
-        let name_text = text(device.display_name())
+        // Nombre principal del dispositivo
+        let name_widget = text(device.display_name())
             .size(15)
             .color(if device.is_gateway || device.is_current_host {
                 CustomStyles::accent_cyan()
@@ -969,60 +1197,94 @@ impl App {
                 CustomStyles::text_primary()
             });
 
-        let mut tags_row = row![].spacing(6).align_y(Alignment::Center);
+        // Fila 1 de Badges (Roles especiales: ROUTER, ESTE EQUIPO, Privacidad)
+        let mut role_tags = row![].spacing(6).align_y(Alignment::Center);
 
-        // Badge de Puerta de enlace o Host Local
         if device.is_gateway {
-            tags_row = tags_row.push(
-                container(text("ROUTER").size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 5]))
+            role_tags = role_tags.push(
+                container(text(Translations::badge_router(self.language)).size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 6]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_cyan(), Color::WHITE)),
             );
         }
         if device.is_current_host {
-            tags_row = tags_row.push(
-                container(text("ESTE EQUIPO").size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 5]))
+            role_tags = role_tags.push(
+                container(text(Translations::badge_local_host(self.language)).size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 6]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
             );
         }
+        if device.is_randomized_mac {
+            role_tags = role_tags.push(
+                container(text(Translations::badge_privacy(self.language)).size(9).color(CustomStyles::accent_amber()))
+                    .padding(Padding::from([2, 6]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
+            );
+        }
+
+        // Fila 2 de Badges: Categoría asignada + Fabricante + Puertos abiertos
+        let mut sub_tags = row![].spacing(6).align_y(Alignment::Center);
 
         // Badge de Tipo / Categoría asignada
         let cat_label = Translations::category_name(device.category, self.language)
             .split('/')
             .next()
-            .unwrap_or("");
-        tags_row = tags_row.push(
+            .unwrap_or("")
+            .trim();
+        sub_tags = sub_tags.push(
             container(text(cat_label).size(10).color(CustomStyles::accent_cyan()))
-                .padding(Padding::from([2, 5]))
+                .padding(Padding::from([2, 6]))
                 .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
         );
 
         // Badge de Fabricante
-        let vendor_label = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
+        let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
             device.vendor.clone()
         } else if device.is_randomized_mac {
-            "MAC Privada".to_string()
+            Translations::vendor_private(self.language).to_string()
         } else {
-            "Genérico".to_string()
+            Translations::vendor_generic(self.language).to_string()
         };
 
-        tags_row = tags_row.push(
-            container(text(vendor_label).size(10).color(CustomStyles::text_secondary()))
-                .padding(Padding::from([2, 5]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(51, 65, 85), CustomStyles::text_secondary())),
+        let vendor_truncated = if vendor_str.len() > 24 {
+            format!("{}...", &vendor_str[..22])
+        } else {
+            vendor_str
+        };
+
+        sub_tags = sub_tags.push(
+            container(text(vendor_truncated).size(10).color(CustomStyles::text_secondary()))
+                .padding(Padding::from([2, 6]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(40, 50, 70), CustomStyles::text_secondary())),
         );
 
-        // Badge de MAC aleatoria
-        if device.is_randomized_mac {
-            tags_row = tags_row.push(
-                container(text("🛡️ Privacidad").size(9).color(CustomStyles::accent_amber()))
-                    .padding(Padding::from([2, 5]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
+        // Servicios / Puertos detectados
+        for p in device.open_ports.iter().take(2) {
+            sub_tags = sub_tags.push(
+                container(text(format!("{}: {}", p.port, p.service)).size(9).color(CustomStyles::accent_cyan()))
+                    .padding(Padding::from([1, 4]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
+            );
+        }
+        if device.open_ports.len() > 2 {
+            sub_tags = sub_tags.push(
+                text(format!("+{}", device.open_ports.len() - 2))
+                    .size(9)
+                    .color(CustomStyles::text_muted()),
             );
         }
 
-        // Columna de información de red (IP + MAC)
+        // Columna de identidad del dispositivo (ocupa todo el espacio disponible en la izquierda)
+        let identity_col = column![
+            row![icon_widget, space::horizontal().width(4), name_widget, role_tags]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            sub_tags,
+        ]
+        .spacing(4)
+        .width(Length::Fill);
+
+        // Columna de red (IP + MAC con ancho fijo de 190 px para que nunca se solape)
         let network_col = column![
             row![
                 text("IP: ").size(11).color(CustomStyles::text_muted()),
@@ -1030,7 +1292,7 @@ impl App {
                 button(text("📋").size(10))
                     .style(|_, _| CustomStyles::secondary_button())
                     .padding(Padding::from([1, 3]))
-                    .on_press(Message::CopyToClipboard(device.ip.to_string(), "Dirección IP".to_string())),
+                    .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
             ]
             .align_y(Alignment::Center)
             .spacing(4),
@@ -1040,31 +1302,32 @@ impl App {
                 button(text("📋").size(10))
                     .style(|_, _| CustomStyles::secondary_button())
                     .padding(Padding::from([1, 3]))
-                    .on_press(Message::CopyToClipboard(device.mac.clone(), "Dirección MAC".to_string())),
+                    .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
             ]
             .align_y(Alignment::Center)
             .spacing(4),
         ]
-        .spacing(2);
+        .spacing(2)
+        .width(Length::Fixed(190.0));
 
-        // Estimación de Calidad de Conexión y Latencia
+        // Estimación de Calidad de Conexión y Latencia (ancho fijo de 125 px)
         let (quality_label, quality_color, lat_str) = if let Some(lat) = device.latency_ms {
             if lat < 1.0 {
-                ("Cable (<1ms)", CustomStyles::accent_cyan(), format!("{:.1} ms", lat))
+                (Translations::latency_cable(self.language), CustomStyles::accent_cyan(), format!("{:.1} ms", lat))
             } else if lat < 20.0 {
-                ("Wi-Fi Excelente", CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
+                (Translations::latency_excellent(self.language), CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
             } else if lat < 70.0 {
-                ("Wi-Fi Bueno", CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
+                (Translations::latency_good(self.language), CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
             } else if lat < 140.0 {
-                ("Wi-Fi Moderado", CustomStyles::accent_amber(), format!("{:.1} ms", lat))
+                (Translations::latency_fair(self.language), CustomStyles::accent_amber(), format!("{:.1} ms", lat))
             } else {
-                ("Señal Débil", Color::from_rgb8(239, 68, 68), format!("{:.1} ms", lat))
+                (Translations::latency_weak(self.language), Color::from_rgb8(239, 68, 68), format!("{:.1} ms", lat))
             }
         } else {
-            ("Sin respuesta ICMP", CustomStyles::text_muted(), "-".to_string())
+            (Translations::latency_no_response(self.language), CustomStyles::text_muted(), "-".to_string())
         };
 
-        let latency_element: Element<'a, Message> = column![
+        let latency_col = column![
             row![
                 text("🟢").size(9),
                 text(lat_str).size(12).color(quality_color),
@@ -1074,27 +1337,10 @@ impl App {
             text(quality_label).size(10).color(CustomStyles::text_muted()),
         ]
         .spacing(2)
-        .into();
-
-        // Servicios / Puertos detectados
-        let mut services_row = row![].spacing(4).align_y(Alignment::Center);
-        for p in device.open_ports.iter().take(3) {
-            services_row = services_row.push(
-                container(text(format!("{}: {}", p.port, p.service)).size(10).color(CustomStyles::accent_cyan()))
-                    .padding(Padding::from([1, 4]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
-            );
-        }
-        if device.open_ports.len() > 3 {
-            services_row = services_row.push(
-                text(format!("+{}", device.open_ports.len() - 3))
-                    .size(9)
-                    .color(CustomStyles::text_muted()),
-            );
-        }
+        .width(Length::Fixed(125.0));
 
         // Botón Detalles
-        let btn_details = button(text("Detalles →").size(12))
+        let btn_details = button(text(Translations::details_btn(self.language)).size(12))
             .style(move |_, _| {
                 if is_selected {
                     CustomStyles::primary_button()
@@ -1102,22 +1348,16 @@ impl App {
                     CustomStyles::secondary_button()
                 }
             })
-            .padding(Padding::from([5, 10]))
+            .padding(Padding::from([6, 12]))
             .on_press(Message::SelectDevice(device.ip));
 
         let card_content = row![
-            container(icon_text).padding(2),
-            column![
-                row![name_text, tags_row].spacing(6).align_y(Alignment::Center),
-                services_row,
-            ]
-            .spacing(3)
-            .width(Length::FillPortion(2)),
-            network_col.width(Length::FillPortion(2)),
-            container(latency_element).width(Length::FillPortion(1)),
+            identity_col,
+            network_col,
+            latency_col,
             btn_details,
         ]
-        .spacing(10)
+        .spacing(12)
         .align_y(Alignment::Center);
 
         container(card_content)
@@ -1133,13 +1373,15 @@ impl App {
             .into()
     }
 
-    /// Inspector de detalles para el dispositivo seleccionado
+    /// Inspector de detalles para el dispositivo seleccionado (panel lateral con ancho fijo y reactividad total)
     fn view_inspector<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
         let mut insp = Column::new().spacing(12);
 
         // Barra superior del inspector (Título + Cerrar)
         let top_bar = row![
-            text(format!("{} {}", device.category.icon(), Translations::device_details(self.language))).size(15).color(CustomStyles::accent_cyan()),
+            text(format!("{} {}", device.category.icon(), Translations::device_details(self.language)))
+                .size(15)
+                .color(CustomStyles::accent_cyan()),
             space::horizontal(),
             button(text("✕").size(13))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -1150,25 +1392,38 @@ impl App {
 
         insp = insp.push(top_bar);
 
-        // Nombre y alias
+        // Nombre y subtítulo traducido
         insp = insp.push(
             column![
                 text(device.display_name()).size(16).color(CustomStyles::text_primary()),
-                text(device.subtitle()).size(11).color(CustomStyles::text_muted()),
+                text(Translations::device_subtitle(device, self.language)).size(11).color(CustomStyles::text_muted()),
             ]
             .spacing(1),
         );
 
-        // Selector para indicar/cambiar el tipo de dispositivo
+        // Selector para indicar/cambiar el tipo de dispositivo (LOCALIZADO!)
+        let category_options: Vec<LocalizedCategory> = DeviceCategory::all()
+            .iter()
+            .map(|&c| LocalizedCategory {
+                category: c,
+                lang: self.language,
+            })
+            .collect();
+
+        let selected_category = LocalizedCategory {
+            category: device.category,
+            lang: self.language,
+        };
+
         let category_selector = row![
             text(Translations::device_type_label(self.language))
                 .size(11)
                 .color(CustomStyles::text_muted())
                 .width(110),
             pick_list(
-                DeviceCategory::all(),
-                Some(device.category),
-                move |cat| Message::ChangeDeviceCategory(device.ip, cat),
+                category_options,
+                Some(selected_category),
+                move |loc| Message::ChangeDeviceCategory(device.ip, loc.category),
             ),
         ]
         .spacing(6)
@@ -1192,47 +1447,37 @@ impl App {
 
         insp = insp.push(alias_row);
 
-        // Ficha técnica
+        // Ficha técnica (LOCALIZADA EN SU TOTALIDAD)
         let mut specs_col = Column::new().spacing(5);
 
-        specs_col = specs_col.push(Self::spec_line("Dirección IP:", &device.ip.to_string()));
-        specs_col = specs_col.push(Self::spec_line("Dirección MAC:", &device.mac));
-        specs_col = specs_col.push(Self::spec_line("Fabricante:", &device.vendor));
+        specs_col = specs_col.push(Self::spec_line(Translations::spec_ip(self.language), &device.ip.to_string()));
+        specs_col = specs_col.push(Self::spec_line(Translations::spec_mac(self.language), &device.mac));
+        specs_col = specs_col.push(Self::spec_line(Translations::spec_vendor(self.language), &device.vendor));
         specs_col = specs_col.push(Self::spec_line(
-            "Hostname DNS:",
-            device.hostname.as_deref().unwrap_or("No asignado"),
+            Translations::spec_hostname(self.language),
+            device.hostname.as_deref().unwrap_or(Translations::spec_not_assigned(self.language)),
         ));
         specs_col = specs_col.push(Self::spec_line(
-            "Tipo de MAC:",
+            Translations::spec_mac_type(self.language),
             if device.is_randomized_mac {
-                "🛡️ Privada / Aleatoria (LAA)"
+                Translations::mac_type_private(self.language)
             } else {
-                "🌐 OUI Global Registrada"
+                Translations::mac_type_global(self.language)
             },
         ));
 
         // Calidad estimada de enlace Wi-Fi / Red
-        let quality_desc = if let Some(lat) = device.latency_ms {
-            if lat < 1.0 {
-                "🟢 Cable Directo (<1 ms) - Máxima velocidad"
-            } else if lat < 20.0 {
-                "🟢 Wi-Fi Excelente (~5-15 ms) - Señal óptima"
-            } else if lat < 70.0 {
-                "🟡 Wi-Fi Bueno (~30-60 ms) - Conexión estable"
-            } else if lat < 140.0 {
-                "🟠 Wi-Fi Moderado (~80-120 ms) - Reposo / Lejano"
-            } else {
-                "🔴 Señal Débil (>150 ms) - Posible pérdida"
-            }
-        } else {
-            "⚪ Sin respuesta a paquetes ICMP (Ping)"
-        };
-
-        specs_col = specs_col.push(Self::spec_line("Calidad Enlace:", quality_desc));
-        specs_col = specs_col.push(Self::spec_line("Interfaz de Red:", &device.interface));
-        specs_col = specs_col.push(Self::spec_line("Estado:", device.status.label()));
         specs_col = specs_col.push(Self::spec_line(
-            "Última respuesta:",
+            Translations::spec_link_quality(self.language),
+            Translations::link_quality_desc(device.latency_ms, self.language),
+        ));
+        specs_col = specs_col.push(Self::spec_line(Translations::spec_interface(self.language), &device.interface));
+        specs_col = specs_col.push(Self::spec_line(
+            Translations::spec_status(self.language),
+            Translations::status_label(device.status, self.language),
+        ));
+        specs_col = specs_col.push(Self::spec_line(
+            Translations::spec_last_seen(self.language),
             &device.last_seen.format("%H:%M:%S").to_string(),
         ));
 
@@ -1259,18 +1504,16 @@ impl App {
                 .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
         );
 
-        // Botón Abrir Web si tiene puertos web
         let has_web = device.open_ports.iter().any(|p| p.port == 80 || p.port == 443 || p.port == 8080);
         if has_web || device.is_gateway {
             quick_actions = quick_actions.push(
-                button(text("🌐 Abrir Web").size(11))
+                button(text(Translations::action_open_web(self.language)).size(11))
                     .style(|_, _| CustomStyles::primary_button())
                     .padding(Padding::from([4, 7]))
                     .on_press(Message::OpenInBrowser(device.ip)),
             );
         }
 
-        // Botón Wake-on-LAN
         if !device.is_current_host {
             quick_actions = quick_actions.push(
                 button(text("⏰ WoL").size(11))
@@ -1282,11 +1525,11 @@ impl App {
 
         insp = insp.push(quick_actions);
 
-        // Herramienta 1: Test de Ping en tiempo real
+        // Herramienta 1: Test de Ping en tiempo real (LOCALIZADA!)
         let ping_btn_text = if self.is_pinging {
-            "⏳ Midiendo..."
+            Translations::btn_measuring(self.language)
         } else {
-            "⚡ Test de Ping"
+            Translations::btn_ping_test(self.language)
         };
 
         let ping_btn = button(text(ping_btn_text).size(11))
@@ -1296,7 +1539,7 @@ impl App {
 
         let mut ping_section = column![
             row![
-                text("LATENCIA & CONECTIVIDAD").size(11).color(CustomStyles::text_muted()),
+                text(Translations::section_latency(self.language)).size(11).color(CustomStyles::text_muted()),
                 space::horizontal(),
                 ping_btn,
             ]
@@ -1308,15 +1551,15 @@ impl App {
             ping_section = ping_section.push(
                 column![
                     row![
-                        text(format!("Enviados: {}", stats.transmitted)).size(11).color(CustomStyles::text_secondary()),
-                        text(format!("Recibidos: {}", stats.received)).size(11).color(CustomStyles::accent_emerald()),
-                        text(format!("Pérdida: {:.0}%", stats.loss_percent)).size(11).color(if stats.loss_percent > 0.0 { CustomStyles::accent_amber() } else { CustomStyles::accent_emerald() }),
+                        text(format!("{} {}", Translations::ping_sent(self.language), stats.transmitted)).size(11).color(CustomStyles::text_secondary()),
+                        text(format!("{} {}", Translations::ping_received(self.language), stats.received)).size(11).color(CustomStyles::accent_emerald()),
+                        text(format!("{} {:.0}%", Translations::ping_loss(self.language), stats.loss_percent)).size(11).color(if stats.loss_percent > 0.0 { CustomStyles::accent_amber() } else { CustomStyles::accent_emerald() }),
                     ]
                     .spacing(8),
                     row![
-                        text(format!("Mín: {:.2} ms", stats.min_ms)).size(11).color(CustomStyles::text_secondary()),
-                        text(format!("Promedio: {:.2} ms", stats.avg_ms)).size(11).color(CustomStyles::accent_cyan()),
-                        text(format!("Máx: {:.2} ms", stats.max_ms)).size(11).color(CustomStyles::text_secondary()),
+                        text(format!("{} {:.2} ms", Translations::ping_min(self.language), stats.min_ms)).size(11).color(CustomStyles::text_secondary()),
+                        text(format!("{} {:.2} ms", Translations::ping_avg(self.language), stats.avg_ms)).size(11).color(CustomStyles::accent_cyan()),
+                        text(format!("{} {:.2} ms", Translations::ping_max(self.language), stats.max_ms)).size(11).color(CustomStyles::text_secondary()),
                     ]
                     .spacing(8),
                 ]
@@ -1330,11 +1573,11 @@ impl App {
                 .style(|_| CustomStyles::card_container()),
         );
 
-        // Herramienta 2: Escáner de Puertos Abiertos
+        // Herramienta 2: Escáner de Puertos (LOCALIZADA!)
         let port_btn_text = if self.is_deep_scanning {
-            "⏳ Escaneando 30..."
+            Translations::btn_scanning_ports(self.language)
         } else {
-            "🔍 Escanear Puertos"
+            Translations::btn_scan_ports(self.language)
         };
 
         let port_btn = button(text(port_btn_text).size(11))
@@ -1344,7 +1587,7 @@ impl App {
 
         let mut ports_section = column![
             row![
-                text("SERVICIOS Y PUERTOS").size(11).color(CustomStyles::text_muted()),
+                text(Translations::section_ports(self.language)).size(11).color(CustomStyles::text_muted()),
                 space::horizontal(),
                 port_btn,
             ]
@@ -1355,9 +1598,9 @@ impl App {
         if self.deep_ports.is_empty() {
             ports_section = ports_section.push(
                 text(if self.is_deep_scanning {
-                    "Comprobando puertos comunes en el host..."
+                    Translations::ports_checking(self.language)
                 } else {
-                    "Ningún puerto común detectado como abierto."
+                    Translations::no_open_ports(self.language)
                 })
                 .size(11)
                 .color(CustomStyles::text_muted()),
@@ -1392,7 +1635,7 @@ impl App {
     /// Línea de especificación técnica clave-valor
     fn spec_line(key: &'static str, val: &str) -> Element<'static, Message> {
         row![
-            text(key).size(11).color(CustomStyles::text_muted()).width(110),
+            text(key).size(11).color(CustomStyles::text_muted()).width(120),
             text(val.to_string()).size(11).color(CustomStyles::text_primary()),
         ]
         .spacing(4)
@@ -1435,14 +1678,12 @@ impl App {
             .devices
             .iter()
             .filter(|d| {
-                // Filtro por categoría
                 if let Some(cat) = self.selected_category {
                     if d.category != cat {
                         return false;
                     }
                 }
 
-                // Filtro por búsqueda textual
                 if !q.is_empty() {
                     let matches_ip = d.ip.to_string().contains(&q);
                     let matches_mac = d.mac.to_lowercase().contains(&q);
@@ -1467,7 +1708,6 @@ impl App {
             })
             .collect();
 
-        // Ordenar
         match self.sort_by {
             SortOption::Ip => {
                 list.sort_by_key(|d| d.ip);
@@ -1486,7 +1726,7 @@ impl App {
                 list.sort_by(|a, b| a.vendor.to_lowercase().cmp(&b.vendor.to_lowercase()));
             }
             SortOption::Category => {
-                list.sort_by_key(|d| d.category.display_name());
+                list.sort_by_key(|d| Translations::category_name(d.category, self.language));
             }
         }
 

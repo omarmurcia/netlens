@@ -31,7 +31,7 @@ fn main() -> iced::Result {
 
     // Modo GUI con Iced
     iced::application(App::new, App::update, App::view)
-        .title("NetLens - Explorador y Monitor de Red Local")
+        .title(|app: &App| i18n::Translations::window_title(app.language).to_string())
         .theme(|app: &App| app.current_theme.clone())
         .subscription(App::subscription)
         .window_size(Size::new(1220.0, 820.0))
