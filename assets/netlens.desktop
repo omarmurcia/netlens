@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=NetLens
+GenericName=Local Network Device Explorer & Monitor
+Comment=Explorador de dispositivos de red local, telemetría y control de router
+Exec=netlens %F
+Icon=netlens
+Terminal=false
+Categories=Network;Monitor;System;
+Keywords=network;scanner;devices;ip;mac;linksys;speedtest;
+StartupNotify=true
+StartupWMClass=netlens

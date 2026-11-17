@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1e2e" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#4facfe" stop-opacity="0.2" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Fondo: Superellipse / Squircle moderno con borde brillante -->
+  <rect x="16" y="16" width="480" height="480" rx="110" ry="110" fill="url(#bgGrad)" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.3" />
+
+  <!-- Anillos concéntricos de Radar / Scanner -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-opacity="0.2" stroke-dasharray="8 8" />
+  <circle cx="256" cy="256" r="130" fill="none" stroke="#38bdf8" stroke-width="3" stroke-opacity="0.35" />
+  <circle cx="256" cy="256" r="80" fill="none" stroke="#34d399" stroke-width="3.5" stroke-opacity="0.5" />
+
+  <!-- Destello / Onda de barrido de radar -->
+  <path d="M 256 256 L 383 129 A 180 180 0 0 0 256 76 Z" fill="url(#cyanGrad)" opacity="0.18" />
+
+  <!-- Nodos de red detectados en el mapa -->
+  <circle cx="340" cy="180" r="9" fill="#34d399" filter="url(#glow)" />
+  <circle cx="160" cy="330" r="8" fill="#38bdf8" filter="url(#glow)" />
+  <circle cx="370" cy="320" r="7" fill="#818cf8" filter="url(#glow)" />
+  <circle cx="170" cy="170" r="7" fill="#fbbf24" filter="url(#glow)" />
+
+  <!-- Conexiones sutiles entre nodos -->
+  <line x1="256" y1="256" x2="340" y2="180" stroke="#34d399" stroke-width="2" stroke-opacity="0.4" stroke-dasharray="4 4" />
+  <line x1="256" y1="256" x2="160" y2="330" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.4" stroke-dasharray="4 4" />
+  <line x1="256" y1="256" x2="370" y2="320" stroke="#818cf8" stroke-width="2" stroke-opacity="0.4" stroke-dasharray="4 4" />
+
+  <!-- Núcleo Central: Router / Lente Focal con Relámpago -->
+  <circle cx="256" cy="256" r="46" fill="#1e293b" stroke="#38bdf8" stroke-width="5" filter="url(#glow)" />
+  <circle cx="256" cy="256" r="38" fill="url(#cyanGrad)" opacity="0.25" />
+
+  <!-- Icono de Rayo / Velocidad en el centro -->
+  <path d="M 264 220 L 240 254 L 254 254 L 246 292 L 274 250 L 258 250 Z" fill="#38bdf8" filter="url(#glow)" />
+</svg>
