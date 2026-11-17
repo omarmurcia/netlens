@@ -1,4 +1,5 @@
 mod app;
+mod autostart;
 mod export;
 mod i18n;
 mod model;
@@ -41,6 +42,7 @@ fn main() -> iced::Result {
         .subscription(App::subscription)
         .window_size(Size::new(1220.0, 820.0))
         .centered()
+        .exit_on_close_request(false)
         .run()
 }
 

@@ -1,3 +1,4 @@
+use crate::autostart::AutostartManager;
 use crate::export::Exporter;
 use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
@@ -279,6 +280,10 @@ pub struct App {
     pub is_tracing_route: bool,
     pub traceroute_hops: Option<Vec<HopInfo>>,
     pub traceroute_error: Option<String>,
+
+    // Segundo Plano & Inicio Automático
+    pub autostart_enabled: bool,
+    pub minimize_on_close: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -287,6 +292,16 @@ pub enum Message {
     StartScan,
     ScanEventReceived(ScanEvent),
     RefreshNetwork,
+
+    // Ventana y Segundo Plano
+    WindowCloseRequested(iced::window::Id),
+    ToggleAutostart(bool),
+    ToggleMinimizeOnClose(bool),
+    DesktopNotificationAction {
+        ip: Ipv4Addr,
+        mac: String,
+        action: String,
+    },
 
     // Temporizador periódico (1 segundo para telemetría de velocidad y señal)
     Tick,
@@ -396,6 +411,8 @@ impl App {
         let router_password_input = saved.router_password.unwrap_or_default();
         let speed_test_history = saved.speed_test_history;
         let auto_scan_interval_secs = saved.auto_scan_interval_secs;
+        let autostart_enabled = saved.autostart || AutostartManager::is_enabled();
+        let minimize_on_close = saved.minimize_to_tray_on_close;
         let mut known_macs: HashSet<String> = saved
             .known_macs
             .into_iter()
@@ -462,9 +479,21 @@ impl App {
             is_tracing_route: false,
             traceroute_hops: None,
             traceroute_error: None,
+            autostart_enabled,
+            minimize_on_close,
         };
 
-        (app, Task::done(Message::StartScan))
+        let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--background");
+        let initial_task = if start_minimized {
+            Task::batch(vec![
+                Task::done(Message::StartScan),
+                iced::window::latest().and_then(|id| iced::window::minimize(id, true)),
+            ])
+        } else {
+            Task::done(Message::StartScan)
+        };
+
+        (app, initial_task)
     }
 
     /// Guarda el estado actual de la aplicación de manera persistente en disco
@@ -484,15 +513,17 @@ impl App {
             },
             auto_scan_interval_secs: self.auto_scan_interval_secs,
             known_macs: self.known_macs.iter().cloned().collect(),
+            autostart: self.autostart_enabled,
+            minimize_to_tray_on_close: self.minimize_on_close,
         };
         if let Err(e) = Storage::save(&state) {
             eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
         }
     }
 
-    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada y señal
+    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada y eventos de ventana
     pub fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(|| {
+        let tick_sub = Subscription::run(|| {
             iced::futures::stream::unfold(
                 tokio::time::interval(Duration::from_millis(1000)),
                 |mut interval| async move {
@@ -500,7 +531,11 @@ impl App {
                     Some((Message::Tick, interval))
                 },
             )
-        })
+        });
+
+        let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
+
+        Subscription::batch(vec![tick_sub, close_sub])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -580,6 +615,87 @@ impl App {
                 self.last_scan_time = Instant::now();
                 self.save_state();
                 Task::none()
+            }
+
+            Message::ToggleAutostart(enabled) => {
+                self.autostart_enabled = enabled;
+                if let Err(e) = AutostartManager::set_enabled(enabled) {
+                    self.notification = Some((format!("Error autostart: {}", e), false));
+                }
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleMinimizeOnClose(enabled) => {
+                self.minimize_on_close = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::WindowCloseRequested(id) => {
+                if self.minimize_on_close {
+                    iced::window::minimize(id, true)
+                } else {
+                    iced::window::close(id)
+                }
+            }
+
+            Message::DesktopNotificationAction { ip, mac, action } => {
+                if action == "trust" {
+                    let mac_clone = mac.clone();
+                    let title = Translations::notif_trust_success_title(self.language);
+                    let body = Translations::notif_trust_success_body(self.language, &mac_clone);
+                    tokio::spawn(async move {
+                        let _ = tokio::process::Command::new("notify-send")
+                            .arg("-u")
+                            .arg("normal")
+                            .arg("-i")
+                            .arg("network-wireless")
+                            .arg("-a")
+                            .arg("NetLens")
+                            .arg(title)
+                            .arg(body)
+                            .spawn();
+                    });
+                    Task::done(Message::TrustDevice(mac))
+                } else if action == "block" {
+                    if self.router_password_input.trim().is_empty() {
+                        let title = Translations::notif_require_pass_title(self.language);
+                        let body = Translations::notif_require_pass_body(self.language);
+                        tokio::spawn(async move {
+                            let _ = tokio::process::Command::new("notify-send")
+                                .arg("-u")
+                                .arg("critical")
+                                .arg("-i")
+                                .arg("dialog-warning")
+                                .arg("-a")
+                                .arg("NetLens")
+                                .arg(title)
+                                .arg(body)
+                                .spawn();
+                        });
+                        Task::none()
+                    } else {
+                        let mac_clone = mac.clone();
+                        let title = Translations::notif_block_success_title(self.language);
+                        let body = Translations::notif_block_success_body(self.language, &mac_clone);
+                        tokio::spawn(async move {
+                            let _ = tokio::process::Command::new("notify-send")
+                                .arg("-u")
+                                .arg("normal")
+                                .arg("-i")
+                                .arg("network-wireless")
+                                .arg("-a")
+                                .arg("NetLens")
+                                .arg(title)
+                                .arg(body)
+                                .spawn();
+                        });
+                        Task::done(Message::ToggleDeviceBlocked(ip, mac))
+                    }
+                } else {
+                    Task::none()
+                }
             }
 
             Message::OpenSpeedTest => {
@@ -1030,31 +1146,56 @@ impl App {
                         device.negotiated_mbps = conn.negotiated_mbps;
                     }
 
+                    let mut intruder_task = Task::none();
+
                     // Detección de Intrusos / Dispositivos Nuevos Desconocidos
                     if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
                         if !self.known_macs.contains(&mac_key) {
                             if self.alerted_macs.insert(mac_key.clone()) {
                                 let dev_name = device.display_name();
-                                let dev_ip = device.ip.to_string();
+                                let dev_ip = device.ip;
                                 let dev_mac = device.mac.clone();
-                                tokio::spawn(async move {
-                                    let _ = tokio::process::Command::new("notify-send")
-                                        .arg("-u")
-                                        .arg("normal")
-                                        .arg("-i")
-                                        .arg("network-wireless")
-                                        .arg("-a")
-                                        .arg("NetLens")
-                                        .arg("⚠️ Nuevo Dispositivo en la Red")
-                                        .arg(format!("Dispositivo no reconocido:\n{} ({})\nMAC: {}", dev_name, dev_ip, dev_mac))
-                                        .spawn();
-                                });
+                                let dev_vendor = device.vendor.clone();
+                                let alert_title = Translations::intruder_alert_title(self.language);
+                                let trust_label = Translations::intruder_btn_trust(self.language);
+                                let block_label = Translations::intruder_btn_block(self.language);
 
                                 self.pending_intruder_alert = Some(IntruderAlert {
                                     ip: device.ip,
                                     mac: device.mac.clone(),
                                     vendor: device.vendor.clone(),
                                     hostname: device.hostname.clone(),
+                                });
+
+                                intruder_task = Task::future(async move {
+                                    let output = tokio::process::Command::new("notify-send")
+                                        .arg("-u")
+                                        .arg("critical")
+                                        .arg("-i")
+                                        .arg("network-wireless")
+                                        .arg("-a")
+                                        .arg("NetLens")
+                                        .arg("-t")
+                                        .arg("45000")
+                                        .arg("-A")
+                                        .arg(format!("trust={}", trust_label))
+                                        .arg("-A")
+                                        .arg(format!("block={}", block_label))
+                                        .arg(alert_title)
+                                        .arg(format!("{} ({})\nMAC: {}\nVendor: {}", dev_name, dev_ip, dev_mac, dev_vendor))
+                                        .output()
+                                        .await;
+
+                                    let action = match output {
+                                        Ok(out) => String::from_utf8_lossy(&out.stdout).trim().to_string(),
+                                        Err(_) => String::new(),
+                                    };
+
+                                    Message::DesktopNotificationAction {
+                                        ip: dev_ip,
+                                        mac: dev_mac,
+                                        action,
+                                    }
                                 });
                             }
                         }
@@ -1087,7 +1228,7 @@ impl App {
                     } else {
                         self.devices.push(device);
                     }
-                    Task::none()
+                    intruder_task
                 }
                 ScanEvent::Completed {
                     total_found,
@@ -1682,7 +1823,62 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
-        // Ajuste 4: Control de Router (Linksys MR73 Mesh / JNAP)
+        // Ajuste 4: Segundo Plano & Inicio Automático con el Sistema
+        let autostart_btn = button(
+            text(if self.autostart_enabled { "✓ Activado" } else { "Desactivado" }).size(11)
+        )
+        .style(move |_, _| {
+            if self.autostart_enabled {
+                CustomStyles::primary_button()
+            } else {
+                CustomStyles::secondary_button()
+            }
+        })
+        .padding(Padding::from([4, 10]))
+        .on_press(Message::ToggleAutostart(!self.autostart_enabled));
+
+        let minimize_btn = button(
+            text(if self.minimize_on_close { "✓ Activado" } else { "Desactivado" }).size(11)
+        )
+        .style(move |_, _| {
+            if self.minimize_on_close {
+                CustomStyles::primary_button()
+            } else {
+                CustomStyles::secondary_button()
+            }
+        })
+        .padding(Padding::from([4, 10]))
+        .on_press(Message::ToggleMinimizeOnClose(!self.minimize_on_close));
+
+        let background_section = column![
+            row![
+                column![
+                    text(Translations::autostart_title(self.language)).size(12).color(CustomStyles::text_primary()),
+                    text(Translations::autostart_desc(self.language)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .width(Length::Fill),
+                autostart_btn,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(10),
+            row![
+                column![
+                    text(Translations::minimize_on_close_title(self.language)).size(12).color(CustomStyles::text_primary()),
+                    text(Translations::minimize_on_close_desc(self.language)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .width(Length::Fill),
+                minimize_btn,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(10),
+        ]
+        .spacing(10);
+
+        let background_card = container(background_section)
+            .padding(12)
+            .style(|_| CustomStyles::card_container());
+
+        // Ajuste 5: Control de Router (Linksys MR73 Mesh / JNAP)
         let router_ip_input = text_input("192.168.1.1", &self.router_ip_input)
             .on_input(Message::RouterIpChanged)
             .padding(Padding::from([5, 8]))
@@ -1762,11 +1958,12 @@ impl App {
             theme_row,
             lang_row,
             auto_scan_card,
+            background_card,
             router_card,
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
             row![space::horizontal(), close_btn],
         ]
-        .spacing(18);
+        .spacing(14);
 
         container(content)
             .padding(22)

@@ -2936,4 +2936,154 @@ impl Translations {
             Language::Urdu => "ایتھرنیٹ کیبل",
         }
     }
+
+    pub fn autostart_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Iniciar Automáticamente con el Sistema (Segundo Plano)",
+            Language::English => "Launch Automatically on System Startup (Background)",
+            Language::Chinese => "随系统自动启动 (后台静默运行)",
+            Language::Hindi => "सिस्टम स्टार्टअप पर स्वचालित रूप से प्रारंभ करें (पृष्ठभूमि)",
+            Language::Arabic => "التشغيل التلقائي مع بدء تشغيل النظام (في الخلفية)",
+            Language::French => "Démarrer automatiquement avec le système (Arrière-plan)",
+            Language::Bengali => "সিস্টেম স্টার্টআপে স্বয়ংক্রিয়ভাবে চালু করুন (পটভূমি)",
+            Language::Portuguese => "Iniciar Automaticamente com o Sistema (Segundo Plano)",
+            Language::Russian => "Автозапуск при старте системы (В фоне)",
+            Language::Urdu => "سسٹم اسٹارٹ اپ پر خودکار آغاز (پس منظر)",
+        }
+    }
+
+    pub fn autostart_desc(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Ejecuta NetLens minimizado al encender el equipo para vigilar la red continuamente y avisar de intrusos.",
+            Language::English => "Runs NetLens minimized on system boot to continuously monitor network activity and alert on intruders.",
+            Language::Chinese => "开机时在后台静默运行 NetLens，以持续监视局域网安全并在发现新设备时发出警报。",
+            Language::Hindi => "नेटवर्क की निरंतर निगरानी करने और घुसपैठियों के बारे में सचेत करने के लिए स्टार्टअप पर NetLens चलाता है।",
+            Language::Arabic => "تشغيل NetLens مصغراً عند بدء التشغيل لمراقبة نشاط الشبكة باستمرار والتنبيه عند وجود متسللين.",
+            Language::French => "Lance NetLens minimisé au démarrage pour surveiller le réseau en continu et alerter des intrus.",
+            Language::Bengali => "নেটওয়ার্ক কার্যকলাপ ক্রমাগত নিরীক্ষণ করতে এবং অনুপ্রবেশকারীদের সম্পর্কে সতর্ক করতে স্টার্টআপে NetLens চালায়।",
+            Language::Portuguese => "Executa o NetLens minimizado ao iniciar o sistema para monitorar a rede continuamente e alertar sobre intrusos.",
+            Language::Russian => "Запуск NetLens в свернутом виде при старте для непрерывного мониторинга сети и оповещения о посторонних.",
+            Language::Urdu => "نیٹ ورک کی نگرانی اور گھس بیٹھ کی اطلاع کے لیے اسٹارٹ اپ پر NetLens منیمائز چلاتا ہے۔",
+        }
+    }
+
+    pub fn minimize_on_close_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Minimizar a Segundo Plano al Cerrar la Ventana",
+            Language::English => "Minimize to Background on Window Close",
+            Language::Chinese => "关闭窗口时最小化到后台",
+            Language::Hindi => "विंडो बंद करने पर पृष्ठभूमि में छोटा करें",
+            Language::Arabic => "التصغير إلى الخلفية عند إغلاق النافذة",
+            Language::French => "Réduire en arrière-plan à la fermeture de la fenêtre",
+            Language::Bengali => "উইন্ডো বন্ধ করার সময় পটভূমিতে ছোট করুন",
+            Language::Portuguese => "Minimizar para Segundo Plano ao Fechar a Janela",
+            Language::Russian => "Сворачивать в фон при закрытии окна",
+            Language::Urdu => "ونڈو بند کرنے پر پس منظر میں منیمائز کریں",
+        }
+    }
+
+    pub fn minimize_on_close_desc(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Al hacer clic en la '✕', la ventana se oculta/minimiza en lugar de cerrar el proceso, manteniendo el escaneo activo.",
+            Language::English => "Clicking '✕' minimizes the window instead of exiting, keeping background scan and alerts active.",
+            Language::Chinese => "点击 '✕' 时隐藏/最小化窗口而不是退出程序，以保持后台网络扫描和报警持续有效。",
+            Language::Hindi => "'✕' पर क्लिक करने पर विंडो बंद होने के बजाय छिप जाती है, जिससे स्कैन सक्रिय रहता है।",
+            Language::Arabic => "عند النقر فوق '✕'، يتم تصغير النافذة بدلاً من إنهاء البرنامج لمواصلة الفحص والتنبيهات.",
+            Language::French => "Cliquer sur '✕' réduit la fenêtre au lieu de quitter, maintenant le scan et les alertes actifs.",
+            Language::Bengali => "'✕' ক্লিক করলে উইন্ডো বন্ধ না হয়ে পটভূমিতে স্ক্যান সক্রিয় রাখে।",
+            Language::Portuguese => "Clicar no '✕' minimiza a janela em vez de encerrar o programa, mantendo o escaneamento ativo.",
+            Language::Russian => "Нажатие '✕' сворачивает окно вместо завершения программы, сохраняя сканирование активным.",
+            Language::Urdu => "'✕' پر کلک کرنے پر پروگرام بند ہونے کے بجائے پس منظر میں اسکین فعال رکھتا ہے۔",
+        }
+    }
+
+    pub fn notif_trust_success_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "✓ Dispositivo Confiable",
+            Language::English => "✓ Trusted Device",
+            Language::Chinese => "✓ 信任设备",
+            Language::Hindi => "✓ विश्वसनीय उपकरण",
+            Language::Arabic => "✓ جهاز موثوق",
+            Language::French => "✓ Appareil de confiance",
+            Language::Bengali => "✓ বিশ্বস্ত ডিভাইস",
+            Language::Portuguese => "✓ Dispositivo Confiável",
+            Language::Russian => "✓ Доверенное устройство",
+            Language::Urdu => "✓ قابل اعتماد ڈیوائس",
+        }
+    }
+
+    pub fn notif_trust_success_body(lang: Language, mac: &str) -> String {
+        match lang {
+            Language::Spanish => format!("La dirección MAC {} ha sido añadida a la lista blanca.", mac),
+            Language::English => format!("MAC address {} has been added to the whitelist.", mac),
+            Language::Chinese => format!("MAC 地址 {} 已成功加入白名单。", mac),
+            Language::Hindi => format!("MAC पता {} श्वेतसूची में जोड़ दिया गया है।", mac),
+            Language::Arabic => format!("تمت إضافة عنوان MAC {} إلى القائمة البيضاء بنجاح.", mac),
+            Language::French => format!("L'adresse MAC {} a été ajoutée à la liste blanche.", mac),
+            Language::Bengali => format!("MAC ঠিকানা {} সফলভাবে হোয়াইটলিস্টে যুক্ত হয়েছে।", mac),
+            Language::Portuguese => format!("O endereço MAC {} foi adicionado à lista branca.", mac),
+            Language::Russian => format!("MAC-адрес {} успешно добавлен в белый список.", mac),
+            Language::Urdu => format!("MAC ایڈریس {} وائٹ لسٹ میں شامل کر دیا گیا ہے۔", mac),
+        }
+    }
+
+    pub fn notif_block_success_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🚫 Dispositivo Bloqueado en Router",
+            Language::English => "🚫 Device Blocked on Router",
+            Language::Chinese => "🚫 设备已在路由器上阻止",
+            Language::Hindi => "🚫 डिवाइस राउटर पर ब्लॉक किया गया",
+            Language::Arabic => "🚫 تم حظر الجهاز على الراوتر",
+            Language::French => "🚫 Appareil bloqué sur le routeur",
+            Language::Bengali => "🚫 রাউটারে ডিভাইস ব্লক করা হয়েছে",
+            Language::Portuguese => "🚫 Dispositivo Bloqueado no Roteador",
+            Language::Russian => "🚫 Устройство заблокировано на роутере",
+            Language::Urdu => "🚫 ڈیوائس روٹر پر بلاک کر دی گئی",
+        }
+    }
+
+    pub fn notif_block_success_body(lang: Language, mac: &str) -> String {
+        match lang {
+            Language::Spanish => format!("La MAC {} ha sido bloqueada permanentemente 24/7 en el router.", mac),
+            Language::English => format!("MAC {} has been permanently blocked 24/7 on the router.", mac),
+            Language::Chinese => format!("MAC 地址 {} 已在路由器上永久 24/7 阻止。", mac),
+            Language::Hindi => format!("MAC {} को राउटर पर 24/7 स्थायी रूप से ब्लॉक कर दिया गया है।", mac),
+            Language::Arabic => format!("تم حظر MAC {} نهائياً 24/7 على الراوتر.", mac),
+            Language::French => format!("La MAC {} a été bloquée de façon permanente 24/7 sur le routeur.", mac),
+            Language::Bengali => format!("MAC {} রাউটারে ২৪/৭ স্থায়ীভাবে ব্লক করা হয়েছে।", mac),
+            Language::Portuguese => format!("O MAC {} foi bloqueado permanentemente 24/7 no roteador.", mac),
+            Language::Russian => format!("MAC-адрес {} навсегда заблокирован на роутере 24/7.", mac),
+            Language::Urdu => format!("MAC {} کو روٹر پر 24/7 مستقل طور پر بلاک کر دیا گیا ہے۔", mac),
+        }
+    }
+
+    pub fn notif_require_pass_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⚠️ Contraseña de Router Requerida",
+            Language::English => "⚠️ Router Password Required",
+            Language::Chinese => "⚠️ 需要路由器密码",
+            Language::Hindi => "⚠️ राउटर पासवर्ड आवश्यक है",
+            Language::Arabic => "⚠️ كلمة مرور الراوتر مطلوبة",
+            Language::French => "⚠️ Mot de passe du routeur requis",
+            Language::Bengali => "⚠️ রাউটার পাসওয়ার্ড প্রয়োজন",
+            Language::Portuguese => "⚠️ Senha do Roteador Necessária",
+            Language::Russian => "⚠️ Требуется пароль роутера",
+            Language::Urdu => "⚠️ روٹر پاس ورڈ درکار ہے",
+        }
+    }
+
+    pub fn notif_require_pass_body(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Para bloquear dispositivos en el router 24/7, introduce la contraseña del router en Ajustes de NetLens.",
+            Language::English => "To block devices on the router 24/7, enter your router password in NetLens Settings.",
+            Language::Chinese => "要在路由器上 24/7 阻止设备，请先在 NetLens 设置中输入路由器管理密码。",
+            Language::Hindi => "राउटर पर 24/7 ब्लॉक करने के लिए, NetLens सेटिंग्स में राउटर पासवर्ड दर्ज करें।",
+            Language::Arabic => "لحظر الأجهزة على الراوتر 24/7، يرجى إدخال كلمة مرور الراوتر في إعدادات NetLens.",
+            Language::French => "Pour bloquer sur le routeur 24/7, entrez le mot de passe du routeur dans les paramètres NetLens.",
+            Language::Bengali => "রাউটারে ২৪/৭ ব্লক করতে, NetLens সেটিংসে রাউটার পাসওয়ার্ড লিখুন।",
+            Language::Portuguese => "Para bloquear dispositivos no roteador 24/7, insira a senha do roteador nas Configurações do NetLens.",
+            Language::Russian => "Для блокировки на роутере 24/7 введите пароль роутера в настройках NetLens.",
+            Language::Urdu => "روٹر پر 24/7 بلاک کرنے کے لیے، براہ کرم NetLens سیٹنگز میں روٹر پاس ورڈ درج کریں۔",
+        }
+    }
 }

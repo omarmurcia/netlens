@@ -416,6 +416,8 @@ fn test_storage_persistence() {
         router_password: Some("my_router_pass".to_string()),
         auto_scan_interval_secs: 0,
         known_macs: Vec::new(),
+        autostart: false,
+        minimize_to_tray_on_close: false,
     };
 
     let json = serde_json::to_string_pretty(&state).expect("Failed to serialize state");
@@ -708,10 +710,45 @@ fn test_topology_and_auto_scan_state_serde() {
         "devices": [],
         "device_metadata": {},
         "auto_scan_interval_secs": 60,
-        "known_macs": ["28:44:F4:9F:1B:09", "6C:0B:5E:72:C8:D8"]
+        "known_macs": ["28:44:F4:9F:1B:09", "6C:0B:5E:72:C8:D8"],
+        "autostart": true,
+        "minimize_to_tray_on_close": true
     }"#;
     let state: AppState = serde_json::from_str(state_json).expect("deserialize app state");
     assert_eq!(state.auto_scan_interval_secs, 60);
     assert_eq!(state.known_macs.len(), 2);
     assert_eq!(state.known_macs[0], "28:44:F4:9F:1B:09");
+    assert!(state.autostart);
+    assert!(state.minimize_to_tray_on_close);
+}
+
+#[test]
+fn test_autostart_manager_entry_generation() {
+    use netlens::autostart::AutostartManager;
+
+    let exec = "/usr/bin/netlens";
+    let entry = AutostartManager::generate_desktop_entry(exec);
+    assert!(entry.contains("[Desktop Entry]"));
+    assert!(entry.contains("Type=Application"));
+    assert!(entry.contains("Name=NetLens"));
+    assert!(entry.contains("Exec=/usr/bin/netlens --minimized"));
+    assert!(entry.contains("X-GNOME-Autostart-enabled=true"));
+}
+
+#[test]
+fn test_i18n_autostart_and_notifications_all_languages() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert!(!Translations::autostart_title(lang).is_empty());
+        assert!(!Translations::autostart_desc(lang).is_empty());
+        assert!(!Translations::minimize_on_close_title(lang).is_empty());
+        assert!(!Translations::minimize_on_close_desc(lang).is_empty());
+        assert!(!Translations::notif_trust_success_title(lang).is_empty());
+        assert!(!Translations::notif_trust_success_body(lang, "11:22:33:44:55:66").is_empty());
+        assert!(!Translations::notif_block_success_title(lang).is_empty());
+        assert!(!Translations::notif_block_success_body(lang, "11:22:33:44:55:66").is_empty());
+        assert!(!Translations::notif_require_pass_title(lang).is_empty());
+        assert!(!Translations::notif_require_pass_body(lang).is_empty());
+    }
 }

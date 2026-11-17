@@ -35,6 +35,10 @@ pub struct AppState {
     pub auto_scan_interval_secs: u32,
     #[serde(default)]
     pub known_macs: Vec<String>,
+    #[serde(default)]
+    pub autostart: bool,
+    #[serde(default)]
+    pub minimize_to_tray_on_close: bool,
 }
 
 impl Default for AppState {
@@ -50,6 +54,8 @@ impl Default for AppState {
             router_password: None,
             auto_scan_interval_secs: 0,
             known_macs: Vec::new(),
+            autostart: false,
+            minimize_to_tray_on_close: false,
         }
     }
 }
