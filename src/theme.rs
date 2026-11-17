@@ -1,0 +1,198 @@
+use iced::widget::{button, container};
+use iced::{Background, Border, Color, Shadow};
+
+pub struct CustomStyles;
+
+impl CustomStyles {
+    // Colores base
+    #[allow(dead_code)]
+    pub fn bg_dark() -> Color {
+        Color::from_rgb8(15, 23, 42) // Slate 900
+    }
+
+    pub fn card_bg() -> Color {
+        Color::from_rgb8(30, 41, 59) // Slate 800
+    }
+
+    pub fn card_border() -> Color {
+        Color::from_rgb8(51, 65, 85) // Slate 700
+    }
+
+    pub fn accent_cyan() -> Color {
+        Color::from_rgb8(14, 165, 233) // Sky 500
+    }
+
+    pub fn accent_emerald() -> Color {
+        Color::from_rgb8(16, 185, 129) // Emerald 500
+    }
+
+    pub fn accent_amber() -> Color {
+        Color::from_rgb8(245, 158, 11) // Amber 500
+    }
+
+    pub fn accent_purple() -> Color {
+        Color::from_rgb8(168, 85, 247) // Purple 500
+    }
+
+    pub fn text_primary() -> Color {
+        Color::from_rgb8(248, 250, 252)
+    }
+
+    pub fn text_secondary() -> Color {
+        Color::from_rgb8(148, 163, 184)
+    }
+
+    pub fn text_muted() -> Color {
+        Color::from_rgb8(100, 116, 139)
+    }
+
+    // Estilo para tarjetas principales
+    pub fn card_container() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Self::card_bg())),
+            border: Border {
+                color: Self::card_border(),
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Estilo para tarjeta destacada (Gateway o equipo actual)
+    pub fn card_highlighted() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(24, 38, 63))),
+            border: Border {
+                color: Color::from_rgb8(14, 165, 233),
+                width: 1.5,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Estilo para badges / etiquetas
+    pub fn badge_pill(bg_color: Color, text_color: Color) -> container::Style {
+        container::Style {
+            text_color: Some(text_color),
+            background: Some(Background::Color(bg_color)),
+            border: Border {
+                color: bg_color,
+                width: 1.0,
+                radius: 16.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Estilo para el panel lateral / inspector
+    pub fn inspector_panel() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(23, 32, 51))),
+            border: Border {
+                color: Color::from_rgb8(56, 189, 248),
+                width: 1.0,
+                radius: 12.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Botón de acción primario estilizado (Escanear)
+    pub fn primary_button() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(14, 165, 233))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(56, 189, 248),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Botón sutil / secundario
+    pub fn secondary_button() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(51, 65, 85))),
+            text_color: Self::text_primary(),
+            border: Border {
+                color: Color::from_rgb8(71, 85, 105),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Botón pill para filtros activos
+    pub fn filter_pill_active() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(14, 165, 233))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(56, 189, 248),
+                width: 1.0,
+                radius: 20.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Botón pill para filtros inactivos
+    pub fn filter_pill_inactive() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(30, 41, 59))),
+            text_color: Self::text_secondary(),
+            border: Border {
+                color: Color::from_rgb8(51, 65, 85),
+                width: 1.0,
+                radius: 20.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Banner de notificación flotante (éxito)
+    pub fn notification_success() -> container::Style {
+        container::Style {
+            text_color: Some(Color::WHITE),
+            background: Some(Background::Color(Color::from_rgb8(6, 78, 59))),
+            border: Border {
+                color: Color::from_rgb8(16, 185, 129),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Banner de notificación flotante (error)
+    pub fn notification_error() -> container::Style {
+        container::Style {
+            text_color: Some(Color::WHITE),
+            background: Some(Background::Color(Color::from_rgb8(127, 29, 29))),
+            border: Border {
+                color: Color::from_rgb8(239, 68, 68),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+}

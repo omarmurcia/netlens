@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=NetLens
+GenericName=Explorador de Red Local
+Comment=Monitor y escáner de dispositivos conectados al router
+Exec=/home/omar/.gemini/antigravity/scratch/netlens/target/release/netlens
+Icon=network-workgroup
+Terminal=false
+Type=Application
+Categories=Network;Utility;System;
+Keywords=network;router;scanner;ip;mac;devices;red;dispositivos;
+StartupNotify=true
