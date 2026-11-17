@@ -1,6 +1,7 @@
 use crate::export::Exporter;
 use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
+use crate::router::LinksysRouter;
 use crate::scanner::{PingStats, ScanEvent, Scanner};
 use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
 use crate::storage::{AppState, DeviceMetadata, Storage};
@@ -87,6 +88,15 @@ impl fmt::Display for SortOption {
             SortOption::Category => write!(f, "🏷️ Type"),
         }
     }
+}
+
+/// Filtro de seguridad (Todos, Lista Blanca, Bloqueados)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SecurityFilter {
+    #[default]
+    All,
+    Whitelist,
+    Blocked,
 }
 
 /// Envoltorio para mostrar opciones de ordenación localizadas dinámicamente
@@ -228,7 +238,13 @@ pub struct App {
     pub speed_test_download: Option<f64>,
     pub speed_test_upload: Option<f64>,
     pub speed_test_result: Option<SpeedTestResult>,
+    pub speed_test_history: Vec<SpeedTestResult>,
     pub device_metadata: HashMap<String, DeviceMetadata>,
+    pub security_filter: SecurityFilter,
+    pub router_ip_input: String,
+    pub router_password_input: String,
+    pub router_status_msg: Option<(String, bool)>,
+    pub is_testing_router: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -252,10 +268,12 @@ pub enum Message {
     CloseSpeedTest,
     StartSpeedTest,
     SpeedTestEventReceived(SpeedTestEvent),
+    ClearSpeedTestHistory,
 
     // Filtros y Búsqueda
     SearchChanged(String),
     CategorySelected(Option<DeviceCategory>),
+    SecurityFilterChanged(SecurityFilter),
     SortChanged(SortOption),
 
     // Inspector de Dispositivo
@@ -269,6 +287,15 @@ pub enum Message {
     WolFinished(Result<(), String>),
     OpenInBrowser(Ipv4Addr),
     ChangeDeviceCategory(Ipv4Addr, DeviceCategory),
+
+    // Control de Seguridad y Router
+    ToggleDeviceBlocked(Ipv4Addr, String),
+    ToggleDeviceWhitelist(Ipv4Addr, String),
+    RouterOperationFinished(Result<String, String>),
+    RouterIpChanged(String),
+    RouterPasswordChanged(String),
+    TestRouterConnection,
+    RouterTestFinished(Result<bool, String>),
 
     // Alias
     AliasInputChanged(String),
@@ -312,6 +339,17 @@ impl App {
                 (SpeedTestStage::Idle, None, None, None)
             };
 
+        let router_ip_input = saved
+            .router_ip
+            .unwrap_or_else(|| {
+                network
+                    .gateway_ip
+                    .map(|g| g.to_string())
+                    .unwrap_or_else(|| "192.168.1.1".to_string())
+            });
+        let router_password_input = saved.router_password.unwrap_or_default();
+        let speed_test_history = saved.speed_test_history;
+
         let status = if let Some(gw) = network.gateway_ip {
             AppStatus::ConnectedTo {
                 gw: gw.to_string(),
@@ -349,7 +387,13 @@ impl App {
             speed_test_download,
             speed_test_upload,
             speed_test_result,
+            speed_test_history,
             device_metadata,
+            security_filter: SecurityFilter::All,
+            router_ip_input,
+            router_password_input,
+            router_status_msg: None,
+            is_testing_router: false,
         };
 
         (app, Task::done(Message::StartScan))
@@ -363,6 +407,13 @@ impl App {
             devices: self.devices.clone(),
             device_metadata: self.device_metadata.clone(),
             last_speed_test: self.speed_test_result.clone(),
+            speed_test_history: self.speed_test_history.clone(),
+            router_ip: Some(self.router_ip_input.clone()),
+            router_password: if self.router_password_input.trim().is_empty() {
+                None
+            } else {
+                Some(self.router_password_input.clone())
+            },
         };
         if let Err(e) = Storage::save(&state) {
             eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
@@ -491,7 +542,11 @@ impl App {
                     self.speed_test_ping = Some(result.ping_ms);
                     self.speed_test_download = Some(result.download_mbps);
                     self.speed_test_upload = Some(result.upload_mbps);
-                    self.speed_test_result = Some(result);
+                    self.speed_test_result = Some(result.clone());
+                    self.speed_test_history.insert(0, result);
+                    if self.speed_test_history.len() > 30 {
+                        self.speed_test_history.truncate(30);
+                    }
                     self.save_state();
                     Task::none()
                 }
@@ -500,6 +555,150 @@ impl App {
                     self.notification = Some((err, false));
                     Task::none()
                 }
+            },
+
+            Message::ClearSpeedTestHistory => {
+                self.speed_test_history.clear();
+                self.save_state();
+                let notif_msg = Translations::speed_test_history_empty(self.language);
+                self.notification = Some((notif_msg.to_string(), true));
+                Task::none()
+            }
+
+            Message::SecurityFilterChanged(filter) => {
+                self.security_filter = filter;
+                Task::none()
+            }
+
+            Message::ToggleDeviceWhitelist(ip, mac) => {
+                let mut is_now_whitelisted = false;
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                    dev.is_whitelisted = !dev.is_whitelisted;
+                    is_now_whitelisted = dev.is_whitelisted;
+                    Storage::set_device_whitelist(
+                        &mut self.device_metadata,
+                        &mac,
+                        dev.is_whitelisted,
+                    );
+                }
+                self.save_state();
+                let notif_msg = if is_now_whitelisted {
+                    format!("Dispositivo {} añadido a Lista Blanca.", ip)
+                } else {
+                    format!("Dispositivo {} retirado de Lista Blanca.", ip)
+                };
+                self.notification = Some((notif_msg, true));
+                Task::none()
+            }
+
+            Message::ToggleDeviceBlocked(ip, mac) => {
+                if let Some(dev) = self.devices.iter().find(|d| d.ip == ip) {
+                    if dev.is_current_host {
+                        self.notification = Some((Translations::cannot_block_self(self.language).to_string(), false));
+                        return Task::none();
+                    }
+                    if dev.is_gateway {
+                        self.notification = Some((Translations::cannot_block_gateway(self.language).to_string(), false));
+                        return Task::none();
+                    }
+                }
+
+                let mut is_now_blocked = false;
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                    dev.is_blocked = !dev.is_blocked;
+                    is_now_blocked = dev.is_blocked;
+                    Storage::set_device_blocked(
+                        &mut self.device_metadata,
+                        &mac,
+                        dev.is_blocked,
+                    );
+                }
+                self.save_state();
+
+                let router_ip = self.router_ip_input.clone();
+                let router_pass = self.router_password_input.clone();
+                let mac_clone = mac.clone();
+
+                if !router_pass.trim().is_empty() {
+                    Task::future(async move {
+                        let res = if is_now_blocked {
+                            LinksysRouter::block_mac(&router_ip, &router_pass, &mac_clone).await
+                        } else {
+                            LinksysRouter::unblock_mac(&router_ip, &router_pass, &mac_clone).await
+                        };
+                        match res {
+                            Ok(_) => {
+                                let action_str = if is_now_blocked { "bloqueado 24/7 en router Linksys" } else { "readmitido en router Linksys" };
+                                Message::RouterOperationFinished(Ok(format!("Dispositivo {} {}", mac_clone, action_str)))
+                            }
+                            Err(e) => {
+                                Message::RouterOperationFinished(Err(format!("Error en router: {}. (Guardado en lista negra local)", e)))
+                            }
+                        }
+                    })
+                } else {
+                    let notif_msg = if is_now_blocked {
+                        format!("Dispositivo {} marcado como Bloqueado en lista negra (Ingresa la contraseña del router en Ajustes para aplicar en hardware 24/7).", ip)
+                    } else {
+                        format!("Dispositivo {} desbloqueado.", ip)
+                    };
+                    self.notification = Some((notif_msg, true));
+                    Task::none()
+                }
+            }
+
+            Message::RouterOperationFinished(result) => {
+                match result {
+                    Ok(msg) => {
+                        self.notification = Some((msg, true));
+                    }
+                    Err(err) => {
+                        self.notification = Some((err, false));
+                    }
+                }
+                Task::none()
+            }
+
+            Message::RouterIpChanged(ip) => {
+                self.router_ip_input = ip;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::RouterPasswordChanged(pass) => {
+                self.router_password_input = pass;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::TestRouterConnection => {
+                self.is_testing_router = true;
+                let ip = self.router_ip_input.clone();
+                let pass = self.router_password_input.clone();
+                Task::future(async move {
+                    let res = LinksysRouter::verify_admin_password(&ip, &pass).await;
+                    Message::RouterTestFinished(res)
+                })
+            }
+
+            Message::RouterTestFinished(res) => {
+                self.is_testing_router = false;
+                match res {
+                    Ok(true) => {
+                        self.router_status_msg = Some((Translations::router_connected_ok(self.language).to_string(), true));
+                        self.notification = Some((Translations::router_connected_ok(self.language).to_string(), true));
+                    }
+                    Ok(false) => {
+                        self.router_status_msg = Some((Translations::router_connected_err(self.language).to_string(), false));
+                        self.notification = Some((Translations::router_connected_err(self.language).to_string(), false));
+                    }
+                    Err(err) => {
+                        let err_msg = format!("🔴 Error: {}", err);
+                        self.router_status_msg = Some((err_msg.clone(), false));
+                        self.notification = Some((err_msg, false));
+                    }
+                }
+                Task::none()
             },
 
             Message::ChangeDeviceCategory(ip, new_category) => {
@@ -615,17 +814,32 @@ impl App {
                         if let Some(cat) = meta.category {
                             device.category = cat;
                         }
+                        device.is_whitelisted = meta.is_whitelisted;
+                        device.is_blocked = meta.is_blocked;
+                        device.speed_limit_kbps = meta.speed_limit_kbps;
                     }
 
                     if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
                         let prev_alias = existing.custom_alias.clone();
                         let prev_category = existing.category;
+                        let prev_wl = existing.is_whitelisted;
+                        let prev_bl = existing.is_blocked;
+                        let prev_lim = existing.speed_limit_kbps;
                         *existing = device;
                         if existing.custom_alias.is_none() {
                             existing.custom_alias = prev_alias;
                         }
                         if prev_category != DeviceCategory::Unknown && existing.category == DeviceCategory::Unknown {
                             existing.category = prev_category;
+                        }
+                        if prev_wl {
+                            existing.is_whitelisted = true;
+                        }
+                        if prev_bl {
+                            existing.is_blocked = true;
+                        }
+                        if existing.speed_limit_kbps.is_none() {
+                            existing.speed_limit_kbps = prev_lim;
                         }
                     } else {
                         self.devices.push(device);
@@ -660,6 +874,9 @@ impl App {
 
             Message::CategorySelected(cat) => {
                 self.selected_category = cat;
+                if cat.is_none() {
+                    self.security_filter = SecurityFilter::All;
+                }
                 Task::none()
             }
 
@@ -1122,6 +1339,58 @@ impl App {
         .align_y(Alignment::Center)
         .spacing(12);
 
+        // Ajuste 3: Control de Router (Linksys MR73 Mesh / JNAP)
+        let router_ip_input = text_input("192.168.1.1", &self.router_ip_input)
+            .on_input(Message::RouterIpChanged)
+            .padding(Padding::from([5, 8]))
+            .width(140);
+
+        let router_pass_input = text_input(Translations::router_pass_label(self.language), &self.router_password_input)
+            .on_input(Message::RouterPasswordChanged)
+            .secure(true)
+            .padding(Padding::from([5, 8]))
+            .width(Length::Fill);
+
+        let test_router_btn = if self.is_testing_router {
+            button(text("...").size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([5, 10]))
+        } else {
+            button(text(Translations::router_test_btn(self.language)).size(11))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([5, 10]))
+                .on_press(Message::TestRouterConnection)
+        };
+
+        let mut router_section = column![
+            text(Translations::router_settings_title(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            row![
+                text(Translations::router_ip_label(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
+                router_ip_input,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(8),
+            row![
+                text(Translations::router_pass_label(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
+                router_pass_input,
+                test_router_btn,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(8),
+        ]
+        .spacing(8);
+
+        if let Some((msg, is_ok)) = &self.router_status_msg {
+            let color = if *is_ok { CustomStyles::accent_emerald() } else { Color::from_rgb8(239, 68, 68) };
+            router_section = router_section.push(text(msg).size(11).color(color));
+        }
+
+        let router_card = container(router_section)
+            .padding(12)
+            .style(|_| CustomStyles::card_container());
+
         // Resumen técnico del sistema
         let info_col = column![
             text(Translations::sys_info_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
@@ -1149,6 +1418,7 @@ impl App {
             title_row,
             theme_row,
             lang_row,
+            router_card,
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
             row![space::horizontal(), close_btn],
         ]
@@ -1322,6 +1592,79 @@ impl App {
             .padding(Padding::from([8, 16]))
             .on_press(Message::CloseSpeedTest);
 
+        // Sección: Historial Persistente de Pruebas de Velocidad
+        let history_header = row![
+            text(Translations::speed_test_history_title(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            if !self.speed_test_history.is_empty() {
+                button(text(Translations::speed_test_history_clear(self.language)).size(10))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 6]))
+                    .on_press(Message::ClearSpeedTestHistory)
+            } else {
+                button(text("").size(0))
+            },
+        ]
+        .align_y(Alignment::Center);
+
+        let mut history_col = Column::new().spacing(4);
+        history_col = history_col.push(history_header);
+
+        if self.speed_test_history.is_empty() {
+            history_col = history_col.push(
+                text(Translations::speed_test_history_empty(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            );
+        } else {
+            history_col = history_col.push(
+                row![
+                    text("Hora / Servidor").size(10).color(CustomStyles::text_muted()).width(160),
+                    text("Ping").size(10).color(CustomStyles::accent_amber()).width(70),
+                    text("⬇️ Bajada").size(10).color(CustomStyles::accent_emerald()).width(90),
+                    text("⬆️ Subida").size(10).color(CustomStyles::accent_purple()).width(90),
+                ]
+                .spacing(8),
+            );
+
+            for test in self.speed_test_history.iter().take(4) {
+                let srv_truncated = if test.server.len() > 20 {
+                    format!("{}...", &test.server[..18])
+                } else {
+                    test.server.clone()
+                };
+                history_col = history_col.push(
+                    row![
+                        column![
+                            text(&test.timestamp).size(11).color(CustomStyles::text_primary()),
+                            text(srv_truncated).size(9).color(CustomStyles::text_muted()),
+                        ]
+                        .width(160),
+                        text(format!("{:.1} ms", test.ping_ms))
+                            .size(11)
+                            .color(CustomStyles::accent_amber())
+                            .width(70),
+                        text(format!("{:.1} Mbps", test.download_mbps))
+                            .size(11)
+                            .color(CustomStyles::accent_emerald())
+                            .width(90),
+                        text(format!("{:.1} Mbps", test.upload_mbps))
+                            .size(11)
+                            .color(CustomStyles::accent_purple())
+                            .width(90),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                );
+            }
+        }
+
+        let history_card = container(history_col)
+            .padding(12)
+            .style(|_| CustomStyles::card_container());
+
         let content = column![
             title_row,
             subtitle,
@@ -1331,9 +1674,10 @@ impl App {
             container(server_info)
                 .padding(12)
                 .style(|_| CustomStyles::card_container()),
+            history_card,
             row![space::horizontal(), close_btn, start_btn].spacing(10),
         ]
-        .spacing(16);
+        .spacing(14);
 
         container(content)
             .padding(22)
@@ -1479,7 +1823,7 @@ impl App {
         // Botones de categoría tipo "pills" compactos y estilizados
         let mut category_pills = row![].spacing(6).align_y(Alignment::Center);
 
-        let is_all_active = self.selected_category.is_none();
+        let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
         category_pills = category_pills.push(
             button(text(Translations::all_filter(self.language)).size(12))
                 .style(move |_, _| {
@@ -1513,6 +1857,47 @@ impl App {
                     })
                     .padding(Padding::from([4, 8]))
                     .on_press(Message::CategorySelected(Some(cat))),
+            );
+        }
+
+        // Filtros de Seguridad y Listas (Lista Blanca y Bloqueados)
+        let whitelist_count = self.devices.iter().filter(|d| d.is_whitelisted).count();
+        let blocked_count = self.devices.iter().filter(|d| d.is_blocked).count();
+
+        let is_whitelist_active = self.security_filter == SecurityFilter::Whitelist;
+        let is_blocked_active = self.security_filter == SecurityFilter::Blocked;
+
+        if whitelist_count > 0 || is_whitelist_active {
+            category_pills = category_pills.push(
+                button(text(format!("🛡️ {} ({})", Translations::filter_whitelist(self.language), whitelist_count)).size(11))
+                    .style(move |_, _| {
+                        if is_whitelist_active {
+                            CustomStyles::filter_pill_active()
+                        } else {
+                            CustomStyles::filter_pill_inactive()
+                        }
+                    })
+                    .padding(Padding::from([4, 8]))
+                    .on_press(Message::SecurityFilterChanged(
+                        if is_whitelist_active { SecurityFilter::All } else { SecurityFilter::Whitelist }
+                    )),
+            );
+        }
+
+        if blocked_count > 0 || is_blocked_active {
+            category_pills = category_pills.push(
+                button(text(format!("🚫 {} ({})", Translations::filter_blocked(self.language), blocked_count)).size(11))
+                    .style(move |_, _| {
+                        if is_blocked_active {
+                            CustomStyles::filter_pill_active()
+                        } else {
+                            CustomStyles::filter_pill_inactive()
+                        }
+                    })
+                    .padding(Padding::from([4, 8]))
+                    .on_press(Message::SecurityFilterChanged(
+                        if is_blocked_active { SecurityFilter::All } else { SecurityFilter::Blocked }
+                    )),
             );
         }
 
@@ -1604,8 +1989,22 @@ impl App {
                 CustomStyles::text_primary()
             });
 
-        // Fila 1 de Badges (Roles especiales: ROUTER, ESTE EQUIPO, Privacidad)
+        // Fila 1 de Badges (Roles especiales: ROUTER, ESTE EQUIPO, Privacidad, Seguridad)
         let mut role_tags = row![].spacing(6).align_y(Alignment::Center);
+
+        if device.is_blocked {
+            role_tags = role_tags.push(
+                container(text(Translations::badge_blocked(self.language)).size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 6]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE)),
+            );
+        } else if device.is_whitelisted {
+            role_tags = role_tags.push(
+                container(text(Translations::badge_whitelisted(self.language)).size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 6]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(16, 120, 70), Color::WHITE)),
+            );
+        }
 
         if device.is_gateway {
             role_tags = role_tags.push(
@@ -1932,6 +2331,37 @@ impl App {
 
         insp = insp.push(quick_actions);
 
+        // Acciones de Seguridad y Control de Router (Lista Blanca y Bloqueo Permanente)
+        let mut security_actions = row![].spacing(6).align_y(Alignment::Center);
+
+        let (wl_label, wl_style) = if device.is_whitelisted {
+            (Translations::btn_remove_whitelist(self.language), CustomStyles::secondary_button())
+        } else {
+            (Translations::btn_add_whitelist(self.language), CustomStyles::primary_button())
+        };
+        security_actions = security_actions.push(
+            button(text(wl_label).size(11))
+                .style(move |_, _| wl_style.clone())
+                .padding(Padding::from([4, 7]))
+                .on_press(Message::ToggleDeviceWhitelist(device.ip, device.mac.clone())),
+        );
+
+        if !device.is_current_host && !device.is_gateway {
+            let (block_label, block_style) = if device.is_blocked {
+                (Translations::btn_unblock_router(self.language), CustomStyles::success_button())
+            } else {
+                (Translations::btn_block_router(self.language), CustomStyles::danger_button())
+            };
+            security_actions = security_actions.push(
+                button(text(block_label).size(11))
+                    .style(move |_, _| block_style.clone())
+                    .padding(Padding::from([4, 7]))
+                    .on_press(Message::ToggleDeviceBlocked(device.ip, device.mac.clone())),
+            );
+        }
+
+        insp = insp.push(security_actions);
+
         // Herramienta 1: Test de Ping en tiempo real (LOCALIZADA!)
         let ping_btn_text = if self.is_pinging {
             Translations::btn_measuring(self.language)
@@ -2085,6 +2515,20 @@ impl App {
             .devices
             .iter()
             .filter(|d| {
+                match self.security_filter {
+                    SecurityFilter::All => {}
+                    SecurityFilter::Whitelist => {
+                        if !d.is_whitelisted {
+                            return false;
+                        }
+                    }
+                    SecurityFilter::Blocked => {
+                        if !d.is_blocked {
+                            return false;
+                        }
+                    }
+                }
+
                 if let Some(cat) = self.selected_category {
                     if d.category != cat {
                         return false;

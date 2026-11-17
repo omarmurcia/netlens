@@ -473,6 +473,9 @@ impl Scanner {
                     first_seen: now,
                     last_seen: now,
                     custom_alias: None,
+                    is_whitelisted: false,
+                    is_blocked: false,
+                    speed_limit_kbps: None,
                 }
             }));
         }

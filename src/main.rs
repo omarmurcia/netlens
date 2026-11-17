@@ -2,6 +2,7 @@ mod app;
 mod export;
 mod i18n;
 mod model;
+mod router;
 mod scanner;
 mod speedtest;
 mod storage;

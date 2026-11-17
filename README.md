@@ -17,11 +17,11 @@
    - **Intensidad de Señal Wi-Fi (📶):** Muestra la fuerza de la señal en dBm y porcentaje (ej. `100% (-39 dBm)`), SSID (`omar_internet`), banda (`5 GHz`) y bitrate negociado (`1200 Mbps`), o el estado del cable Ethernet Gigabit.
    - **Estimación de Calidad de Conexión:** Evalúa la señal de cada dispositivo conectado en la red según su latencia (Excelente, Buena, Moderada, Débil).
 
-2. **Test de Velocidad de Internet de Alto Rendimiento (🚀 Speed Test):**
+2. **Test de Velocidad de Internet de Alto Rendimiento e Historial Persistente (🚀 Speed Test):**
    - **Medición de Latencia y RTT (🏓 Ping):** Mide con precisión la latencia de red ICMP hacia Anycast Edge (`1.1.1.1` / `8.8.8.8`).
    - **Medición de Descarga de Ancho de Banda Completo (⬇️ Download):** Arquitectura multi-stream paralela conectada con nodos locales de ISP (Netflix Open Connect CDN y Cloudflare Anycast) que elimina el estrangulamiento de TCP Slow Start y mide la velocidad real de líneas de banda ancha de 50 a 500+ Mbps.
    - **Medición de Subida Sostenida (⬆️ Upload):** Envía un flujo de datos sostenido (10 MB) para saturar el canal de upstream y medir con precisión la tasa real en Mbps y MB/s.
-   - **Modal Interactivo:** Con diseño visual de alta fidelidad, animaciones de progreso, detección de ISP y país, y persistencia del último resultado.
+   - **Historial Persistente de Pruebas:** Almacena automáticamente los últimos tests de velocidad con fecha/hora, ping, bajada, subida y nodo CDN, presentados en una tabla interactiva con opción de limpieza.
 
 3. **Descubrimiento Inteligente Multivectorial:**
    - **Sondeo ARP y Barrido ICMP/TCP:** Detecta equipos en la subred local (`/24`) en cuestión de segundos utilizando concurrencia asíncrona (`tokio`).
@@ -52,7 +52,15 @@
      - 🇵🇰 **اردو** (Urdu)
    - **Selector de Temas:** Cambia al instante entre temas de alta estética (`TokyoNight`, `CatppuccinMocha`, `Nord`, `Dracula`, `Dark`, `Light`, `SolarizedDark`, `GruvboxDark`).
 
-5. **Clasificación y Override Persistente de Dispositivos:**
+5. **Control de Router, Bloqueo Permanente (24/7) y Listas Blancas/Negras:**
+   - **Integración Nativa con Router (Linksys MR73 / JNAP API):** Se comunica formalmente con la API de red del router para aplicar directivas de firewall y filtro MAC sin intermediarios.
+   - **Bloqueo Permanente (24/7):** Corta el acceso a la red de dispositivos específicos a nivel de hardware. La regla queda grabada en el router y funciona las 24 horas del día aunque apagues el ordenador.
+   - **Readmisión Inmediata con 1 Clic:** Desbloquea y restablece la conectividad al instante mediante el botón reactivo en el panel inspector.
+   - **Gestión de Lista Blanca (Dispositivos de Confianza):** Etiqueta equipos autorizados para identificarlos rápidamente en el mapa de red.
+   - **Protección de Seguridad:** Bloqueo preventivo que impide auto-bloquear por error la propia PC local o la puerta de enlace / router.
+   - **Filtros Rápidos en Interfaz:** Pestañas para aislar dispositivos en `[Lista Blanca]` o `[Bloqueados]` con contadores en tiempo real.
+
+6. **Clasificación y Override Persistente de Dispositivos:**
    - En el panel de detalles/inspector, los usuarios pueden seleccionar o corregir libremente la categoría del dispositivo (`Router`, `Smartphone`, `Computer`, `Smart TV`, `IoT`, `Printer`, `Server`, `Generic`).
    - Todos los cambios se asocian permanentemente a la dirección MAC del dispositivo y se restauran de forma instantánea en cada inicio de la aplicación.
 
@@ -120,6 +128,9 @@ netlens/
 │   ├── main.rs              # Punto de entrada (enrutamiento GUI / CLI y runtime Tokio)
 │   ├── lib.rs               # Exportación de módulos para biblioteca y pruebas
 │   ├── model.rs             # Modelos de datos (Device, DeviceCategory, NetworkContext, PortInfo)
+│   ├── router/              # Controlador de router (Linksys MR73 Mesh / JNAP API)
+│   │   ├── mod.rs
+│   │   └── linksys.rs
 │   ├── scanner.rs           # Motor de escaneo asíncrono, ARP, Ping, DNS inverso y WoL
 │   ├── speedtest.rs         # Motor de test de velocidad de Internet (Ping, Descarga, Subida)
 │   ├── storage.rs           # Capa de persistencia (XDG state.json, metadatos y configuración)

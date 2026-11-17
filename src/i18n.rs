@@ -2170,4 +2170,305 @@ impl Translations {
             Language::Urdu => "اسپیڈ ٹیسٹ کامیابی سے مکمل ہو گیا۔",
         }
     }
+
+    #[allow(dead_code)]
+    pub fn filter_all(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Todos",
+            Language::English => "All",
+            Language::Chinese => "全部",
+            Language::Hindi => "सभी",
+            Language::Arabic => "الكل",
+            Language::French => "Tous",
+            Language::Bengali => "সব",
+            Language::Portuguese => "Todos",
+            Language::Russian => "Все",
+            Language::Urdu => "تمام",
+        }
+    }
+
+    pub fn filter_whitelist(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Lista Blanca",
+            Language::English => "Whitelist",
+            Language::Chinese => "白名单",
+            Language::Hindi => "श्वेतसूची",
+            Language::Arabic => "القائمة البيضاء",
+            Language::French => "Liste blanche",
+            Language::Bengali => "হোয়াইটলিস্ট",
+            Language::Portuguese => "Lista Branca",
+            Language::Russian => "Белый список",
+            Language::Urdu => "وائٹ لسٹ",
+        }
+    }
+
+    pub fn filter_blocked(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Bloqueados",
+            Language::English => "Blocked",
+            Language::Chinese => "已阻止",
+            Language::Hindi => "अवरुद्ध",
+            Language::Arabic => "المحظورة",
+            Language::French => "Bloqués",
+            Language::Bengali => "ব্লক করা",
+            Language::Portuguese => "Bloqueados",
+            Language::Russian => "Заблокированные",
+            Language::Urdu => "بلاک شدہ",
+        }
+    }
+
+    pub fn badge_blocked(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "BLOQUEADO",
+            Language::English => "BLOCKED",
+            Language::Chinese => "已阻止",
+            Language::Hindi => "अवरुद्ध",
+            Language::Arabic => "محظور",
+            Language::French => "BLOQUÉ",
+            Language::Bengali => "ব্লকড",
+            Language::Portuguese => "BLOQUEADO",
+            Language::Russian => "ЗАБЛОКИРОВАН",
+            Language::Urdu => "بلاک",
+        }
+    }
+
+    pub fn badge_whitelisted(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "CONFIANZA",
+            Language::English => "TRUSTED",
+            Language::Chinese => "信任设备",
+            Language::Hindi => "विश्वसनीय",
+            Language::Arabic => "موثوق",
+            Language::French => "CONFIANCE",
+            Language::Bengali => "বিশ্বস্ত",
+            Language::Portuguese => "CONFIÁVEL",
+            Language::Russian => "ДОВЕРЕННЫЙ",
+            Language::Urdu => "قابل اعتماد",
+        }
+    }
+
+    pub fn btn_block_router(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🚫 Bloquear en Router",
+            Language::English => "🚫 Block on Router",
+            Language::Chinese => "🚫 在路由器上阻止",
+            Language::Hindi => "🚫 राउटर पर ब्लॉक करें",
+            Language::Arabic => "🚫 حظر على الراوتر",
+            Language::French => "🚫 Bloquer sur le routeur",
+            Language::Bengali => "🚫 রাউটারে ব্লক করুন",
+            Language::Portuguese => "🚫 Bloquear no Roteador",
+            Language::Russian => "🚫 Блокировать на роутере",
+            Language::Urdu => "🚫 روٹر پر بلاک کریں",
+        }
+    }
+
+    pub fn btn_unblock_router(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "✅ Desbloquear / Readmitir",
+            Language::English => "✅ Unblock / Readmit",
+            Language::Chinese => "✅ 解锁 / 重新允许",
+            Language::Hindi => "✅ अनब्लॉक / पुनः अनुमति",
+            Language::Arabic => "✅ إلغاء الحظر / إعادة القبول",
+            Language::French => "✅ Débloquer / Réadmettre",
+            Language::Bengali => "✅ আনব্লক / পুনঃঅনুমতি",
+            Language::Portuguese => "✅ Desbloquear / Readmitir",
+            Language::Russian => "✅ Разблокировать",
+            Language::Urdu => "✅ ان بلاک / دوبارہ بحال",
+        }
+    }
+
+    pub fn btn_add_whitelist(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🛡️ Añadir a Lista Blanca",
+            Language::English => "🛡️ Add to Whitelist",
+            Language::Chinese => "🛡️ 加入白名单",
+            Language::Hindi => "🛡️ श्वेतसूची में जोड़ें",
+            Language::Arabic => "🛡️ إضافة للقائمة البيضاء",
+            Language::French => "🛡️ Ajouter à la liste blanche",
+            Language::Bengali => "🛡️ হোয়াইটলিস্টে যোগ করুন",
+            Language::Portuguese => "🛡️ Adicionar à Lista Branca",
+            Language::Russian => "🛡️ Добавить в белый список",
+            Language::Urdu => "🛡️ وائٹ لسٹ میں شامل کریں",
+        }
+    }
+
+    pub fn btn_remove_whitelist(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🛡️ Quitar de Lista Blanca",
+            Language::English => "🛡️ Remove from Whitelist",
+            Language::Chinese => "🛡️ 移出白名单",
+            Language::Hindi => "🛡️ श्वेतसूची से हटाएं",
+            Language::Arabic => "🛡️ إزالة من القائمة البيضاء",
+            Language::French => "🛡️ Retirer de la liste blanche",
+            Language::Bengali => "🛡️ হোয়াইটলিস্ট থেকে মুছুন",
+            Language::Portuguese => "🛡️ Remover da Lista Branca",
+            Language::Russian => "🛡️ Убрать из белого списка",
+            Language::Urdu => "🛡️ وائٹ لسٹ سے نکالیں",
+        }
+    }
+
+    pub fn cannot_block_self(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Protección de seguridad: No puedes bloquear tu propia PC.",
+            Language::English => "Security protection: You cannot block your own PC.",
+            Language::Chinese => "安全保护：无法阻止本机电脑。",
+            Language::Hindi => "सुरक्षा सुरक्षा: आप अपने पीसी को ब्लॉक नहीं कर सकते।",
+            Language::Arabic => "حماية الأمان: لا يمكنك حظر جهازك المحلي.",
+            Language::French => "Protection de sécurité : Impossible de bloquer votre propre PC.",
+            Language::Bengali => "নিরাপত্তা সুরক্ষা: আপনি নিজের পিসি ব্লক করতে পারবেন না।",
+            Language::Portuguese => "Proteção de segurança: Você não pode bloquear seu próprio PC.",
+            Language::Russian => "Защита безопасности: Нельзя заблокировать собственный ПК.",
+            Language::Urdu => "سیکیورٹی تحفظ: آپ اپنا پی سی بلاک نہیں کر سکتے۔",
+        }
+    }
+
+    pub fn cannot_block_gateway(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Protección de seguridad: No puedes bloquear el Router.",
+            Language::English => "Security protection: You cannot block the Router.",
+            Language::Chinese => "安全保护：无法阻止网关/路由器。",
+            Language::Hindi => "सुरक्षा सुरक्षा: आप गेटवे/राउटर को ब्लॉक नहीं कर सकते।",
+            Language::Arabic => "حماية الأمان: لا يمكنك حظر البوابة / الراوتر.",
+            Language::French => "Protection de sécurité : Impossible de bloquer le routeur.",
+            Language::Bengali => "নিরাপত্তা সুরক্ষা: আপনি গেটওয়ে / রাউটার ব্লক করতে পারবেন না।",
+            Language::Portuguese => "Proteção de segurança: Você não pode bloquear o roteador.",
+            Language::Russian => "Защита безопасности: Нельзя заблокировать шлюз / роутер.",
+            Language::Urdu => "سیکیورٹی تحفظ: آپ گیٹ وے / روٹر کو بلاک نہیں کر سکتے۔",
+        }
+    }
+
+    pub fn speed_test_history_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Historial de Pruebas de Velocidad",
+            Language::English => "Speed Test History",
+            Language::Chinese => "测速历史记录",
+            Language::Hindi => "स्पीड टेस्ट इतिहास",
+            Language::Arabic => "سجل اختبارات السرعة",
+            Language::French => "Historique des tests de débit",
+            Language::Bengali => "স্পিড টেস্ট ইতিহাস",
+            Language::Portuguese => "Histórico de Testes de Velocidade",
+            Language::Russian => "История тестов скорости",
+            Language::Urdu => "اسپیڈ ٹیسٹ کی تاریخ",
+        }
+    }
+
+    pub fn speed_test_history_empty(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Aún no se han registrado pruebas de velocidad.",
+            Language::English => "No speed tests recorded yet.",
+            Language::Chinese => "尚未记录任何测速结果。",
+            Language::Hindi => "अभी तक कोई स्पीड टेस्ट दर्ज नहीं हुआ है।",
+            Language::Arabic => "لم يتم تسجيل أي اختبارات سرعة بعد.",
+            Language::French => "Aucun test de débit enregistré pour le moment.",
+            Language::Bengali => "এখনও কোনও স্পিড টেস্ট রেকর্ড করা হয়নি।",
+            Language::Portuguese => "Nenhum teste de velocidade gravado ainda.",
+            Language::Russian => "Тесты скорости пока не проводились.",
+            Language::Urdu => "ابھی تک کوئی اسپیڈ ٹیسٹ ریکارڈ نہیں ہوا۔",
+        }
+    }
+
+    pub fn speed_test_history_clear(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Limpiar Historial",
+            Language::English => "Clear History",
+            Language::Chinese => "清除历史",
+            Language::Hindi => "इतिहास साफ़ करें",
+            Language::Arabic => "مسح السجل",
+            Language::French => "Effacer l'historique",
+            Language::Bengali => "ইতিহাস মুছুন",
+            Language::Portuguese => "Limpar Histórico",
+            Language::Russian => "Очистить историю",
+            Language::Urdu => "تاریخ صاف کریں",
+        }
+    }
+
+    pub fn router_settings_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Control de Router (Linksys MR73 Mesh)",
+            Language::English => "Router Control (Linksys MR73 Mesh)",
+            Language::Chinese => "路由器控制 (Linksys MR73 Mesh)",
+            Language::Hindi => "राउटर नियंत्रण (Linksys MR73 Mesh)",
+            Language::Arabic => "التحكم في الراوتر (Linksys MR73 Mesh)",
+            Language::French => "Contrôle du routeur (Linksys MR73 Mesh)",
+            Language::Bengali => "রাউটার নিয়ন্ত্রণ (Linksys MR73 Mesh)",
+            Language::Portuguese => "Controle do Roteador (Linksys MR73 Mesh)",
+            Language::Russian => "Управление роутером (Linksys MR73 Mesh)",
+            Language::Urdu => "روٹر کنٹرول (Linksys MR73 Mesh)",
+        }
+    }
+
+    pub fn router_ip_label(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "IP del Router",
+            Language::English => "Router IP",
+            Language::Chinese => "路由器 IP",
+            Language::Hindi => "राउटर आईपी",
+            Language::Arabic => "عنوان IP للراوتر",
+            Language::French => "IP du routeur",
+            Language::Bengali => "রাউটার আইপি",
+            Language::Portuguese => "IP do Roteador",
+            Language::Russian => "IP роутера",
+            Language::Urdu => "روٹر آئی پی",
+        }
+    }
+
+    pub fn router_pass_label(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Contraseña de Admin del Router",
+            Language::English => "Router Admin Password",
+            Language::Chinese => "路由器管理员密码",
+            Language::Hindi => "राउटर व्यवस्थापक पासवर्ड",
+            Language::Arabic => "كلمة مرور مسؤول الراوتر",
+            Language::French => "Mot de passe admin du routeur",
+            Language::Bengali => "রাউটার অ্যাডমিন পাসওয়ার্ড",
+            Language::Portuguese => "Senha de Admin do Roteador",
+            Language::Russian => "Пароль администратора роутера",
+            Language::Urdu => "روٹر ایڈمن پاس ورڈ",
+        }
+    }
+
+    pub fn router_test_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Probar Conexión",
+            Language::English => "Test Connection",
+            Language::Chinese => "测试连接",
+            Language::Hindi => "कनेक्शन जांचें",
+            Language::Arabic => "اختبار الاتصال",
+            Language::French => "Tester la connexion",
+            Language::Bengali => "সংযোগ পরীক্ষা করুন",
+            Language::Portuguese => "Testar Conexão",
+            Language::Russian => "Проверить подключение",
+            Language::Urdu => "کنکشن ٹیسٹ کریں",
+        }
+    }
+
+    pub fn router_connected_ok(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🟢 Conectado con éxito al router Linksys MR73",
+            Language::English => "🟢 Successfully connected to Linksys MR73 router",
+            Language::Chinese => "🟢 成功连接到 Linksys MR73 路由器",
+            Language::Hindi => "🟢 Linksys MR73 राउटर से सफलतापूर्वक जुड़ा",
+            Language::Arabic => "🟢 تم الاتصال بنجاح براوتر Linksys MR73",
+            Language::French => "🟢 Connecté avec succès au routeur Linksys MR73",
+            Language::Bengali => "🟢 Linksys MR73 রাউটারে সফলভাবে সংযুক্ত হয়েছে",
+            Language::Portuguese => "🟢 Conectado com sucesso ao roteador Linksys MR73",
+            Language::Russian => "🟢 Успешное подключение к роутеру Linksys MR73",
+            Language::Urdu => "🟢 Linksys MR73 روٹر سے کامیابی سے منسلک ہو گیا",
+        }
+    }
+
+    pub fn router_connected_err(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🔴 Error: Contraseña inválida o router inalcanzable",
+            Language::English => "🔴 Error: Invalid password or router unreachable",
+            Language::Chinese => "🔴 错误：密码无效或无法访问路由器",
+            Language::Hindi => "🔴 त्रुटि: अमान्य पासवर्ड या राउटर अनुपलब्ध",
+            Language::Arabic => "🔴 خطأ: كلمة المرور غير صالحة أو تعذر الوصول إلى الراوتر",
+            Language::French => "🔴 Erreur : Mot de passe invalide ou routeur inaccessible",
+            Language::Bengali => "🔴 ত্রুটি: অবৈধ পাসওয়ার্ড বা রাউটার অপ্রাপ্য",
+            Language::Portuguese => "🔴 Erro: Senha inválida ou roteador inacessível",
+            Language::Russian => "🔴 Ошибка: Неверный пароль или роутер недоступен",
+            Language::Urdu => "🔴 خرابی: غلط پاس ورڈ یا روٹر تک رسائی ممکن نہیں",
+        }
+    }
 }

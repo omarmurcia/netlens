@@ -196,6 +196,36 @@ impl CustomStyles {
         }
     }
 
+    // Botón de peligro / bloqueo (Rojo)
+    pub fn danger_button() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(220, 38, 38))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(248, 113, 113),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Botón de éxito / readmisión (Verde esmeralda)
+    pub fn success_button() -> button::Style {
+        button::Style {
+            background: Some(Background::Color(Color::from_rgb8(16, 185, 129))),
+            text_color: Color::WHITE,
+            border: Border {
+                color: Color::from_rgb8(52, 211, 153),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
     // Botón pill para filtros activos
     pub fn filter_pill_active() -> button::Style {
         button::Style {

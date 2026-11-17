@@ -109,6 +109,12 @@ pub struct Device {
     pub first_seen: DateTime<Local>,
     pub last_seen: DateTime<Local>,
     pub custom_alias: Option<String>,
+    #[serde(default)]
+    pub is_whitelisted: bool,
+    #[serde(default)]
+    pub is_blocked: bool,
+    #[serde(default)]
+    pub speed_limit_kbps: Option<u32>,
 }
 
 impl Device {

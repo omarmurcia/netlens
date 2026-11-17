@@ -112,6 +112,9 @@ fn test_export_json_and_csv() {
         first_seen: now,
         last_seen: now,
         custom_alias: Some("Router Principal".to_string()),
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
     };
 
     let ctx = NetworkContext {
@@ -201,6 +204,9 @@ fn test_i18n_top_10_languages() {
         first_seen: now,
         last_seen: now,
         custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
     };
 
     for &lang in Language::ALL {
@@ -332,6 +338,9 @@ fn test_storage_persistence() {
         first_seen: chrono::Local::now(),
         last_seen: chrono::Local::now(),
         custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
     };
 
     let dev2 = Device {
@@ -350,6 +359,9 @@ fn test_storage_persistence() {
         first_seen: chrono::Local::now(),
         last_seen: chrono::Local::now(),
         custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
     };
 
     let mut list = vec![dev1, dev2];
@@ -372,6 +384,24 @@ fn test_storage_persistence() {
             timestamp: "03:15:00".to_string(),
             server: "Netflix Open Connect (Tigo, SV)".to_string(),
         }),
+        speed_test_history: vec![
+            SpeedTestResult {
+                ping_ms: 15.2,
+                download_mbps: 245.8,
+                upload_mbps: 24.5,
+                timestamp: "03:15:00".to_string(),
+                server: "Netflix Open Connect (Tigo, SV)".to_string(),
+            },
+            SpeedTestResult {
+                ping_ms: 18.1,
+                download_mbps: 210.4,
+                upload_mbps: 21.2,
+                timestamp: "03:00:00".to_string(),
+                server: "Cloudflare Anycast CDN".to_string(),
+            },
+        ],
+        router_ip: Some("192.168.1.1".to_string()),
+        router_password: Some("my_router_pass".to_string()),
     };
 
     let json = serde_json::to_string_pretty(&state).expect("Failed to serialize state");
@@ -383,6 +413,9 @@ fn test_storage_persistence() {
     assert_eq!(loaded.devices[0].custom_alias, Some("Router Principal".to_string()));
     assert_eq!(loaded.last_speed_test.as_ref().unwrap().download_mbps, 245.8);
     assert_eq!(loaded.last_speed_test.as_ref().unwrap().server, "Netflix Open Connect (Tigo, SV)");
+    assert_eq!(loaded.speed_test_history.len(), 2);
+    assert_eq!(loaded.speed_test_history[1].download_mbps, 210.4);
+    assert_eq!(loaded.router_ip.as_deref(), Some("192.168.1.1"));
 
     // Test disk persistence
     let test_dir = std::env::temp_dir().join(format!("netlens_test_{}", std::process::id()));
@@ -394,5 +427,89 @@ fn test_storage_persistence() {
     assert_eq!(state_from_disk.theme, "Nord");
     assert_eq!(state_from_disk.language, Language::French);
     assert_eq!(state_from_disk.devices.len(), 2);
+    assert_eq!(state_from_disk.speed_test_history.len(), 2);
     let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[test]
+fn test_whitelist_and_blacklist_persistence() {
+    use netlens::model::{Device, DeviceCategory, DeviceStatus};
+    use netlens::storage::Storage;
+    use std::collections::HashMap;
+    use std::net::Ipv4Addr;
+
+    let mut metadata = HashMap::new();
+    let mac_trusted = "00:11:22:33:44:55";
+    let mac_blocked = "aa:bb:cc:dd:ee:ff";
+
+    Storage::set_device_whitelist(&mut metadata, mac_trusted, true);
+    Storage::set_device_blocked(&mut metadata, mac_blocked, true);
+
+    let dev_trusted = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 50),
+        mac: mac_trusted.to_string(),
+        vendor: "Apple".to_string(),
+        hostname: Some("iPhone".to_string()),
+        category: DeviceCategory::Smartphone,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "eno1".to_string(),
+        latency_ms: Some(5.0),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: chrono::Local::now(),
+        last_seen: chrono::Local::now(),
+        custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
+    };
+
+    let dev_blocked = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 99),
+        mac: mac_blocked.to_string(),
+        vendor: "Unknown".to_string(),
+        hostname: None,
+        category: DeviceCategory::Unknown,
+        is_randomized_mac: true,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "eno1".to_string(),
+        latency_ms: Some(100.0),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: chrono::Local::now(),
+        last_seen: chrono::Local::now(),
+        custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
+    };
+
+    let mut list = vec![dev_trusted.clone(), dev_blocked.clone()];
+    Storage::apply_metadata(&mut list, &metadata);
+
+    assert!(list[0].is_whitelisted, "dev_trusted should be whitelisted");
+    assert!(!list[0].is_blocked, "dev_trusted should not be blocked");
+    assert!(list[1].is_blocked, "dev_blocked should be blocked");
+    assert!(!list[1].is_whitelisted, "dev_blocked should not be whitelisted");
+
+    // Toggle whitelist and blocked
+    Storage::set_device_whitelist(&mut metadata, mac_trusted, false);
+    Storage::set_device_blocked(&mut metadata, mac_blocked, false);
+
+    Storage::apply_metadata(&mut list, &metadata);
+    assert!(!list[0].is_whitelisted, "dev_trusted should no longer be whitelisted");
+    assert!(!list[1].is_blocked, "dev_blocked should no longer be blocked");
+}
+
+#[test]
+fn test_linksys_base64_encode() {
+    use netlens::router::LinksysRouter;
+
+    assert_eq!(LinksysRouter::base64_encode("admin:admin"), "YWRtaW46YWRtaW4=");
+    assert_eq!(LinksysRouter::base64_encode("admin:secret123"), "YWRtaW46c2VjcmV0MTIz");
+    assert_eq!(LinksysRouter::base64_encode("test"), "dGVzdA==");
+    assert_eq!(LinksysRouter::base64_encode(""), "");
 }
