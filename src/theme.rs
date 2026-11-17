@@ -76,6 +76,51 @@ impl CustomStyles {
         }
     }
 
+    // Estilo para tarjeta de velocidad de descarga (Verde / Esmeralda)
+    pub fn card_download() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(13, 38, 38))),
+            border: Border {
+                color: Color::from_rgb8(16, 185, 129),
+                width: 1.2,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Estilo para tarjeta de velocidad de subida (Púrpura / Azul)
+    pub fn card_upload() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(30, 24, 54))),
+            border: Border {
+                color: Color::from_rgb8(168, 85, 247),
+                width: 1.2,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Estilo para tarjeta de intensidad de señal Wi-Fi
+    pub fn card_signal() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(38, 30, 18))),
+            border: Border {
+                color: Color::from_rgb8(245, 158, 11),
+                width: 1.2,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
     // Estilo para badges / etiquetas
     pub fn badge_pill(bg_color: Color, text_color: Color) -> container::Style {
         container::Style {

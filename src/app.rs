@@ -1,17 +1,19 @@
 use crate::export::Exporter;
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
+use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use iced::futures::channel::mpsc;
 use iced::widget::{
     button, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, Column,
 };
-use iced::{Alignment, Color, Element, Length, Padding, Task, Theme};
+use iced::{Alignment, Color, Element, Length, Padding, Subscription, Task, Theme};
 use mac_oui::Oui;
 use std::fmt;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub const AVAILABLE_THEMES: &[Theme] = &[
     Theme::TokyoNight,
@@ -56,6 +58,7 @@ pub struct App {
     pub network: NetworkContext,
     pub devices: Vec<Device>,
     pub oui_db: Option<Arc<Oui>>,
+    pub telemetry: Telemetry,
     pub is_scanning: bool,
     pub scan_progress: f32,
     pub status_text: String,
@@ -78,6 +81,9 @@ pub enum Message {
     StartScan,
     ScanEventReceived(ScanEvent),
     RefreshNetwork,
+
+    // Temporizador periódico (1 segundo para telemetría de velocidad y señal)
+    Tick,
 
     // Filtros y Búsqueda
     SearchChanged(String),
@@ -115,6 +121,7 @@ impl App {
     pub fn new() -> (Self, Task<Message>) {
         let network = Scanner::detect_network_context();
         let oui_db = Oui::default().ok().map(Arc::new);
+        let telemetry = Telemetry::new(&network.interface);
 
         let initial_status = if let Some(gw) = network.gateway_ip {
             format!(
@@ -129,6 +136,7 @@ impl App {
             network,
             devices: Vec::new(),
             oui_db,
+            telemetry,
             is_scanning: false,
             scan_progress: 0.0,
             status_text: initial_status,
@@ -149,10 +157,29 @@ impl App {
         (app, Task::done(Message::StartScan))
     }
 
+    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada y señal
+    pub fn subscription(&self) -> Subscription<Message> {
+        Subscription::run(|| {
+            iced::futures::stream::unfold(
+                tokio::time::interval(Duration::from_millis(1000)),
+                |mut interval| async move {
+                    interval.tick().await;
+                    Some((Message::Tick, interval))
+                },
+            )
+        })
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Tick => {
+                self.telemetry.update_sample(&self.network.interface);
+                Task::none()
+            }
+
             Message::RefreshNetwork => {
                 self.network = Scanner::detect_network_context();
+                self.telemetry.update_sample(&self.network.interface);
                 self.status_text = format!(
                     "Contexto de red actualizado: {} ({})",
                     self.network.interface, self.network.subnet_cidr
@@ -402,9 +429,9 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut content = Column::new().spacing(16).padding(20);
+        let mut content = Column::new().spacing(14).padding(18);
 
-        // 1. Cabecera principal (Título, red, botones de escaneo y exportación)
+        // 1. Cabecera principal (Título, selector de tema, botones de escaneo y exportación)
         content = content.push(self.view_header());
 
         // Barra de progreso si está escaneando
@@ -419,26 +446,25 @@ impl App {
             content = content.push(self.view_notification(msg, *is_success));
         }
 
-        // 2. Tarjetas de métricas y resumen de red
-        content = content.push(self.view_metric_cards());
+        // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
+        content = content.push(self.view_telemetry_dashboard());
 
         // 3. Barra de filtros, categorías, buscador y ordenación
         content = content.push(self.view_controls());
 
         // 4. Área de contenido principal: lista de dispositivos + inspector lateral (si está abierto)
         let filtered_devices = self.get_filtered_devices();
-
         let device_list = self.view_device_list(&filtered_devices);
 
         let main_area: Element<'_, Message> = if let Some(selected_ip) = self.selected_device_ip {
             if let Some(selected_device) = self.devices.iter().find(|d| d.ip == selected_ip) {
                 row![
                     container(device_list).width(Length::FillPortion(3)),
-                    space::horizontal().width(16),
+                    space::horizontal().width(14),
                     container(self.view_inspector(selected_device))
                         .width(Length::FillPortion(2))
                         .style(|_| CustomStyles::inspector_panel())
-                        .padding(16),
+                        .padding(14),
                 ]
                 .into()
             } else {
@@ -460,14 +486,14 @@ impl App {
     fn view_header(&self) -> Element<'_, Message> {
         let title_col = column![
             row![
-                text("⚡ NetLens").size(26).color(CustomStyles::accent_cyan()),
-                text(" | Monitor de Red").size(18).color(CustomStyles::text_secondary()),
+                text("⚡ NetLens").size(24).color(CustomStyles::accent_cyan()),
+                text(" | Monitor de Red").size(16).color(CustomStyles::text_secondary()),
             ]
             .align_y(Alignment::Center)
             .spacing(8),
             row![
                 text(&self.status_text)
-                    .size(13)
+                    .size(12)
                     .color(CustomStyles::text_muted()),
                 button(text("🔄").size(11))
                     .style(|_, _| CustomStyles::secondary_button())
@@ -477,14 +503,14 @@ impl App {
             .align_y(Alignment::Center)
             .spacing(6),
         ]
-        .spacing(4);
+        .spacing(2);
 
-        let mut actions = row![].spacing(10).align_y(Alignment::Center);
+        let mut actions = row![].spacing(8).align_y(Alignment::Center);
 
         // Selector de tema
         actions = actions.push(
             row![
-                text("Tema:").size(13).color(CustomStyles::text_muted()),
+                text("Tema:").size(12).color(CustomStyles::text_muted()),
                 pick_list(
                     AVAILABLE_THEMES,
                     Some(&self.current_theme),
@@ -497,33 +523,29 @@ impl App {
 
         // Botón Exportar CSV
         actions = actions.push(
-            button(
-                text("📊 Exportar CSV").size(13)
-            )
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([7, 12]))
-            .on_press(Message::ExportCsv),
+            button(text("📊 CSV").size(12))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([6, 10]))
+                .on_press(Message::ExportCsv),
         );
 
         // Botón Exportar JSON
         actions = actions.push(
-            button(
-                text("📥 Exportar JSON").size(13)
-            )
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([7, 12]))
-            .on_press(Message::ExportJson),
+            button(text("📥 JSON").size(12))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([6, 10]))
+                .on_press(Message::ExportJson),
         );
 
         // Botón Escanear Red
         let scan_btn = if self.is_scanning {
-            button(text("⏳ Escaneando...").size(14))
+            button(text("⏳ Escaneando...").size(13))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([8, 16]))
+                .padding(Padding::from([7, 14]))
         } else {
-            button(text("⚡ Escanear Red").size(14))
+            button(text("⚡ Escanear Red").size(13))
                 .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([8, 16]))
+                .padding(Padding::from([7, 14]))
                 .on_press(Message::StartScan)
         };
 
@@ -538,33 +560,92 @@ impl App {
         .into()
     }
 
-    /// Tarjetas de métricas superiores
-    fn view_metric_cards(&self) -> Element<'_, Message> {
-        let total_devices = self.devices.len();
-        let total_online = self
-            .devices
-            .iter()
-            .filter(|d| d.status == crate::model::DeviceStatus::Online)
-            .count();
+    /// Dashboard superior de telemetría en vivo: Velocidad de bajada, subida, señal Wi-Fi y router
+    fn view_telemetry_dashboard(&self) -> Element<'_, Message> {
+        // Card 1: Velocidad de Descarga (Download)
+        let rx_speed_str = Telemetry::format_speed(self.telemetry.download_speed_bps);
+        let rx_session_str = Telemetry::format_bytes(self.telemetry.session_download_bytes());
 
-        // Card 1: Total de dispositivos
-        let card_total = container(
+        let card_download = container(
             column![
-                text("DISPOSITIVOS ACTIVOS").size(11).color(CustomStyles::text_muted()),
                 row![
-                    text(format!("{}", total_devices)).size(24).color(CustomStyles::text_primary()),
-                    text(format!("({} en línea)", total_online)).size(13).color(CustomStyles::accent_emerald()),
+                    text("⬇️ DESCARGA").size(11).color(CustomStyles::accent_emerald()),
+                    space::horizontal(),
+                    text("EN VIVO").size(9).color(CustomStyles::text_muted()),
                 ]
-                .align_y(Alignment::Center)
-                .spacing(8),
+                .align_y(Alignment::Center),
+                text(rx_speed_str).size(22).color(CustomStyles::accent_emerald()),
+                text(format!("Sesión: {}", rx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
-            .spacing(4),
+            .spacing(3),
         )
         .padding(12)
         .width(Length::FillPortion(1))
-        .style(|_| CustomStyles::card_container());
+        .style(|_| CustomStyles::card_download());
 
-        // Card 2: Router / Puerta de Enlace
+        // Card 2: Velocidad de Subida (Upload)
+        let tx_speed_str = Telemetry::format_speed(self.telemetry.upload_speed_bps);
+        let tx_session_str = Telemetry::format_bytes(self.telemetry.session_upload_bytes());
+
+        let card_upload = container(
+            column![
+                row![
+                    text("⬆️ SUBIDA").size(11).color(CustomStyles::accent_purple()),
+                    space::horizontal(),
+                    text("EN VIVO").size(9).color(CustomStyles::text_muted()),
+                ]
+                .align_y(Alignment::Center),
+                text(tx_speed_str).size(22).color(CustomStyles::accent_purple()),
+                text(format!("Sesión: {}", tx_session_str)).size(11).color(CustomStyles::text_secondary()),
+            ]
+            .spacing(3),
+        )
+        .padding(12)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::card_upload());
+
+        // Card 3: Intensidad y Calidad de Señal Wi-Fi / Conexión de red
+        let (signal_title, signal_big_str, signal_sub_str) = if let Some(wifi) = &self.telemetry.wifi {
+            let dbm_part = wifi.signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+            let big = format!("{}%{}", wifi.signal_percent, dbm_part);
+            let sub = format!(
+                "{} • {} • {}",
+                wifi.ssid.as_deref().unwrap_or("Wi-Fi"),
+                wifi.band_label(),
+                wifi.signal_label()
+            );
+            ("📶 SEÑAL WI-FI", big, sub)
+        } else if let Some(eth) = &self.telemetry.ethernet {
+            let big = eth.display_summary();
+            let sub = format!("Interfaz {} (Cable sin interferencias)", eth.interface);
+            ("🔌 CABLE ETHERNET", big, sub)
+        } else {
+            (
+                "🌐 CONEXIÓN LOCAL",
+                format!("Interfaz {}", self.network.interface),
+                "Enlace de red activo".to_string(),
+            )
+        };
+
+        let card_signal = container(
+            column![
+                row![
+                    text(signal_title).size(11).color(CustomStyles::accent_amber()),
+                    space::horizontal(),
+                    text("POTENCIA").size(9).color(CustomStyles::text_muted()),
+                ]
+                .align_y(Alignment::Center),
+                text(signal_big_str).size(18).color(CustomStyles::accent_amber()),
+                text(signal_sub_str).size(11).color(CustomStyles::text_secondary()),
+            ]
+            .spacing(3),
+        )
+        .padding(12)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::card_signal());
+
+        // Card 4: Router / Puerta de Enlace y Red Local
+        let total_devices = self.devices.len();
         let gw_ip_str = self
             .network
             .gateway_ip
@@ -578,60 +659,28 @@ impl App {
 
         let card_gateway = container(
             column![
-                text("PUERTA DE ENLACE / ROUTER").size(11).color(CustomStyles::text_muted()),
-                text(gw_name).size(15).color(CustomStyles::accent_cyan()),
-                text(format!("IP: {}", gw_ip_str)).size(12).color(CustomStyles::text_secondary()),
+                row![
+                    text("🌐 RED Y ROUTER").size(11).color(CustomStyles::accent_cyan()),
+                    space::horizontal(),
+                    text(&self.network.subnet_cidr).size(10).color(CustomStyles::text_muted()),
+                ]
+                .align_y(Alignment::Center),
+                row![
+                    text(format!("{} Equipos", total_devices)).size(18).color(CustomStyles::text_primary()),
+                    text(format!("(GW: {})", gw_ip_str)).size(12).color(CustomStyles::accent_cyan()),
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6),
+                text(gw_name).size(11).color(CustomStyles::text_secondary()),
             ]
-            .spacing(4),
+            .spacing(3),
         )
         .padding(12)
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::card_highlighted());
 
-        // Card 3: Este Equipo
-        let local_ip_str = self
-            .network
-            .local_ip
-            .map(|ip| ip.to_string())
-            .unwrap_or_else(|| "No detectado".to_string());
-
-        let card_local = container(
-            column![
-                text("ESTE EQUIPO (HOST)").size(11).color(CustomStyles::text_muted()),
-                text(format!("Interfaz: {}", self.network.interface)).size(15).color(CustomStyles::text_primary()),
-                text(format!("IP: {}", local_ip_str)).size(12).color(CustomStyles::text_secondary()),
-            ]
-            .spacing(4),
-        )
-        .padding(12)
-        .width(Length::FillPortion(1))
-        .style(|_| CustomStyles::card_container());
-
-        // Card 4: Desglose por categorías principales
-        let count_phones = self.devices.iter().filter(|d| d.category == DeviceCategory::Smartphone).count();
-        let count_computers = self.devices.iter().filter(|d| d.category == DeviceCategory::Computer).count();
-        let count_iot = self.devices.iter().filter(|d| d.category == DeviceCategory::Iot).count();
-        let count_tv = self.devices.iter().filter(|d| d.category == DeviceCategory::SmartTv).count();
-
-        let card_breakdown = container(
-            column![
-                text("TIPOS DE DISPOSITIVOS").size(11).color(CustomStyles::text_muted()),
-                row![
-                    text(format!("📱 {}", count_phones)).size(13).color(CustomStyles::text_primary()),
-                    text(format!("💻 {}", count_computers)).size(13).color(CustomStyles::text_primary()),
-                    text(format!("📺 {}", count_tv)).size(13).color(CustomStyles::text_primary()),
-                    text(format!("🔌 {}", count_iot)).size(13).color(CustomStyles::text_primary()),
-                ]
-                .spacing(12),
-            ]
-            .spacing(6),
-        )
-        .padding(12)
-        .width(Length::FillPortion(1))
-        .style(|_| CustomStyles::card_container());
-
-        row![card_total, card_gateway, card_local, card_breakdown]
-            .spacing(12)
+        row![card_download, card_upload, card_signal, card_gateway]
+            .spacing(10)
             .into()
     }
 
@@ -642,7 +691,7 @@ impl App {
             &self.search_query,
         )
         .on_input(Message::SearchChanged)
-        .padding(Padding::from([8, 12]))
+        .padding(Padding::from([7, 10]))
         .width(Length::FillPortion(2));
 
         // Botones de categoría tipo "pills"
@@ -659,7 +708,7 @@ impl App {
                         CustomStyles::filter_pill_inactive()
                     }
                 })
-                .padding(Padding::from([5, 10]))
+                .padding(Padding::from([4, 8]))
                 .on_press(Message::CategorySelected(None)),
         );
 
@@ -681,7 +730,7 @@ impl App {
                             CustomStyles::filter_pill_inactive()
                         }
                     })
-                    .padding(Padding::from([5, 10]))
+                    .padding(Padding::from([4, 8]))
                     .on_press(Message::CategorySelected(Some(cat))),
             );
         }
@@ -699,7 +748,7 @@ impl App {
             space::horizontal(),
             sort_picker,
         ]
-        .spacing(12)
+        .spacing(10)
         .align_y(Alignment::Center)
         .into()
     }
@@ -731,7 +780,7 @@ impl App {
             .into();
         }
 
-        let mut list_col = Column::new().spacing(10).padding(Padding {
+        let mut list_col = Column::new().spacing(8).padding(Padding {
             top: 0.0,
             right: 4.0,
             bottom: 0.0,
@@ -750,11 +799,11 @@ impl App {
         let is_selected = self.selected_device_ip == Some(device.ip);
 
         // Icono y categoría
-        let icon_text = text(device.category.icon()).size(28);
+        let icon_text = text(device.category.icon()).size(26);
 
         // Nombre y subtítulo
         let name_text = text(device.display_name())
-            .size(16)
+            .size(15)
             .color(if device.is_gateway || device.is_current_host {
                 CustomStyles::accent_cyan()
             } else {
@@ -766,15 +815,15 @@ impl App {
         // Badge de Puerta de enlace o Host Local
         if device.is_gateway {
             tags_row = tags_row.push(
-                container(text("ROUTER").size(10).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                container(text("ROUTER").size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 5]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_cyan(), Color::WHITE)),
             );
         }
         if device.is_current_host {
             tags_row = tags_row.push(
-                container(text("ESTE EQUIPO").size(10).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                container(text("ESTE EQUIPO").size(9).color(Color::WHITE))
+                    .padding(Padding::from([2, 5]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
             );
         }
@@ -790,15 +839,15 @@ impl App {
 
         tags_row = tags_row.push(
             container(text(vendor_label).size(10).color(CustomStyles::text_secondary()))
-                .padding(Padding::from([2, 6]))
+                .padding(Padding::from([2, 5]))
                 .style(|_| CustomStyles::badge_pill(Color::from_rgb8(51, 65, 85), CustomStyles::text_secondary())),
         );
 
         // Badge de MAC aleatoria
         if device.is_randomized_mac {
             tags_row = tags_row.push(
-                container(text("🛡️ Privacidad").size(10).color(CustomStyles::accent_amber()))
-                    .padding(Padding::from([2, 6]))
+                container(text("🛡️ Privacidad").size(9).color(CustomStyles::accent_amber()))
+                    .padding(Padding::from([2, 5]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
             );
         }
@@ -806,21 +855,21 @@ impl App {
         // Columna de información de red (IP + MAC)
         let network_col = column![
             row![
-                text("IP: ").size(12).color(CustomStyles::text_muted()),
-                text(device.ip.to_string()).size(13).color(CustomStyles::text_primary()),
-                button(text("📋").size(11))
+                text("IP: ").size(11).color(CustomStyles::text_muted()),
+                text(device.ip.to_string()).size(12).color(CustomStyles::text_primary()),
+                button(text("📋").size(10))
                     .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([1, 4]))
+                    .padding(Padding::from([1, 3]))
                     .on_press(Message::CopyToClipboard(device.ip.to_string(), "Dirección IP".to_string())),
             ]
             .align_y(Alignment::Center)
             .spacing(4),
             row![
-                text("MAC: ").size(12).color(CustomStyles::text_muted()),
-                text(&device.mac).size(12).color(CustomStyles::text_secondary()),
-                button(text("📋").size(11))
+                text("MAC: ").size(11).color(CustomStyles::text_muted()),
+                text(&device.mac).size(11).color(CustomStyles::text_secondary()),
+                button(text("📋").size(10))
                     .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([1, 4]))
+                    .padding(Padding::from([1, 3]))
                     .on_press(Message::CopyToClipboard(device.mac.clone(), "Dirección MAC".to_string())),
             ]
             .align_y(Alignment::Center)
@@ -828,45 +877,48 @@ impl App {
         ]
         .spacing(2);
 
-        // Latencia / RTT
-        let latency_element: Element<'a, Message> = if let Some(lat) = device.latency_ms {
-            let lat_color = if lat < 15.0 {
-                CustomStyles::accent_emerald()
-            } else if lat < 80.0 {
-                CustomStyles::accent_amber()
+        // Estimación de Calidad de Conexión y Latencia
+        let (quality_label, quality_color, lat_str) = if let Some(lat) = device.latency_ms {
+            if lat < 1.0 {
+                ("Cable (<1ms)", CustomStyles::accent_cyan(), format!("{:.1} ms", lat))
+            } else if lat < 20.0 {
+                ("Wi-Fi Excelente", CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
+            } else if lat < 70.0 {
+                ("Wi-Fi Bueno", CustomStyles::accent_emerald(), format!("{:.1} ms", lat))
+            } else if lat < 140.0 {
+                ("Wi-Fi Moderado", CustomStyles::accent_amber(), format!("{:.1} ms", lat))
             } else {
-                Color::from_rgb8(239, 68, 68)
-            };
-            row![
-                text("🟢").size(10),
-                text(format!("{:.1} ms", lat)).size(13).color(lat_color),
-            ]
-            .spacing(4)
-            .align_y(Alignment::Center)
-            .into()
+                ("Señal Débil", Color::from_rgb8(239, 68, 68), format!("{:.1} ms", lat))
+            }
         } else {
+            ("Sin respuesta ICMP", CustomStyles::text_muted(), "-".to_string())
+        };
+
+        let latency_element: Element<'a, Message> = column![
             row![
-                text("⚪").size(10),
-                text("Sin ping").size(12).color(CustomStyles::text_muted()),
+                text("🟢").size(9),
+                text(lat_str).size(12).color(quality_color),
             ]
             .spacing(4)
-            .align_y(Alignment::Center)
-            .into()
-        };
+            .align_y(Alignment::Center),
+            text(quality_label).size(10).color(CustomStyles::text_muted()),
+        ]
+        .spacing(2)
+        .into();
 
         // Servicios / Puertos detectados
         let mut services_row = row![].spacing(4).align_y(Alignment::Center);
         for p in device.open_ports.iter().take(3) {
             services_row = services_row.push(
                 container(text(format!("{}: {}", p.port, p.service)).size(10).color(CustomStyles::accent_cyan()))
-                    .padding(Padding::from([1, 5]))
+                    .padding(Padding::from([1, 4]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
             );
         }
         if device.open_ports.len() > 3 {
             services_row = services_row.push(
                 text(format!("+{}", device.open_ports.len() - 3))
-                    .size(10)
+                    .size(9)
                     .color(CustomStyles::text_muted()),
             );
         }
@@ -880,26 +932,26 @@ impl App {
                     CustomStyles::secondary_button()
                 }
             })
-            .padding(Padding::from([6, 12]))
+            .padding(Padding::from([5, 10]))
             .on_press(Message::SelectDevice(device.ip));
 
         let card_content = row![
-            container(icon_text).padding(4),
+            container(icon_text).padding(2),
             column![
-                row![name_text, tags_row].spacing(8).align_y(Alignment::Center),
+                row![name_text, tags_row].spacing(6).align_y(Alignment::Center),
                 services_row,
             ]
-            .spacing(4)
+            .spacing(3)
             .width(Length::FillPortion(2)),
             network_col.width(Length::FillPortion(2)),
             container(latency_element).width(Length::FillPortion(1)),
             btn_details,
         ]
-        .spacing(12)
+        .spacing(10)
         .align_y(Alignment::Center);
 
         container(card_content)
-            .padding(12)
+            .padding(10)
             .width(Length::Fill)
             .style(move |_| {
                 if is_selected {
@@ -913,15 +965,15 @@ impl App {
 
     /// Inspector de detalles para el dispositivo seleccionado
     fn view_inspector<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
-        let mut insp = Column::new().spacing(14);
+        let mut insp = Column::new().spacing(12);
 
         // Barra superior del inspector (Título + Cerrar)
         let top_bar = row![
-            text(format!("{} Detalles del Dispositivo", device.category.icon())).size(16).color(CustomStyles::accent_cyan()),
+            text(format!("{} Detalles del Dispositivo", device.category.icon())).size(15).color(CustomStyles::accent_cyan()),
             space::horizontal(),
-            button(text("✕").size(14))
+            button(text("✕").size(13))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 8]))
+                .padding(Padding::from([2, 6]))
                 .on_press(Message::CloseInspector),
         ]
         .align_y(Alignment::Center);
@@ -931,10 +983,10 @@ impl App {
         // Nombre y alias
         insp = insp.push(
             column![
-                text(device.display_name()).size(18).color(CustomStyles::text_primary()),
-                text(device.subtitle()).size(12).color(CustomStyles::text_muted()),
+                text(device.display_name()).size(16).color(CustomStyles::text_primary()),
+                text(device.subtitle()).size(11).color(CustomStyles::text_muted()),
             ]
-            .spacing(2),
+            .spacing(1),
         );
 
         // Editor de alias personalizado
@@ -943,9 +995,9 @@ impl App {
                 .on_input(Message::AliasInputChanged)
                 .padding(Padding::from([5, 8]))
                 .width(Length::Fill),
-            button(text("Guardar").size(12))
+            button(text("Guardar").size(11))
                 .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 10]))
+                .padding(Padding::from([5, 8]))
                 .on_press(Message::SaveAlias(device.ip)),
         ]
         .spacing(6)
@@ -954,7 +1006,7 @@ impl App {
         insp = insp.push(alias_row);
 
         // Ficha técnica
-        let mut specs_col = Column::new().spacing(6);
+        let mut specs_col = Column::new().spacing(5);
 
         specs_col = specs_col.push(Self::spec_line("Dirección IP:", &device.ip.to_string()));
         specs_col = specs_col.push(Self::spec_line("Dirección MAC:", &device.mac));
@@ -971,6 +1023,25 @@ impl App {
                 "🌐 OUI Global Registrada"
             },
         ));
+
+        // Calidad estimada de enlace Wi-Fi / Red
+        let quality_desc = if let Some(lat) = device.latency_ms {
+            if lat < 1.0 {
+                "🟢 Cable Directo (<1 ms) - Máxima velocidad"
+            } else if lat < 20.0 {
+                "🟢 Wi-Fi Excelente (~5-15 ms) - Señal óptima"
+            } else if lat < 70.0 {
+                "🟡 Wi-Fi Bueno (~30-60 ms) - Conexión estable"
+            } else if lat < 140.0 {
+                "🟠 Wi-Fi Moderado (~80-120 ms) - Reposo / Lejano"
+            } else {
+                "🔴 Señal Débil (>150 ms) - Posible pérdida"
+            }
+        } else {
+            "⚪ Sin respuesta a paquetes ICMP (Ping)"
+        };
+
+        specs_col = specs_col.push(Self::spec_line("Calidad Enlace:", quality_desc));
         specs_col = specs_col.push(Self::spec_line("Interfaz de Red:", &device.interface));
         specs_col = specs_col.push(Self::spec_line("Estado:", device.status.label()));
         specs_col = specs_col.push(Self::spec_line(
@@ -980,7 +1051,7 @@ impl App {
 
         insp = insp.push(
             container(specs_col)
-                .padding(10)
+                .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -988,16 +1059,16 @@ impl App {
         let mut quick_actions = row![].spacing(6).align_y(Alignment::Center);
 
         quick_actions = quick_actions.push(
-            button(text("📋 Copiar IP").size(11))
+            button(text("📋 IP").size(11))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([5, 8]))
+                .padding(Padding::from([4, 7]))
                 .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
         );
 
         quick_actions = quick_actions.push(
-            button(text("📋 Copiar MAC").size(11))
+            button(text("📋 MAC").size(11))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([5, 8]))
+                .padding(Padding::from([4, 7]))
                 .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
         );
 
@@ -1007,7 +1078,7 @@ impl App {
             quick_actions = quick_actions.push(
                 button(text("🌐 Abrir Web").size(11))
                     .style(|_, _| CustomStyles::primary_button())
-                    .padding(Padding::from([5, 8]))
+                    .padding(Padding::from([4, 7]))
                     .on_press(Message::OpenInBrowser(device.ip)),
             );
         }
@@ -1017,7 +1088,7 @@ impl App {
             quick_actions = quick_actions.push(
                 button(text("⏰ WoL").size(11))
                     .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([5, 8]))
+                    .padding(Padding::from([4, 7]))
                     .on_press(Message::SendWol(device.mac.clone())),
             );
         }
@@ -1026,14 +1097,14 @@ impl App {
 
         // Herramienta 1: Test de Ping en tiempo real
         let ping_btn_text = if self.is_pinging {
-            "⏳ Midiendo latencia..."
+            "⏳ Midiendo..."
         } else {
-            "⚡ Test de Ping (4 paquetes)"
+            "⚡ Test de Ping"
         };
 
-        let ping_btn = button(text(ping_btn_text).size(12))
+        let ping_btn = button(text(ping_btn_text).size(11))
             .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([6, 10]))
+            .padding(Padding::from([5, 8]))
             .on_press(Message::StartPingTest(device.ip));
 
         let mut ping_section = column![
@@ -1044,7 +1115,7 @@ impl App {
             ]
             .align_y(Alignment::Center),
         ]
-        .spacing(6);
+        .spacing(5);
 
         if let Some(stats) = &self.inspector_ping_stats {
             ping_section = ping_section.push(
@@ -1062,26 +1133,26 @@ impl App {
                     ]
                     .spacing(8),
                 ]
-                .spacing(4),
+                .spacing(3),
             );
         }
 
         insp = insp.push(
             container(ping_section)
-                .padding(10)
+                .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );
 
         // Herramienta 2: Escáner de Puertos Abiertos
         let port_btn_text = if self.is_deep_scanning {
-            "⏳ Escaneando 30 puertos..."
+            "⏳ Escaneando 30..."
         } else {
             "🔍 Escanear Puertos"
         };
 
-        let port_btn = button(text(port_btn_text).size(12))
+        let port_btn = button(text(port_btn_text).size(11))
             .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([6, 10]))
+            .padding(Padding::from([5, 8]))
             .on_press(Message::StartDeepScan(device.ip));
 
         let mut ports_section = column![
@@ -1092,7 +1163,7 @@ impl App {
             ]
             .align_y(Alignment::Center),
         ]
-        .spacing(6);
+        .spacing(5);
 
         if self.deep_ports.is_empty() {
             ports_section = ports_section.push(
@@ -1109,22 +1180,22 @@ impl App {
             for p in &self.deep_ports {
                 port_list = port_list.push(
                     row![
-                        container(text(format!("TCP {}", p.port)).size(10).color(CustomStyles::accent_cyan()))
+                        container(text(format!("TCP {}", p.port)).size(9).color(CustomStyles::accent_cyan()))
                             .padding(Padding::from([1, 4]))
                             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
                         text(&p.service).size(11).color(CustomStyles::text_primary()),
                         text(format!("({})", p.description)).size(10).color(CustomStyles::text_muted()),
                     ]
-                    .spacing(6)
+                    .spacing(5)
                     .align_y(Alignment::Center),
                 );
             }
-            ports_section = ports_section.push(scrollable(port_list).height(120));
+            ports_section = ports_section.push(scrollable(port_list).height(110));
         }
 
         insp = insp.push(
             container(ports_section)
-                .padding(10)
+                .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -1134,8 +1205,8 @@ impl App {
     /// Línea de especificación técnica clave-valor
     fn spec_line(key: &'static str, val: &str) -> Element<'static, Message> {
         row![
-            text(key).size(12).color(CustomStyles::text_muted()).width(110),
-            text(val.to_string()).size(12).color(CustomStyles::text_primary()),
+            text(key).size(11).color(CustomStyles::text_muted()).width(110),
+            text(val.to_string()).size(11).color(CustomStyles::text_primary()),
         ]
         .spacing(4)
         .align_y(Alignment::Center)
@@ -1151,19 +1222,19 @@ impl App {
         };
 
         let notif_row = row![
-            text(if is_success { "✓" } else { "⚠" }).size(14),
-            text(message).size(13),
+            text(if is_success { "✓" } else { "⚠" }).size(13),
+            text(message).size(12),
             space::horizontal(),
-            button(text("✕").size(12))
+            button(text("✕").size(11))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 6]))
+                .padding(Padding::from([2, 5]))
                 .on_press(Message::DismissNotification),
         ]
-        .spacing(8)
+        .spacing(6)
         .align_y(Alignment::Center);
 
         container(notif_row)
-            .padding(8)
+            .padding(6)
             .width(Length::Fill)
             .style(move |_| style_fn())
             .into()

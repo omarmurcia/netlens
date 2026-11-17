@@ -152,3 +152,28 @@ fn test_wol_validation() {
     let invalid_res = Scanner::send_wake_on_lan("12:34:56");
     assert!(invalid_res.is_err());
 }
+
+#[test]
+fn test_telemetry_functions() {
+    use netlens::telemetry::Telemetry;
+
+    // 1. Conversión de dBm a porcentaje
+    assert_eq!(Telemetry::dbm_to_percent(-35), 100);
+    assert_eq!(Telemetry::dbm_to_percent(-50), 100);
+    assert_eq!(Telemetry::dbm_to_percent(-60), 80);
+    assert_eq!(Telemetry::dbm_to_percent(-75), 50);
+    assert_eq!(Telemetry::dbm_to_percent(-100), 0);
+    assert_eq!(Telemetry::dbm_to_percent(-110), 0);
+
+    // 2. Formato de velocidad
+    assert_eq!(Telemetry::format_speed(500.0), "500 B/s");
+    assert_eq!(Telemetry::format_speed(1536.0), "1.5 KB/s");
+    assert_eq!(Telemetry::format_speed(2.5 * 1024.0 * 1024.0), "2.50 MB/s");
+
+    // 3. Formato de bytes
+    assert_eq!(Telemetry::format_bytes(50 * 1024 * 1024), "50.0 MB");
+
+    // 4. Muestreo de tráfico
+    let (rx, tx) = Telemetry::sample_total_traffic();
+    assert!(rx > 0 || tx > 0, "Debe haber tráfico de red en el sistema");
+}

@@ -2,6 +2,7 @@ mod app;
 mod export;
 mod model;
 mod scanner;
+mod telemetry;
 mod theme;
 
 use app::App;
@@ -31,7 +32,8 @@ fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title("NetLens - Explorador y Monitor de Red Local")
         .theme(|app: &App| app.current_theme.clone())
-        .window_size(Size::new(1180.0, 780.0))
+        .subscription(App::subscription)
+        .window_size(Size::new(1220.0, 820.0))
         .centered()
         .run()
 }
