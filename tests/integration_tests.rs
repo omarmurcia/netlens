@@ -733,6 +733,57 @@ fn test_autostart_manager_entry_generation() {
     assert!(entry.contains("Name=NetLens"));
     assert!(entry.contains("Exec=/usr/bin/netlens --minimized"));
     assert!(entry.contains("X-GNOME-Autostart-enabled=true"));
+    assert!(entry.contains("X-KDE-autostart-after=panel"));
+
+    // Comprobar rutas con espacios que requieran encomillado
+    let spaced_exec = "/home/user/My Apps/netlens";
+    let spaced_entry = AutostartManager::generate_desktop_entry(spaced_exec);
+    assert!(spaced_entry.contains("Exec=\"/home/user/My Apps/netlens\" --minimized"));
+}
+
+#[test]
+fn test_autostart_persistent_path_resolution() {
+    use netlens::autostart::AutostartManager;
+    use std::env;
+
+    // Cuando APPIMAGE apunta a un archivo existente, debe resolver esa ruta fija
+    let current_dir = env::current_dir().unwrap();
+    let cargo_toml = current_dir.join("Cargo.toml");
+    unsafe {
+        env::set_var("APPIMAGE", cargo_toml.to_string_lossy().to_string());
+    }
+
+    let resolved = AutostartManager::get_persistent_executable_path();
+    assert!(resolved.is_ok());
+    assert_eq!(resolved.unwrap(), cargo_toml);
+
+    unsafe {
+        env::remove_var("APPIMAGE");
+    }
+}
+
+#[test]
+fn test_autostart_set_and_clear() {
+    use netlens::autostart::AutostartManager;
+    use std::fs;
+
+    // Activar autostart
+    let res = AutostartManager::set_enabled(true);
+    assert!(res.is_ok(), "set_enabled(true) should succeed: {:?}", res);
+
+    let path = AutostartManager::autostart_file_path().unwrap();
+    assert!(path.exists(), "Autostart desktop file should exist");
+
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(!content.contains("/tmp/.mount_"), "Must NEVER contain temporary mount paths");
+    assert!(content.contains("--minimized"));
+    assert!(AutostartManager::is_enabled());
+
+    // Desactivar autostart
+    let res_disable = AutostartManager::set_enabled(false);
+    assert!(res_disable.is_ok());
+    assert!(!path.exists());
+    assert!(!AutostartManager::is_enabled());
 }
 
 #[test]

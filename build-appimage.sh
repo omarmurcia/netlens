@@ -46,6 +46,16 @@ cat << 'EOF' > "${APPDIR}/AppRun"
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
 export PATH="${HERE}/usr/bin:${PATH}"
+
+# Preservar o exportar la ruta permanente del archivo AppImage
+if [ -z "${APPIMAGE}" ]; then
+    if [ -n "${TARGET_APPIMAGE}" ]; then
+        export APPIMAGE="${TARGET_APPIMAGE}"
+    elif [ -n "${ARGV0}" ]; then
+        export APPIMAGE="$(readlink -f "${ARGV0}")"
+    fi
+fi
+
 exec "${HERE}/usr/bin/netlens" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"

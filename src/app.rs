@@ -437,6 +437,9 @@ impl App {
         let speed_test_history = saved.speed_test_history;
         let auto_scan_interval_secs = saved.auto_scan_interval_secs;
         let autostart_enabled = saved.autostart || AutostartManager::is_enabled();
+        if autostart_enabled {
+            AutostartManager::sync_if_needed(true);
+        }
         let minimize_on_close = saved.minimize_to_tray_on_close;
         let mut known_macs: HashSet<String> = saved
             .known_macs

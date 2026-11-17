@@ -167,23 +167,34 @@ pub fn spawn_tray(
     handle_holder: Arc<Mutex<Option<Handle<NetLensTray>>>>,
 ) {
     let icon_cache = get_icon_argb();
-    let tray = NetLensTray {
-        state,
-        icon_cache,
-    };
 
     tokio::spawn(async move {
-        match tray.spawn().await {
-            Ok(handle) => {
-                if let Ok(mut lock) = handle_holder.lock() {
-                    *lock = Some(handle);
+        // En arranque del sistema, el servicio de bandeja (StatusNotifierWatcher) puede tardar unos segundos.
+        // `assume_sni_available(true)` espera automáticamente a que el panel/watcher esté disponible en D-Bus.
+        // Además, se realizan reintentos progresivos en caso de retardos del bus de sesión al iniciar sesión.
+        for attempt in 1..=5 {
+            let tray = NetLensTray {
+                state: Arc::clone(&state),
+                icon_cache: icon_cache.clone(),
+            };
+
+            match tray.assume_sni_available(true).spawn().await {
+                Ok(handle) => {
+                    if let Ok(mut lock) = handle_holder.lock() {
+                        *lock = Some(handle);
+                    }
+                    return;
                 }
-            }
-            Err(e) => {
-                eprintln!(
-                    "Aviso: No se pudo registrar StatusNotifierItem en la bandeja del sistema: {}",
-                    e
-                );
+                Err(e) => {
+                    if attempt < 5 {
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    } else {
+                        eprintln!(
+                            "Aviso: No se pudo registrar StatusNotifierItem en la bandeja del sistema tras 5 intentos: {}",
+                            e
+                        );
+                    }
+                }
             }
         }
     });
