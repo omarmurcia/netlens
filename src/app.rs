@@ -1,11 +1,12 @@
 use crate::export::Exporter;
+use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use iced::futures::channel::mpsc;
 use iced::widget::{
-    button, column, container, pick_list, progress_bar, row, scrollable, space, text,
+    button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, Column,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Subscription, Task, Theme};
@@ -21,6 +22,9 @@ pub const AVAILABLE_THEMES: &[Theme] = &[
     Theme::Nord,
     Theme::Dracula,
     Theme::Dark,
+    Theme::Light,
+    Theme::SolarizedDark,
+    Theme::GruvboxDark,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,11 +49,11 @@ impl SortOption {
 impl fmt::Display for SortOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SortOption::Ip => write!(f, "Ordenar: Dirección IP"),
-            SortOption::Latency => write!(f, "Ordenar: Latencia (Ping)"),
-            SortOption::Name => write!(f, "Ordenar: Nombre de Equipo"),
-            SortOption::Vendor => write!(f, "Ordenar: Fabricante"),
-            SortOption::Category => write!(f, "Ordenar: Categoría"),
+            SortOption::Ip => write!(f, "🌐 IP"),
+            SortOption::Latency => write!(f, "⚡ Ping"),
+            SortOption::Name => write!(f, "📝 Nombre"),
+            SortOption::Vendor => write!(f, "🏭 Fabricante"),
+            SortOption::Category => write!(f, "🏷️ Tipo"),
         }
     }
 }
@@ -73,6 +77,8 @@ pub struct App {
     pub notification: Option<(String, bool)>, // (Mensaje, es_exito)
     pub alias_input: String,
     pub current_theme: Theme,
+    pub language: Language,
+    pub is_settings_open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -85,11 +91,16 @@ pub enum Message {
     // Temporizador periódico (1 segundo para telemetría de velocidad y señal)
     Tick,
 
+    // Ajustes / Configuración
+    OpenSettings,
+    CloseSettings,
+    LanguageChanged(Language),
+    ThemeChanged(Theme),
+
     // Filtros y Búsqueda
     SearchChanged(String),
     CategorySelected(Option<DeviceCategory>),
     SortChanged(SortOption),
-    ThemeChanged(Theme),
 
     // Inspector de Dispositivo
     SelectDevice(Ipv4Addr),
@@ -101,6 +112,7 @@ pub enum Message {
     SendWol(String),
     WolFinished(Result<(), String>),
     OpenInBrowser(Ipv4Addr),
+    ChangeDeviceCategory(Ipv4Addr, DeviceCategory),
 
     // Alias
     AliasInputChanged(String),
@@ -122,6 +134,7 @@ impl App {
         let network = Scanner::detect_network_context();
         let oui_db = Oui::default().ok().map(Arc::new);
         let telemetry = Telemetry::new(&network.interface);
+        let language = Language::Spanish;
 
         let initial_status = if let Some(gw) = network.gateway_ip {
             format!(
@@ -151,6 +164,8 @@ impl App {
             notification: None,
             alias_input: String::new(),
             current_theme: Theme::TokyoNight,
+            language,
+            is_settings_open: false,
         };
 
         // Iniciar un escaneo automático al arrancar
@@ -174,6 +189,44 @@ impl App {
         match message {
             Message::Tick => {
                 self.telemetry.update_sample(&self.network.interface);
+                Task::none()
+            }
+
+            Message::OpenSettings => {
+                self.is_settings_open = true;
+                Task::none()
+            }
+
+            Message::CloseSettings => {
+                self.is_settings_open = false;
+                Task::none()
+            }
+
+            Message::LanguageChanged(lang) => {
+                self.language = lang;
+                self.notification = Some((
+                    format!("Idioma cambiado a {}", lang.native_name()),
+                    true,
+                ));
+                Task::none()
+            }
+
+            Message::ThemeChanged(theme) => {
+                self.current_theme = theme;
+                Task::none()
+            }
+
+            Message::ChangeDeviceCategory(ip, new_category) => {
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                    dev.category = new_category;
+                }
+                self.notification = Some((
+                    format!(
+                        "Tipo de dispositivo actualizado a: {}",
+                        Translations::category_name(new_category, self.language)
+                    ),
+                    true,
+                ));
                 Task::none()
             }
 
@@ -220,12 +273,16 @@ impl App {
                     Task::none()
                 }
                 ScanEvent::HostFound(device) => {
-                    // Si ya existe la IP, actualizar datos conservando alias previo
+                    // Si ya existe la IP, actualizar datos conservando alias y categoría personalizada previos
                     if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
                         let prev_alias = existing.custom_alias.clone();
+                        let prev_category = existing.category;
                         *existing = device;
                         if existing.custom_alias.is_none() {
                             existing.custom_alias = prev_alias;
+                        }
+                        if prev_category != DeviceCategory::Unknown {
+                            existing.category = prev_category;
                         }
                     } else {
                         self.devices.push(device);
@@ -265,11 +322,6 @@ impl App {
 
             Message::SortChanged(sort) => {
                 self.sort_by = sort;
-                Task::none()
-            }
-
-            Message::ThemeChanged(theme) => {
-                self.current_theme = theme;
                 Task::none()
             }
 
@@ -431,7 +483,7 @@ impl App {
     pub fn view(&self) -> Element<'_, Message> {
         let mut content = Column::new().spacing(14).padding(18);
 
-        // 1. Cabecera principal (Título, selector de tema, botones de escaneo y exportación)
+        // 1. Cabecera principal (Título, botón de Ajustes, botones de escaneo y exportación)
         content = content.push(self.view_header());
 
         // Barra de progreso si está escaneando
@@ -444,6 +496,20 @@ impl App {
         // Notificación flotante si está activa
         if let Some((msg, is_success)) = &self.notification {
             content = content.push(self.view_notification(msg, *is_success));
+        }
+
+        // Si los ajustes están abiertos, mostrar la vista de configuración
+        if self.is_settings_open {
+            content = content.push(
+                container(center(self.view_settings_panel()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
 
         // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
@@ -487,7 +553,7 @@ impl App {
         let title_col = column![
             row![
                 text("⚡ NetLens").size(24).color(CustomStyles::accent_cyan()),
-                text(" | Monitor de Red").size(16).color(CustomStyles::text_secondary()),
+                text(format!(" | {}", Translations::app_subtitle(self.language))).size(15).color(CustomStyles::text_secondary()),
             ]
             .align_y(Alignment::Center)
             .spacing(8),
@@ -507,18 +573,22 @@ impl App {
 
         let mut actions = row![].spacing(8).align_y(Alignment::Center);
 
-        // Selector de tema
+        // Botón de Ajustes (Settings)
         actions = actions.push(
-            row![
-                text("Tema:").size(12).color(CustomStyles::text_muted()),
-                pick_list(
-                    AVAILABLE_THEMES,
-                    Some(&self.current_theme),
-                    |t| Message::ThemeChanged(t.clone())
-                ),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(6),
+            button(text(Translations::settings(self.language)).size(12))
+                .style(|_, _| {
+                    if self.is_settings_open {
+                        CustomStyles::primary_button()
+                    } else {
+                        CustomStyles::secondary_button()
+                    }
+                })
+                .padding(Padding::from([6, 12]))
+                .on_press(if self.is_settings_open {
+                    Message::CloseSettings
+                } else {
+                    Message::OpenSettings
+                }),
         );
 
         // Botón Exportar CSV
@@ -539,11 +609,11 @@ impl App {
 
         // Botón Escanear Red
         let scan_btn = if self.is_scanning {
-            button(text("⏳ Escaneando...").size(13))
+            button(text(Translations::scanning(self.language)).size(13))
                 .style(|_, _| CustomStyles::secondary_button())
                 .padding(Padding::from([7, 14]))
         } else {
-            button(text("⚡ Escanear Red").size(13))
+            button(text(Translations::scan_network(self.language)).size(13))
                 .style(|_, _| CustomStyles::primary_button())
                 .padding(Padding::from([7, 14]))
                 .on_press(Message::StartScan)
@@ -560,6 +630,91 @@ impl App {
         .into()
     }
 
+    /// Panel de Ajustes / Configuración (Tema de UI e Idioma entre los 10 más hablados del mundo)
+    fn view_settings_panel(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::settings(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            button(text("✕").size(14))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 8]))
+                .on_press(Message::CloseSettings),
+        ]
+        .align_y(Alignment::Center);
+
+        // Ajuste 1: Tema del UI
+        let theme_row = row![
+            column![
+                text(Translations::theme_label(self.language)).size(14).color(CustomStyles::text_primary()),
+                text("Personaliza los colores y el estilo visual de NetLens").size(11).color(CustomStyles::text_muted()),
+            ]
+            .width(Length::Fill),
+            pick_list(
+                AVAILABLE_THEMES,
+                Some(&self.current_theme),
+                |t| Message::ThemeChanged(t.clone()),
+            ),
+        ]
+        .align_y(Alignment::Center)
+        .spacing(12);
+
+        // Ajuste 2: Idioma de la aplicación (Top 10 idiomas más hablados del mundo)
+        let lang_row = row![
+            column![
+                text(Translations::language_label(self.language)).size(14).color(CustomStyles::text_primary()),
+                text("Soporte para los 10 idiomas con mayor número de hablantes del mundo").size(11).color(CustomStyles::text_muted()),
+            ]
+            .width(Length::Fill),
+            pick_list(
+                Language::ALL,
+                Some(self.language),
+                Message::LanguageChanged,
+            ),
+        ]
+        .align_y(Alignment::Center)
+        .spacing(12);
+
+        // Resumen técnico del sistema
+        let info_col = column![
+            text("Información de Conectividad del Sistema").size(13).color(CustomStyles::accent_cyan()),
+            row![
+                text("Interfaz Activa:").size(12).color(CustomStyles::text_muted()).width(130),
+                text(&self.network.interface).size(12).color(CustomStyles::text_primary()),
+            ],
+            row![
+                text("Subred Local:").size(12).color(CustomStyles::text_muted()).width(130),
+                text(&self.network.subnet_cidr).size(12).color(CustomStyles::text_primary()),
+            ],
+            row![
+                text("Puerta de Enlace:").size(12).color(CustomStyles::text_muted()).width(130),
+                text(self.network.gateway_ip.map(|g| g.to_string()).unwrap_or_else(|| "No detectado".to_string())).size(12).color(CustomStyles::text_primary()),
+            ],
+        ]
+        .spacing(6);
+
+        let close_btn = button(text(Translations::close(self.language)).size(13))
+            .style(|_, _| CustomStyles::primary_button())
+            .padding(Padding::from([7, 20]))
+            .on_press(Message::CloseSettings);
+
+        let content = column![
+            title_row,
+            theme_row,
+            lang_row,
+            container(info_col).padding(12).style(|_| CustomStyles::card_container()),
+            row![space::horizontal(), close_btn],
+        ]
+        .spacing(18);
+
+        container(content)
+            .padding(22)
+            .width(560)
+            .style(|_| CustomStyles::settings_panel())
+            .into()
+    }
+
     /// Dashboard superior de telemetría en vivo: Velocidad de bajada, subida, señal Wi-Fi y router
     fn view_telemetry_dashboard(&self) -> Element<'_, Message> {
         // Card 1: Velocidad de Descarga (Download)
@@ -569,13 +724,13 @@ impl App {
         let card_download = container(
             column![
                 row![
-                    text("⬇️ DESCARGA").size(11).color(CustomStyles::accent_emerald()),
+                    text(Translations::download(self.language)).size(11).color(CustomStyles::accent_emerald()),
                     space::horizontal(),
-                    text("EN VIVO").size(9).color(CustomStyles::text_muted()),
+                    text(Translations::live(self.language)).size(9).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
                 text(rx_speed_str).size(22).color(CustomStyles::accent_emerald()),
-                text(format!("Sesión: {}", rx_session_str)).size(11).color(CustomStyles::text_secondary()),
+                text(format!("{}: {}", Translations::session(self.language), rx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
         )
@@ -590,13 +745,13 @@ impl App {
         let card_upload = container(
             column![
                 row![
-                    text("⬆️ SUBIDA").size(11).color(CustomStyles::accent_purple()),
+                    text(Translations::upload(self.language)).size(11).color(CustomStyles::accent_purple()),
                     space::horizontal(),
-                    text("EN VIVO").size(9).color(CustomStyles::text_muted()),
+                    text(Translations::live(self.language)).size(9).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
                 text(tx_speed_str).size(22).color(CustomStyles::accent_purple()),
-                text(format!("Sesión: {}", tx_session_str)).size(11).color(CustomStyles::text_secondary()),
+                text(format!("{}: {}", Translations::session(self.language), tx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
         )
@@ -614,16 +769,16 @@ impl App {
                 wifi.band_label(),
                 wifi.signal_label()
             );
-            ("📶 SEÑAL WI-FI", big, sub)
+            (Translations::signal_wifi(self.language), big, sub)
         } else if let Some(eth) = &self.telemetry.ethernet {
             let big = eth.display_summary();
-            let sub = format!("Interfaz {} (Cable sin interferencias)", eth.interface);
-            ("🔌 CABLE ETHERNET", big, sub)
+            let sub = format!("Interfaz {} (Cable)", eth.interface);
+            (Translations::ethernet_cable(self.language), big, sub)
         } else {
             (
-                "🌐 CONEXIÓN LOCAL",
+                "🌐 CONEXIÓN",
                 format!("Interfaz {}", self.network.interface),
-                "Enlace de red activo".to_string(),
+                "Enlace activo".to_string(),
             )
         };
 
@@ -632,7 +787,7 @@ impl App {
                 row![
                     text(signal_title).size(11).color(CustomStyles::accent_amber()),
                     space::horizontal(),
-                    text("POTENCIA").size(9).color(CustomStyles::text_muted()),
+                    text("STATUS").size(9).color(CustomStyles::text_muted()),
                 ]
                 .align_y(Alignment::Center),
                 text(signal_big_str).size(18).color(CustomStyles::accent_amber()),
@@ -687,7 +842,7 @@ impl App {
     /// Controles de filtrado, búsqueda y ordenación
     fn view_controls(&self) -> Element<'_, Message> {
         let search_bar = text_input(
-            "🔍 Buscar por IP, nombre, fabricante o MAC...",
+            Translations::search_placeholder(self.language),
             &self.search_query,
         )
         .on_input(Message::SearchChanged)
@@ -700,7 +855,7 @@ impl App {
         // Botón "Todos"
         let is_all_active = self.selected_category.is_none();
         category_pills = category_pills.push(
-            button(text("Todos").size(12))
+            button(text(Translations::all_filter(self.language)).size(12))
                 .style(move |_, _| {
                     if is_all_active {
                         CustomStyles::filter_pill_active()
@@ -720,7 +875,11 @@ impl App {
             DeviceCategory::Iot,
         ] {
             let is_active = self.selected_category == Some(cat);
-            let label = format!("{} {}", cat.icon(), cat.display_name().split('/').next().unwrap_or(""));
+            let cat_name = Translations::category_name(cat, self.language)
+                .split('/')
+                .next()
+                .unwrap_or("");
+            let label = format!("{} {}", cat.icon(), cat_name);
             category_pills = category_pills.push(
                 button(text(label).size(12))
                     .style(move |_, _| {
@@ -827,6 +986,17 @@ impl App {
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
             );
         }
+
+        // Badge de Tipo / Categoría asignada
+        let cat_label = Translations::category_name(device.category, self.language)
+            .split('/')
+            .next()
+            .unwrap_or("");
+        tags_row = tags_row.push(
+            container(text(cat_label).size(10).color(CustomStyles::accent_cyan()))
+                .padding(Padding::from([2, 5]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
+        );
 
         // Badge de Fabricante
         let vendor_label = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
@@ -969,7 +1139,7 @@ impl App {
 
         // Barra superior del inspector (Título + Cerrar)
         let top_bar = row![
-            text(format!("{} Detalles del Dispositivo", device.category.icon())).size(15).color(CustomStyles::accent_cyan()),
+            text(format!("{} {}", device.category.icon(), Translations::device_details(self.language))).size(15).color(CustomStyles::accent_cyan()),
             space::horizontal(),
             button(text("✕").size(13))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -989,13 +1159,30 @@ impl App {
             .spacing(1),
         );
 
+        // Selector para indicar/cambiar el tipo de dispositivo
+        let category_selector = row![
+            text(Translations::device_type_label(self.language))
+                .size(11)
+                .color(CustomStyles::text_muted())
+                .width(110),
+            pick_list(
+                DeviceCategory::all(),
+                Some(device.category),
+                move |cat| Message::ChangeDeviceCategory(device.ip, cat),
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+        insp = insp.push(category_selector);
+
         // Editor de alias personalizado
         let alias_row = row![
-            text_input("Apodo / Nota personalizada...", &self.alias_input)
+            text_input(Translations::alias_placeholder(self.language), &self.alias_input)
                 .on_input(Message::AliasInputChanged)
                 .padding(Padding::from([5, 8]))
                 .width(Length::Fill),
-            button(text("Guardar").size(11))
+            button(text(Translations::save(self.language)).size(11))
                 .style(|_, _| CustomStyles::primary_button())
                 .padding(Padding::from([5, 8]))
                 .on_press(Message::SaveAlias(device.ip)),

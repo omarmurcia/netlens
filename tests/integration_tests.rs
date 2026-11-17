@@ -177,3 +177,27 @@ fn test_telemetry_functions() {
     let (rx, tx) = Telemetry::sample_total_traffic();
     assert!(rx > 0 || tx > 0, "Debe haber tráfico de red en el sistema");
 }
+
+#[test]
+fn test_i18n_top_10_languages() {
+    use netlens::i18n::{Language, Translations};
+
+    assert_eq!(Language::ALL.len(), 10, "Deben soportarse los 10 idiomas más hablados");
+
+    for &lang in Language::ALL {
+        assert!(!lang.native_name().is_empty());
+        assert!(!Translations::scan_network(lang).is_empty());
+        assert!(!Translations::settings(lang).is_empty());
+        assert!(!Translations::download(lang).is_empty());
+        assert!(!Translations::upload(lang).is_empty());
+        assert!(!Translations::signal_wifi(lang).is_empty());
+        assert!(!Translations::search_placeholder(lang).is_empty());
+        assert!(!Translations::device_details(lang).is_empty());
+        assert!(!Translations::device_type_label(lang).is_empty());
+
+        for &cat in DeviceCategory::all() {
+            let cat_str = Translations::category_name(cat, lang);
+            assert!(!cat_str.is_empty(), "Categoría {:?} vacía en idioma {:?}", cat, lang);
+        }
+    }
+}

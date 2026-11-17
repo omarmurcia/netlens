@@ -1,5 +1,6 @@
 mod app;
 mod export;
+mod i18n;
 mod model;
 mod scanner;
 mod telemetry;

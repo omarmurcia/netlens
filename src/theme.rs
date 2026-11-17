@@ -151,6 +151,21 @@ impl CustomStyles {
         }
     }
 
+    // Estilo para el panel de ajustes / configuración
+    pub fn settings_panel() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(24, 32, 47))),
+            border: Border {
+                color: Color::from_rgb8(14, 165, 233),
+                width: 1.5,
+                radius: 12.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
     // Botón de acción primario estilizado (Escanear)
     pub fn primary_button() -> button::Style {
         button::Style {

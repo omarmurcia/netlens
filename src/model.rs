@@ -60,7 +60,7 @@ impl DeviceCategory {
 
 impl fmt::Display for DeviceCategory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display_name())
+        write!(f, "{} {}", self.icon(), self.display_name())
     }
 }
 
