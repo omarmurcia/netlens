@@ -11,7 +11,13 @@
 
 ## ✨ Características Principales
 
-1. **Descubrimiento Inteligente Multivectorial:**
+1. **Telemetría de Red y Velocidades en Tiempo Real (En la cabecera):**
+   - **Monitor de Velocidad de Descarga (⬇️):** Muestra los KB/s o MB/s consumidos en tiempo real por el equipo y el total descargado en la sesión.
+   - **Monitor de Velocidad de Subida (⬆️):** Muestra la velocidad de transmisión en tiempo real y el total subido en la sesión.
+   - **Intensidad de Señal Wi-Fi (📶):** Muestra la fuerza de la señal en dBm y porcentaje (ej. `100% (-39 dBm)`), SSID (`omar_internet`), banda (`5 GHz`) y bitrate negociado (`1200 Mbps`), o el estado del cable Ethernet Gigabit.
+   - **Estimación de Calidad de Conexión:** Evalúa la señal de cada dispositivo conectado en la red según su latencia (Excelente, Buena, Moderada, Débil).
+
+2. **Descubrimiento Inteligente Multivectorial:**
    - **Sondeo ARP y Barrido ICMP/TCP:** Detecta equipos en la subred local (`/24`) en cuestión de segundos utilizando concurrencia asíncrona (`tokio`).
    - **Identificación de Fabricante (OUI IEEE/Wireshark):** Base de datos integrada con miles de fabricantes (Apple, Samsung, Intel, Belkin, Tuya Smart, Raspberry Pi, TP-Link, Xiaomi, etc.).
    - **Detección de Privacidad de MAC:** Identifica automáticamente si un dispositivo usa **dirección MAC aleatoria/privada** (LAA - *Locally Administered Address*, típico de Android, iOS y Windows 11).
