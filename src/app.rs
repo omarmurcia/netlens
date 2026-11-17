@@ -9,6 +9,7 @@ use crate::storage::{AppState, DeviceMetadata, Storage};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use crate::traceroute::{HopInfo, Traceroute};
+use crate::tray::{spawn_tray, NetLensTray, TrayAction, TrayState};
 use crate::widget::Sparkline;
 use iced::futures::channel::mpsc;
 use iced::widget::canvas::Canvas;
@@ -21,7 +22,7 @@ use mac_oui::Oui;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::net::Ipv4Addr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -284,6 +285,10 @@ pub struct App {
     // Segundo Plano & Inicio Automático
     pub autostart_enabled: bool,
     pub minimize_on_close: bool,
+
+    // System Tray (Bandeja del Sistema)
+    pub tray_state: Arc<Mutex<TrayState>>,
+    pub tray_handle: Arc<Mutex<Option<ksni::Handle<NetLensTray>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -293,8 +298,10 @@ pub enum Message {
     ScanEventReceived(ScanEvent),
     RefreshNetwork,
 
-    // Ventana y Segundo Plano
+    // Ventana, System Tray y Segundo Plano
     WindowCloseRequested(iced::window::Id),
+    RestoreWindowFromTray,
+    ExitApp,
     ToggleAutostart(bool),
     ToggleMinimizeOnClose(bool),
     DesktopNotificationAction {
@@ -432,6 +439,9 @@ impl App {
             AppStatus::Ready
         };
 
+        let initial_device_count = devices.len();
+        let initial_gateway_ip = network.gateway_ip.map(|g| g.to_string());
+
         let app = Self {
             network,
             devices,
@@ -481,7 +491,16 @@ impl App {
             traceroute_error: None,
             autostart_enabled,
             minimize_on_close,
+            tray_state: Arc::new(Mutex::new(TrayState {
+                device_count: initial_device_count,
+                is_scanning: false,
+                gateway_ip: initial_gateway_ip,
+            })),
+            tray_handle: Arc::new(Mutex::new(None)),
         };
+
+        // Iniciar servicio StatusNotifierItem de System Tray (Bandeja del Sistema)
+        spawn_tray(Arc::clone(&app.tray_state), Arc::clone(&app.tray_handle));
 
         let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--background");
         let initial_task = if start_minimized {
@@ -494,6 +513,23 @@ impl App {
         };
 
         (app, initial_task)
+    }
+
+    /// Sincroniza el estado actual de escaneo y dispositivos con el System Tray
+    pub fn sync_tray_state(&self) {
+        if let Ok(mut s) = self.tray_state.lock() {
+            s.device_count = self.devices.len();
+            s.is_scanning = self.is_scanning;
+            s.gateway_ip = self.network.gateway_ip.map(|g| g.to_string());
+        }
+        if let Ok(lock) = self.tray_handle.lock() {
+            if let Some(h) = lock.as_ref() {
+                let h_clone = h.clone();
+                tokio::spawn(async move {
+                    let _ = h_clone.update(|_| ()).await;
+                });
+            }
+        }
     }
 
     /// Guarda el estado actual de la aplicación de manera persistente en disco
@@ -521,7 +557,7 @@ impl App {
         }
     }
 
-    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada y eventos de ventana
+    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada, eventos de ventana y System Tray
     pub fn subscription(&self) -> Subscription<Message> {
         let tick_sub = Subscription::run(|| {
             iced::futures::stream::unfold(
@@ -535,7 +571,28 @@ impl App {
 
         let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
 
-        Subscription::batch(vec![tick_sub, close_sub])
+        let tray_sub = Subscription::run(|| {
+            let rx = crate::tray::get_tray_sender().subscribe();
+            iced::futures::stream::unfold(rx, |mut rx| async move {
+                loop {
+                    match rx.recv().await {
+                        Ok(TrayAction::RestoreWindow) => {
+                            return Some((Message::RestoreWindowFromTray, rx));
+                        }
+                        Ok(TrayAction::TriggerScan) => {
+                            return Some((Message::StartScan, rx));
+                        }
+                        Ok(TrayAction::Exit) => {
+                            return Some((Message::ExitApp, rx));
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                    }
+                }
+            })
+        });
+
+        Subscription::batch(vec![tick_sub, close_sub, tray_sub])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -572,6 +629,7 @@ impl App {
                     return Task::done(Message::StartScan);
                 }
 
+                self.sync_tray_state();
                 Task::none()
             }
 
@@ -638,6 +696,19 @@ impl App {
                 } else {
                     iced::window::close(id)
                 }
+            }
+
+            Message::RestoreWindowFromTray => {
+                iced::window::latest().and_then(|id| {
+                    Task::batch(vec![
+                        iced::window::minimize(id, false),
+                        iced::window::gain_focus(id),
+                    ])
+                })
+            }
+
+            Message::ExitApp => {
+                std::process::exit(0);
             }
 
             Message::DesktopNotificationAction { ip, mac, action } => {
@@ -1092,6 +1163,7 @@ impl App {
                 self.scan_progress = 0.0;
                 self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                 self.notification = None;
+                self.sync_tray_state();
 
                 let ctx = self.network.clone();
                 let oui_db = self.oui_db.clone();
@@ -1241,6 +1313,7 @@ impl App {
                         total_found,
                         duration_secs: duration_ms as f32 / 1000.0,
                     };
+                    self.sync_tray_state();
                     self.save_state();
 
                     if !self.router_password_input.trim().is_empty() {
@@ -1251,6 +1324,7 @@ impl App {
                 }
                 ScanEvent::Error(err) => {
                     self.is_scanning = false;
+                    self.sync_tray_state();
                     self.status = AppStatus::Error(err.clone());
                     self.notification = Some((err, false));
                     Task::none()

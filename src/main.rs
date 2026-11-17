@@ -10,6 +10,7 @@ mod storage;
 mod telemetry;
 mod theme;
 mod traceroute;
+mod tray;
 mod widget;
 
 use app::App;
@@ -36,13 +37,20 @@ fn main() -> iced::Result {
     }
 
     // Modo GUI con Iced
+    let icon = tray::get_window_icon();
+    let window_settings = iced::window::Settings {
+        size: Size::new(1220.0, 820.0),
+        position: iced::window::Position::Centered,
+        icon,
+        exit_on_close_request: false,
+        ..Default::default()
+    };
+
     iced::application(App::new, App::update, App::view)
         .title(|app: &App| i18n::Translations::window_title(app.language).to_string())
         .theme(|app: &App| app.current_theme.clone())
         .subscription(App::subscription)
-        .window_size(Size::new(1220.0, 820.0))
-        .centered()
-        .exit_on_close_request(false)
+        .window(window_settings)
         .run()
 }
 

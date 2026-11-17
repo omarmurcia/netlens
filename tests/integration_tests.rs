@@ -752,3 +752,46 @@ fn test_i18n_autostart_and_notifications_all_languages() {
         assert!(!Translations::notif_require_pass_body(lang).is_empty());
     }
 }
+
+#[test]
+fn test_system_tray_and_icons() {
+    use ksni::Tray;
+    use netlens::tray::{get_icon_argb, get_window_icon, NetLensTray, TrayState};
+    use std::sync::{Arc, Mutex};
+
+    // Test ARGB tray icon extraction
+    let tray_icon = get_icon_argb().expect("Tray icon should load from embedded PNG");
+    assert!(tray_icon.width > 0);
+    assert!(tray_icon.height > 0);
+    assert_eq!(tray_icon.data.len(), (tray_icon.width * tray_icon.height * 4) as usize);
+
+    // Test window RGBA icon extraction
+    let win_icon = get_window_icon();
+    assert!(win_icon.is_some(), "Window icon should load successfully");
+
+    // Test NetLensTray structure
+    let state = Arc::new(Mutex::new(TrayState {
+        device_count: 5,
+        is_scanning: false,
+        gateway_ip: Some("192.168.1.1".to_string()),
+    }));
+
+    let tray = NetLensTray {
+        state,
+        icon_cache: Some(tray_icon.clone()),
+    };
+
+    assert_eq!(tray.id(), "netlens");
+    assert_eq!(tray.title(), "NetLens");
+    assert_eq!(tray.icon_name(), "netlens");
+    assert_eq!(tray.icon_pixmap().len(), 1);
+    assert_eq!(tray.icon_pixmap()[0].width, tray_icon.width);
+
+    let tip = tray.tool_tip();
+    assert!(tip.title.contains("NetLens"));
+    assert!(tip.description.contains("5 dispositivos activos"));
+    assert!(tip.description.contains("192.168.1.1"));
+
+    let menu = tray.menu();
+    assert!(menu.len() >= 4, "Debe tener opciones de abrir, escanear, estado y salir");
+}
