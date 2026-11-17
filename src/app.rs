@@ -1725,13 +1725,20 @@ impl App {
         let main_area: Element<'_, Message> = if let Some(selected_ip) = self.selected_device_ip {
             if let Some(selected_device) = self.devices.iter().find(|d| d.ip == selected_ip) {
                 row![
-                    container(device_list).width(Length::Fill),
+                    container(device_list).width(Length::Fill).height(Length::Fill),
                     space::horizontal().width(12),
                     container(self.view_inspector(selected_device))
-                        .width(Length::Fixed(390.0))
+                        .width(Length::Fixed(400.0))
+                        .height(Length::Fill)
                         .style(|_| CustomStyles::inspector_panel())
-                        .padding(14),
+                        .padding(Padding {
+                            top: 14.0,
+                            right: 10.0,
+                            bottom: 14.0,
+                            left: 14.0,
+                        }),
                 ]
+                .height(Length::Fill)
                 .into()
             } else {
                 device_list
@@ -2678,17 +2685,27 @@ impl App {
         }
 
         let mut list_col = Column::new().spacing(8).padding(Padding {
-            top: 0.0,
-            right: 4.0,
-            bottom: 0.0,
-            left: 0.0,
+            top: 2.0,
+            right: 6.0,
+            bottom: 12.0,
+            left: 2.0,
         });
 
         for device in devices {
             list_col = list_col.push(self.view_device_card(device));
         }
 
-        scrollable(list_col).height(Length::Fill).into()
+        scrollable(list_col)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fill)
+            .into()
     }
 
     /// Tarjeta individual para cada dispositivo con jerarquía visual de 2 niveles (sin desbordamientos ni solapamientos)
@@ -2919,9 +2936,8 @@ impl App {
 
     /// Inspector de detalles para el dispositivo seleccionado (panel lateral con ancho fijo y reactividad total)
     fn view_inspector<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
-        let mut insp = Column::new().spacing(12);
-
-        // Barra superior del inspector (Título + Cerrar)
+        // Barra superior fija del inspector (Título + Cerrar)
+        // Se mantiene fija en la parte superior para que nunca se oculte al hacer scroll
         let top_bar = row![
             text(format!("{} {}", device.category.icon(), Translations::device_details(self.language)))
                 .size(15)
@@ -2934,10 +2950,15 @@ impl App {
         ]
         .align_y(Alignment::Center);
 
-        insp = insp.push(top_bar);
+        let mut insp_body = Column::new().spacing(12).padding(Padding {
+            top: 2.0,
+            right: 6.0,
+            bottom: 12.0,
+            left: 2.0,
+        });
 
         // Nombre y subtítulo traducido
-        insp = insp.push(
+        insp_body = insp_body.push(
             column![
                 text(device.display_name()).size(16).color(CustomStyles::text_primary()),
                 text(Translations::device_subtitle(device, self.language)).size(11).color(CustomStyles::text_muted()),
@@ -2973,7 +2994,7 @@ impl App {
         .spacing(6)
         .align_y(Alignment::Center);
 
-        insp = insp.push(category_selector);
+        insp_body = insp_body.push(category_selector);
 
         // Editor de alias personalizado
         let alias_row = row![
@@ -2989,7 +3010,7 @@ impl App {
         .spacing(6)
         .align_y(Alignment::Center);
 
-        insp = insp.push(alias_row);
+        insp_body = insp_body.push(alias_row);
 
         // Ficha técnica (LOCALIZADA EN SU TOTALIDAD)
         let mut specs_col = Column::new().spacing(5);
@@ -3041,7 +3062,7 @@ impl App {
             &device.last_seen.format("%H:%M:%S").to_string(),
         ));
 
-        insp = insp.push(
+        insp_body = insp_body.push(
             container(specs_col)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
@@ -3083,7 +3104,7 @@ impl App {
             );
         }
 
-        insp = insp.push(quick_actions);
+        insp_body = insp_body.push(quick_actions);
 
         // Acciones de Seguridad y Control de Router (Lista Blanca y Bloqueo Permanente)
         let mut security_actions = row![].spacing(6).align_y(Alignment::Center);
@@ -3120,7 +3141,7 @@ impl App {
             security_actions = security_actions.push(block_btn);
         }
 
-        insp = insp.push(security_actions);
+        insp_body = insp_body.push(security_actions);
 
         // Herramienta 1: Test de Ping en tiempo real (LOCALIZADA!)
         let ping_btn_text = if self.is_pinging {
@@ -3172,7 +3193,7 @@ impl App {
             );
         }
 
-        insp = insp.push(
+        insp_body = insp_body.push(
             container(ping_section)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
@@ -3211,7 +3232,12 @@ impl App {
                 .color(CustomStyles::text_muted()),
             );
         } else {
-            let mut port_list = Column::new().spacing(4);
+            let mut port_list = Column::new().spacing(4).padding(Padding {
+                top: 0.0,
+                right: 4.0,
+                bottom: 2.0,
+                left: 0.0,
+            });
             for p in &self.deep_ports {
                 port_list = port_list.push(
                     row![
@@ -3225,10 +3251,21 @@ impl App {
                     .align_y(Alignment::Center),
                 );
             }
-            ports_section = ports_section.push(scrollable(port_list).height(110));
+            ports_section = ports_section.push(
+                scrollable(port_list)
+                    .direction(scrollable::Direction::Vertical(
+                        scrollable::Scrollbar::new()
+                            .width(5.0)
+                            .scroller_width(5.0)
+                            .margin(1.0)
+                            .spacing(6.0),
+                    ))
+                    .style(CustomStyles::scrollbar_style())
+                    .height(110),
+            );
         }
 
-        insp = insp.push(
+        insp_body = insp_body.push(
             container(ports_section)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
@@ -3261,14 +3298,19 @@ impl App {
         } else if let Some(hops) = &self.traceroute_hops {
             let hops_header = row![
                 text(Translations::traceroute_hop_col(self.language)).size(10).color(CustomStyles::text_muted()).width(36),
-                text(Translations::traceroute_ip_col(self.language)).size(10).color(CustomStyles::text_muted()).width(200),
+                text(Translations::traceroute_ip_col(self.language)).size(10).color(CustomStyles::text_muted()).width(190),
                 space::horizontal(),
                 text(Translations::traceroute_latency_col(self.language)).size(10).color(CustomStyles::text_muted()),
             ]
             .spacing(6);
             trace_section = trace_section.push(hops_header);
 
-            let mut hops_col = Column::new().spacing(4);
+            let mut hops_col = Column::new().spacing(4).padding(Padding {
+                top: 0.0,
+                right: 4.0,
+                bottom: 2.0,
+                left: 0.0,
+            });
             for h in hops {
                 let (ip_str, latency_str, color) = if h.is_timeout {
                     ("---".to_string(), Translations::traceroute_timeout(self.language).to_string(), Color::from_rgb8(239, 68, 68))
@@ -3289,7 +3331,7 @@ impl App {
                         container(text(format!("#{}", h.hop)).size(9).color(CustomStyles::accent_cyan()))
                             .padding(Padding::from([1, 4]))
                             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
-                        text(ip_str).size(10).color(CustomStyles::text_primary()).width(200),
+                        text(ip_str).size(10).color(CustomStyles::text_primary()).width(190),
                         space::horizontal(),
                         text(latency_str).size(10).color(color),
                     ]
@@ -3297,16 +3339,44 @@ impl App {
                     .align_y(Alignment::Center),
                 );
             }
-            trace_section = trace_section.push(scrollable(hops_col).height(120));
+            trace_section = trace_section.push(
+                scrollable(hops_col)
+                    .direction(scrollable::Direction::Vertical(
+                        scrollable::Scrollbar::new()
+                            .width(5.0)
+                            .scroller_width(5.0)
+                            .margin(1.0)
+                            .spacing(6.0),
+                    ))
+                    .style(CustomStyles::scrollbar_style())
+                    .height(120),
+            );
         }
 
-        insp = insp.push(
+        insp_body = insp_body.push(
             container(trace_section)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );
 
-        scrollable(insp).height(Length::Fill).into()
+        let body_scrollable = scrollable(insp_body)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fill);
+
+        column![
+            top_bar,
+            body_scrollable,
+        ]
+        .spacing(12)
+        .height(Length::Fill)
+        .into()
     }
 
     /// Línea de especificación técnica clave-valor

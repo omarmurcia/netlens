@@ -62,6 +62,7 @@ chmod +x "${APPDIR}/AppRun"
 
 echo "==> 3. Empaquetando AppImage independiente con compresión zstd..."
 export ARCH=x86_64
+rm -f "${OUTPUT_DIR}/NetLens-x86_64.AppImage"
 "${APPIMAGE_TOOL}" --appimage-extract-and-run "${APPDIR}" "${OUTPUT_DIR}/NetLens-x86_64.AppImage"
 
 echo ""

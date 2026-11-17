@@ -1,5 +1,5 @@
-use iced::widget::{button, container};
-use iced::{Background, Border, Color, Shadow};
+use iced::widget::{button, container, scrollable};
+use iced::{Background, Border, Color, Shadow, Theme};
 
 pub struct CustomStyles;
 
@@ -298,6 +298,76 @@ impl CustomStyles {
             },
             shadow: Shadow::default(),
             snap: false,
+        }
+    }
+
+    // Estilo elegante para barras de desplazamiento (Scrollables)
+    pub fn scrollbar_style() -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style {
+        |theme, status| {
+            let (scroller_bg, border_color) = match status {
+                scrollable::Status::Active { .. } => (
+                    Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                    Color::TRANSPARENT,
+                ),
+                scrollable::Status::Hovered {
+                    is_vertical_scrollbar_hovered,
+                    is_horizontal_scrollbar_hovered,
+                    ..
+                } => {
+                    if is_vertical_scrollbar_hovered || is_horizontal_scrollbar_hovered {
+                        (
+                            Background::Color(Color::from_rgba8(14, 165, 233, 0.85)),
+                            Color::from_rgba8(56, 189, 248, 0.6),
+                        )
+                    } else {
+                        (
+                            Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                            Color::TRANSPARENT,
+                        )
+                    }
+                }
+                scrollable::Status::Dragged {
+                    is_vertical_scrollbar_dragged,
+                    is_horizontal_scrollbar_dragged,
+                    ..
+                } => {
+                    if is_vertical_scrollbar_dragged || is_horizontal_scrollbar_dragged {
+                        (
+                            Background::Color(Color::from_rgb8(14, 165, 233)),
+                            Color::from_rgb8(56, 189, 248),
+                        )
+                    } else {
+                        (
+                            Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                            Color::TRANSPARENT,
+                        )
+                    }
+                }
+            };
+
+            let rail = scrollable::Rail {
+                background: Some(Background::Color(Color::from_rgba8(15, 23, 42, 0.35))),
+                border: Border {
+                    radius: 4.0.into(),
+                    ..Border::default()
+                },
+                scroller: scrollable::Scroller {
+                    background: scroller_bg,
+                    border: Border {
+                        radius: 4.0.into(),
+                        width: 1.0,
+                        color: border_color,
+                    },
+                },
+            };
+
+            scrollable::Style {
+                container: container::Style::default(),
+                vertical_rail: rail,
+                horizontal_rail: rail,
+                gap: None,
+                auto_scroll: scrollable::default(theme, status).auto_scroll,
+            }
         }
     }
 }
