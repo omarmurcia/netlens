@@ -2,7 +2,7 @@
 Name=NetLens
 GenericName=Explorador de Red Local
 Comment=Monitor y escáner de dispositivos conectados al router
-Exec=/home/omar/.gemini/antigravity/scratch/netlens/target/release/netlens
+Exec=/home/omar/Documents/homenet/netlens/target/release/netlens
 Icon=network-workgroup
 Terminal=false
 Type=Application

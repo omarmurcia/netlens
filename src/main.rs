@@ -14,9 +14,15 @@ use std::sync::Arc;
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
 
+    // Inicializar el runtime de Tokio multihilo con soporte completo de reactor de red y temporizadores
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Fallo al inicializar runtime de Tokio");
+    let _guard = rt.enter();
+
     // Modo CLI opcional: permite escanear e imprimir en terminal si se pasa --cli o --scan
     if args.iter().any(|a| a == "--cli" || a == "--scan" || a == "-c") {
-        let rt = tokio::runtime::Runtime::new().expect("Fallo al inicializar runtime de Tokio");
         rt.block_on(run_cli_scan());
         return Ok(());
     }

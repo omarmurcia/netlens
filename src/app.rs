@@ -267,10 +267,14 @@ impl App {
             Message::StartPingTest(ip) => {
                 self.is_pinging = true;
                 self.inspector_ping_stats = None;
-                Task::perform(
-                    async move { Scanner::ping_test_detailed(ip).await },
-                    Message::PingTestFinished,
-                )
+                let handle = tokio::spawn(async move { Scanner::ping_test_detailed(ip).await });
+                Task::future(async move {
+                    let res = match handle.await {
+                        Ok(inner) => inner,
+                        Err(e) => Err(format!("Error en tarea asíncrona: {}", e)),
+                    };
+                    Message::PingTestFinished(res)
+                })
             }
 
             Message::PingTestFinished(result) => {
@@ -292,10 +296,11 @@ impl App {
 
             Message::StartDeepScan(ip) => {
                 self.is_deep_scanning = true;
-                Task::perform(
-                    async move { Scanner::deep_port_scan(ip).await },
-                    Message::DeepScanFinished,
-                )
+                let handle = tokio::spawn(async move { Scanner::deep_port_scan(ip).await });
+                Task::future(async move {
+                    let ports = handle.await.unwrap_or_default();
+                    Message::DeepScanFinished(ports)
+                })
             }
 
             Message::DeepScanFinished(ports) => {
