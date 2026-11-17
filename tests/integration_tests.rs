@@ -513,3 +513,61 @@ fn test_linksys_base64_encode() {
     assert_eq!(LinksysRouter::base64_encode("test"), "dGVzdA==");
     assert_eq!(LinksysRouter::base64_encode(""), "");
 }
+
+#[test]
+fn test_linksys_mac_filter_settings_serde() {
+    use netlens::router::MacFilterSettings;
+
+    let settings = MacFilterSettings {
+        mac_filter_mode: "Deny".to_string(),
+        mac_addresses: vec!["28:44:F4:9F:1B:09".to_string()],
+    };
+
+    let serialized = serde_json::to_string(&settings).expect("serialization failed");
+    assert!(serialized.contains("\"macFilterMode\":\"Deny\""));
+    assert!(serialized.contains("\"macAddresses\":[\"28:44:F4:9F:1B:09\"]"));
+
+    // Deserializing a real Linksys response with "Disabled"
+    let raw_json = r#"{"macFilterMode":"Disabled","macAddresses":[],"maxMACAddresses":32}"#;
+    let parsed: MacFilterSettings = serde_json::from_str(raw_json).expect("deserialization failed");
+    assert_eq!(parsed.mac_filter_mode, "Disabled");
+    assert!(parsed.mac_addresses.is_empty());
+
+    // Test Jnap generic response without output field (SetMACFilterSettings response)
+    #[derive(serde::Deserialize)]
+    struct JnapResp<T> {
+        result: String,
+        output: Option<T>,
+    }
+
+    let setter_resp_json = r#"{"result": "OK", "sideEffects": ["WirelessInterruption"]}"#;
+    let setter_resp: JnapResp<serde_json::Value> = serde_json::from_str(setter_resp_json).expect("should parse");
+    assert_eq!(setter_resp.result, "OK");
+    assert!(setter_resp.output.is_none());
+}
+
+#[test]
+fn test_i18n_router_notifications() {
+    use netlens::i18n::{Language, Translations};
+
+    let all_languages = [
+        Language::Spanish,
+        Language::English,
+        Language::Chinese,
+        Language::Hindi,
+        Language::Arabic,
+        Language::French,
+        Language::Bengali,
+        Language::Portuguese,
+        Language::Russian,
+        Language::Urdu,
+    ];
+
+    for lang in all_languages {
+        assert!(!Translations::btn_applying(lang).is_empty());
+        assert!(!Translations::router_require_password(lang).is_empty());
+        assert!(!Translations::router_block_success(lang, "192.168.1.100", "AA:BB:CC:DD:EE:FF").is_empty());
+        assert!(!Translations::router_unblock_success(lang, "192.168.1.100", "AA:BB:CC:DD:EE:FF").is_empty());
+        assert!(!Translations::router_operation_failed(lang, "Timeout").is_empty());
+    }
+}

@@ -2471,4 +2471,79 @@ impl Translations {
             Language::Urdu => "🔴 خرابی: غلط پاس ورڈ یا روٹر تک رسائی ممکن نہیں",
         }
     }
+
+    pub fn btn_applying(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⏳ Aplicando en router...",
+            Language::English => "⏳ Applying on router...",
+            Language::Chinese => "⏳ 正在应用到路由器...",
+            Language::Hindi => "⏳ राउटर पर लागू हो रहा है...",
+            Language::Arabic => "⏳ جاري التطبيق على الراوتر...",
+            Language::French => "⏳ Application sur le routeur...",
+            Language::Bengali => "⏳ রাউটারে প্রয়োগ হচ্ছে...",
+            Language::Portuguese => "⏳ Aplicando no roteador...",
+            Language::Russian => "⏳ Применение на роутере...",
+            Language::Urdu => "⏳ روٹر پر لاگو ہو رہا ہے...",
+        }
+    }
+
+    pub fn router_require_password(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Para bloquear o readmitir dispositivos en el router, primero ingresa la contraseña de administración en Ajustes (⚙ Ajustes).",
+            Language::English => "To block or unblock devices on the router, first enter the router admin password in Settings (⚙ Settings).",
+            Language::Chinese => "要在路由器上阻止或解锁设备，请先在设置 (⚙ 设置) 中输入路由器管理员密码。",
+            Language::Hindi => "राउटर पर उपकरणों को ब्लॉक या अनब्लॉक करने के लिए, पहले सेटिंग्स (⚙ सेटिंग्स) में व्यवस्थापक पासवर्ड दर्ज करें।",
+            Language::Arabic => "لحظر الأجهزة أو إلغاء حظرها على الراوتر، أدخل أولاً كلمة مرور مسؤول الراوتر في الإعدادات (⚙ الإعدادات).",
+            Language::French => "Pour bloquer ou débloquer des appareils sur le routeur, entrez d'abord le mot de passe admin dans Paramètres (⚙ Paramètres).",
+            Language::Bengali => "রাউটারে ডিভাইস ব্লক বা আনব্লক করতে, প্রথমে সেটিংসে (⚙ সেটিংস) রাউটার অ্যাডমিন পাসওয়ার্ড লিখুন।",
+            Language::Portuguese => "Para bloquear ou readmitir dispositivos no roteador, primeiro insira a senha de administrador em Configurações (⚙ Configurações).",
+            Language::Russian => "Для блокировки или разблокировки устройств сначала введите пароль администратора роутера в Настройках (⚙ Настройки).",
+            Language::Urdu => "روٹر پر ڈیوائسز کو بلاک یا ان بلاک کرنے کے لیے، پہلے ترتیبات (⚙ ترتیبات) میں روٹر ایڈمن پاس ورڈ درج کریں۔",
+        }
+    }
+
+    pub fn router_block_success(lang: Language, ip: &str, mac: &str) -> String {
+        match lang {
+            Language::Spanish => format!("✓ Dispositivo {} ({}) bloqueado 24/7 en el router.", ip, mac),
+            Language::English => format!("✓ Device {} ({}) blocked 24/7 on router.", ip, mac),
+            Language::Chinese => format!("✓ 设备 {} ({}) 已在路由器上永久阻止 24/7。", ip, mac),
+            Language::Hindi => format!("✓ डिवाइस {} ({}) राउटर पर 24/7 ब्लॉक कर दिया गया।", ip, mac),
+            Language::Arabic => format!("✓ تم حظر الجهاز {} ({}) على مدار 24/7 في الراوتر.", ip, mac),
+            Language::French => format!("✓ Appareil {} ({}) bloqué 24h/24 sur le routeur.", ip, mac),
+            Language::Bengali => format!("✓ ডিভাইস {} ({}) রাউটারে ২৪/৭ ব্লক করা হয়েছে।", ip, mac),
+            Language::Portuguese => format!("✓ Dispositivo {} ({}) bloqueado 24/7 no roteador.", ip, mac),
+            Language::Russian => format!("✓ Устройство {} ({}) заблокировано 24/7 на роутере.", ip, mac),
+            Language::Urdu => format!("✓ ڈیوائس {} ({}) روٹر پر 24/7 بلاک کر دی گئی۔", ip, mac),
+        }
+    }
+
+    pub fn router_unblock_success(lang: Language, ip: &str, mac: &str) -> String {
+        match lang {
+            Language::Spanish => format!("✓ Dispositivo {} ({}) readmitido exitosamente en el router.", ip, mac),
+            Language::English => format!("✓ Device {} ({}) successfully unblocked on router.", ip, mac),
+            Language::Chinese => format!("✓ 设备 {} ({}) 已在路由器上恢复访问许可。", ip, mac),
+            Language::Hindi => format!("✓ डिवाइस {} ({}) को राउटर पर सफलतापूर्वक पुनः अनुमति दी गई।", ip, mac),
+            Language::Arabic => format!("✓ تمت إعادة قبول الجهاز {} ({}) بنجاح في الراوتر.", ip, mac),
+            Language::French => format!("✓ Appareil {} ({}) réadmis avec succès sur le routeur.", ip, mac),
+            Language::Bengali => format!("✓ ডিভাইস {} ({}) সফলভাবে রাউটারে পুনঃঅনুমোদিত হয়েছে।", ip, mac),
+            Language::Portuguese => format!("✓ Dispositivo {} ({}) readmitido com sucesso no roteador.", ip, mac),
+            Language::Russian => format!("✓ Устройство {} ({}) успешно разблокировано на роутере.", ip, mac),
+            Language::Urdu => format!("✓ ڈیوائس {} ({}) روٹر پر کامیابی سے بحال کر دی گئی۔", ip, mac),
+        }
+    }
+
+    pub fn router_operation_failed(lang: Language, err: &str) -> String {
+        match lang {
+            Language::Spanish => format!("✗ Error en el router: {}. No se modificó el estado del dispositivo.", err),
+            Language::English => format!("✗ Router error: {}. Device state was not modified.", err),
+            Language::Chinese => format!("✗ 路由器错误：{}。设备状态未更改。", err),
+            Language::Hindi => format!("✗ राउटर त्रुटि: {}। डिवाइस की स्थिति नहीं बदली गई।", err),
+            Language::Arabic => format!("✗ خطأ في الراوتر: {}. لم يتم تعديل حالة الجهاز.", err),
+            Language::French => format!("✗ Erreur du routeur : {}. L'état de l'appareil n'a pas été modifié.", err),
+            Language::Bengali => format!("✗ রাউটার ত্রুটি: {}। ডিভাইসের অবস্থা পরিবর্তন করা হয়নি।", err),
+            Language::Portuguese => format!("✗ Erro no roteador: {}. O estado do dispositivo não foi alterado.", err),
+            Language::Russian => format!("✗ Ошибка роутера: {}. Состояние устройства не изменено.", err),
+            Language::Urdu => format!("✗ روٹر کی خرابی: {}۔ ڈیوائس کی حالت تبدیل نہیں ہوئی۔", err),
+        }
+    }
 }

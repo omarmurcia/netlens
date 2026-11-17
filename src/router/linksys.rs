@@ -12,11 +12,11 @@ pub struct RouterInfo {
     pub firmware_version: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MacFilterSettings {
-    #[serde(rename = "macFilterMode")]
-    pub mac_filter_mode: String, // "disabled", "allow", "deny"
-    #[serde(rename = "macAddresses")]
+    #[serde(rename = "macFilterMode", default)]
+    pub mac_filter_mode: String, // "Disabled", "Allow", "Deny"
+    #[serde(rename = "macAddresses", default)]
     pub mac_addresses: Vec<String>,
 }
 
@@ -63,13 +63,13 @@ impl LinksysRouter {
         result
     }
 
-    /// Ejecuta una llamada JNAP al router Linksys
-    pub async fn execute_jnap<T: for<'de> Deserialize<'de>>(
+    /// Ejecuta una llamada JNAP al router Linksys deserializando el contenedor de respuesta general
+    async fn execute_jnap_raw<T: for<'de> Deserialize<'de>>(
         ip: &str,
         action: &str,
         payload_json: &str,
         password: Option<&str>,
-    ) -> Result<T, String> {
+    ) -> Result<JnapGenericResponse<T>, String> {
         let url = format!("http://{}/JNAP/", ip);
         let mut cmd = Command::new("curl");
         cmd.arg("-s")
@@ -122,8 +122,32 @@ impl LinksysRouter {
             return Err(format!("Error en router JNAP: {}", err_msg));
         }
 
+        Ok(resp)
+    }
+
+    /// Ejecuta una llamada JNAP de tipo consulta (GET) que devuelve datos en el campo "output"
+    pub async fn execute_jnap<T: for<'de> Deserialize<'de>>(
+        ip: &str,
+        action: &str,
+        payload_json: &str,
+        password: Option<&str>,
+    ) -> Result<T, String> {
+        let resp: JnapGenericResponse<T> =
+            Self::execute_jnap_raw(ip, action, payload_json, password).await?;
         resp.output
             .ok_or_else(|| "Respuesta de router no incluyó sección de datos (output)".to_string())
+    }
+
+    /// Ejecuta una llamada JNAP de tipo acción/configuración (SET) donde la respuesta es {"result": "OK"}
+    pub async fn execute_jnap_action(
+        ip: &str,
+        action: &str,
+        payload_json: &str,
+        password: Option<&str>,
+    ) -> Result<(), String> {
+        let _: JnapGenericResponse<serde_json::Value> =
+            Self::execute_jnap_raw(ip, action, payload_json, password).await?;
+        Ok(())
     }
 
     /// Obtiene información de hardware y firmware del router Linksys
@@ -150,7 +174,7 @@ impl LinksysRouter {
 
     /// Verifica si la contraseña de administración ingresada es válida
     pub async fn verify_admin_password(ip: &str, password: &str) -> Result<bool, String> {
-        let res: Result<serde_json::Value, String> = Self::execute_jnap(
+        let res: Result<JnapGenericResponse<serde_json::Value>, String> = Self::execute_jnap_raw(
             ip,
             "http://linksys.com/jnap/macfilter/GetMACFilterSettings",
             "{}",
@@ -161,7 +185,7 @@ impl LinksysRouter {
         match res {
             Ok(_) => Ok(true),
             Err(e) => {
-                if e.contains("Unauthorized") || e.contains("credentials") {
+                if e.contains("Unauthorized") || e.contains("credentials") || e.contains("Invalid") {
                     Ok(false)
                 } else {
                     Err(e)
@@ -190,15 +214,13 @@ impl LinksysRouter {
         let payload = serde_json::to_string(settings)
             .map_err(|e| format!("Error serializando MacFilterSettings: {}", e))?;
 
-        let _: serde_json::Value = Self::execute_jnap(
+        Self::execute_jnap_action(
             ip,
             "http://linksys.com/jnap/macfilter/SetMACFilterSettings",
             &payload,
             Some(password),
         )
-        .await?;
-
-        Ok(())
+        .await
     }
 
     /// Bloquea una dirección MAC en el router mediante la lista negra permanente
@@ -214,7 +236,7 @@ impl LinksysRouter {
             current.mac_addresses.push(mac_norm);
         }
 
-        current.mac_filter_mode = "deny".to_string();
+        current.mac_filter_mode = "Deny".to_string();
         Self::set_mac_filter_settings(ip, password, &current).await
     }
 
@@ -228,7 +250,9 @@ impl LinksysRouter {
             .retain(|m| !m.trim().eq_ignore_ascii_case(mac_norm));
 
         if current.mac_addresses.is_empty() {
-            current.mac_filter_mode = "disabled".to_string();
+            current.mac_filter_mode = "Disabled".to_string();
+        } else {
+            current.mac_filter_mode = "Deny".to_string();
         }
 
         Self::set_mac_filter_settings(ip, password, &current).await

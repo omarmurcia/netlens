@@ -245,6 +245,7 @@ pub struct App {
     pub router_password_input: String,
     pub router_status_msg: Option<(String, bool)>,
     pub is_testing_router: bool,
+    pub is_operating_device: Option<Ipv4Addr>,
 }
 
 #[derive(Debug, Clone)]
@@ -291,7 +292,12 @@ pub enum Message {
     // Control de Seguridad y Router
     ToggleDeviceBlocked(Ipv4Addr, String),
     ToggleDeviceWhitelist(Ipv4Addr, String),
-    RouterOperationFinished(Result<String, String>),
+    RouterOperationFinished {
+        ip: Ipv4Addr,
+        mac: String,
+        target_blocked: bool,
+        result: Result<(), String>,
+    },
     RouterIpChanged(String),
     RouterPasswordChanged(String),
     TestRouterConnection,
@@ -394,6 +400,7 @@ impl App {
             router_password_input,
             router_status_msg: None,
             is_testing_router: false,
+            is_operating_device: None,
         };
 
         (app, Task::done(Message::StartScan))
@@ -603,57 +610,73 @@ impl App {
                     }
                 }
 
-                let mut is_now_blocked = false;
-                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
-                    dev.is_blocked = !dev.is_blocked;
-                    is_now_blocked = dev.is_blocked;
-                    Storage::set_device_blocked(
-                        &mut self.device_metadata,
-                        &mac,
-                        dev.is_blocked,
-                    );
+                if self.router_password_input.trim().is_empty() {
+                    self.notification = Some((Translations::router_require_password(self.language).to_string(), false));
+                    return Task::none();
                 }
-                self.save_state();
+
+                if self.is_operating_device.is_some() {
+                    return Task::none();
+                }
+
+                let current_blocked = self
+                    .devices
+                    .iter()
+                    .find(|d| d.ip == ip)
+                    .map(|d| d.is_blocked)
+                    .unwrap_or(false);
+                let target_blocked = !current_blocked;
+
+                self.is_operating_device = Some(ip);
 
                 let router_ip = self.router_ip_input.clone();
                 let router_pass = self.router_password_input.clone();
                 let mac_clone = mac.clone();
 
-                if !router_pass.trim().is_empty() {
-                    Task::future(async move {
-                        let res = if is_now_blocked {
-                            LinksysRouter::block_mac(&router_ip, &router_pass, &mac_clone).await
-                        } else {
-                            LinksysRouter::unblock_mac(&router_ip, &router_pass, &mac_clone).await
-                        };
-                        match res {
-                            Ok(_) => {
-                                let action_str = if is_now_blocked { "bloqueado 24/7 en router Linksys" } else { "readmitido en router Linksys" };
-                                Message::RouterOperationFinished(Ok(format!("Dispositivo {} {}", mac_clone, action_str)))
-                            }
-                            Err(e) => {
-                                Message::RouterOperationFinished(Err(format!("Error en router: {}. (Guardado en lista negra local)", e)))
-                            }
-                        }
-                    })
-                } else {
-                    let notif_msg = if is_now_blocked {
-                        format!("Dispositivo {} marcado como Bloqueado en lista negra (Ingresa la contraseña del router en Ajustes para aplicar en hardware 24/7).", ip)
+                Task::future(async move {
+                    let res = if target_blocked {
+                        LinksysRouter::block_mac(&router_ip, &router_pass, &mac_clone).await
                     } else {
-                        format!("Dispositivo {} desbloqueado.", ip)
+                        LinksysRouter::unblock_mac(&router_ip, &router_pass, &mac_clone).await
                     };
-                    self.notification = Some((notif_msg, true));
-                    Task::none()
-                }
+                    Message::RouterOperationFinished {
+                        ip,
+                        mac: mac_clone,
+                        target_blocked,
+                        result: res,
+                    }
+                })
             }
 
-            Message::RouterOperationFinished(result) => {
+            Message::RouterOperationFinished {
+                ip,
+                mac,
+                target_blocked,
+                result,
+            } => {
+                self.is_operating_device = None;
                 match result {
-                    Ok(msg) => {
-                        self.notification = Some((msg, true));
+                    Ok(()) => {
+                        if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                            dev.is_blocked = target_blocked;
+                        }
+                        Storage::set_device_blocked(
+                            &mut self.device_metadata,
+                            &mac,
+                            target_blocked,
+                        );
+                        self.save_state();
+
+                        let notif = if target_blocked {
+                            Translations::router_block_success(self.language, &ip.to_string(), &mac)
+                        } else {
+                            Translations::router_unblock_success(self.language, &ip.to_string(), &mac)
+                        };
+                        self.notification = Some((notif, true));
                     }
                     Err(err) => {
-                        self.notification = Some((err, false));
+                        let notif = Translations::router_operation_failed(self.language, &err);
+                        self.notification = Some((notif, false));
                     }
                 }
                 Task::none()
@@ -832,11 +855,13 @@ impl App {
                         if prev_category != DeviceCategory::Unknown && existing.category == DeviceCategory::Unknown {
                             existing.category = prev_category;
                         }
-                        if prev_wl {
-                            existing.is_whitelisted = true;
-                        }
-                        if prev_bl {
-                            existing.is_blocked = true;
+                        if !self.device_metadata.contains_key(&mac_key) {
+                            if prev_wl {
+                                existing.is_whitelisted = true;
+                            }
+                            if prev_bl {
+                                existing.is_blocked = true;
+                            }
                         }
                         if existing.speed_limit_kbps.is_none() {
                             existing.speed_limit_kbps = prev_lim;
@@ -2347,17 +2372,23 @@ impl App {
         );
 
         if !device.is_current_host && !device.is_gateway {
-            let (block_label, block_style) = if device.is_blocked {
+            let is_this_device_operating = self.is_operating_device == Some(device.ip);
+            let (block_label, block_style) = if is_this_device_operating {
+                (Translations::btn_applying(self.language), CustomStyles::secondary_button())
+            } else if device.is_blocked {
                 (Translations::btn_unblock_router(self.language), CustomStyles::success_button())
             } else {
                 (Translations::btn_block_router(self.language), CustomStyles::danger_button())
             };
-            security_actions = security_actions.push(
-                button(text(block_label).size(11))
-                    .style(move |_, _| block_style.clone())
-                    .padding(Padding::from([4, 7]))
-                    .on_press(Message::ToggleDeviceBlocked(device.ip, device.mac.clone())),
-            );
+            let mut block_btn = button(text(block_label).size(11))
+                .style(move |_, _| block_style.clone())
+                .padding(Padding::from([4, 7]));
+
+            if !is_this_device_operating {
+                block_btn = block_btn.on_press(Message::ToggleDeviceBlocked(device.ip, device.mac.clone()));
+            }
+
+            security_actions = security_actions.push(block_btn);
         }
 
         insp = insp.push(security_actions);
