@@ -8,3 +8,5 @@ pub mod speedtest;
 pub mod storage;
 pub mod telemetry;
 pub mod theme;
+pub mod traceroute;
+pub mod widget;

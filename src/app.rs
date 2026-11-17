@@ -1,24 +1,35 @@
 use crate::export::Exporter;
 use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
-use crate::router::LinksysRouter;
+use crate::router::{LinksysRouter, RouterConnection};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
 use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
 use crate::storage::{AppState, DeviceMetadata, Storage};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
+use crate::traceroute::{HopInfo, Traceroute};
+use crate::widget::Sparkline;
 use iced::futures::channel::mpsc;
+use iced::widget::canvas::Canvas;
 use iced::widget::{
     button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, Column,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Subscription, Task, Theme};
 use mac_oui::Oui;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone)]
+pub struct IntruderAlert {
+    pub ip: Ipv4Addr,
+    pub mac: String,
+    pub vendor: String,
+    pub hostname: Option<String>,
+}
 
 pub const AVAILABLE_THEMES: &[Theme] = &[
     Theme::TokyoNight,
@@ -246,6 +257,28 @@ pub struct App {
     pub router_status_msg: Option<(String, bool)>,
     pub is_testing_router: bool,
     pub is_operating_device: Option<Ipv4Addr>,
+
+    // Telemetría con Sparklines en tiempo real
+    pub download_history: VecDeque<f32>,
+    pub upload_history: VecDeque<f32>,
+    pub ping_history: VecDeque<f32>,
+
+    // Auto-Discovery periódico
+    pub auto_scan_interval_secs: u32,
+    pub last_scan_time: Instant,
+
+    // Detección de Intrusos / Rogue Device Alert
+    pub known_macs: HashSet<String>,
+    pub alerted_macs: HashSet<String>,
+    pub pending_intruder_alert: Option<IntruderAlert>,
+
+    // Topología Linksys Mesh
+    pub router_connections: HashMap<String, RouterConnection>,
+
+    // Traceroute Visual
+    pub is_tracing_route: bool,
+    pub traceroute_hops: Option<Vec<HopInfo>>,
+    pub traceroute_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -263,6 +296,7 @@ pub enum Message {
     CloseSettings,
     LanguageChanged(Language),
     ThemeChanged(Theme),
+    AutoScanIntervalChanged(u32),
 
     // Test de Velocidad de Internet
     OpenSpeedTest,
@@ -284,14 +318,18 @@ pub enum Message {
     PingTestFinished(Result<PingStats, String>),
     StartDeepScan(Ipv4Addr),
     DeepScanFinished(Vec<PortInfo>),
+    StartTraceroute(Ipv4Addr),
+    TracerouteFinished(Result<Vec<HopInfo>, String>),
     SendWol(String),
     WolFinished(Result<(), String>),
     OpenInBrowser(Ipv4Addr),
     ChangeDeviceCategory(Ipv4Addr, DeviceCategory),
 
-    // Control de Seguridad y Router
+    // Control de Seguridad, Intrusos y Router
     ToggleDeviceBlocked(Ipv4Addr, String),
     ToggleDeviceWhitelist(Ipv4Addr, String),
+    TrustDevice(String),
+    DismissIntruderAlert,
     RouterOperationFinished {
         ip: Ipv4Addr,
         mac: String,
@@ -302,6 +340,8 @@ pub enum Message {
     RouterPasswordChanged(String),
     TestRouterConnection,
     RouterTestFinished(Result<bool, String>),
+    FetchRouterTopology,
+    RouterTopologyReceived(Result<Vec<RouterConnection>, String>),
 
     // Alias
     AliasInputChanged(String),
@@ -355,6 +395,15 @@ impl App {
             });
         let router_password_input = saved.router_password.unwrap_or_default();
         let speed_test_history = saved.speed_test_history;
+        let auto_scan_interval_secs = saved.auto_scan_interval_secs;
+        let mut known_macs: HashSet<String> = saved
+            .known_macs
+            .into_iter()
+            .map(|m| m.trim().to_lowercase())
+            .collect();
+        for dev in &devices {
+            known_macs.insert(dev.mac.trim().to_lowercase());
+        }
 
         let status = if let Some(gw) = network.gateway_ip {
             AppStatus::ConnectedTo {
@@ -401,6 +450,18 @@ impl App {
             router_status_msg: None,
             is_testing_router: false,
             is_operating_device: None,
+            download_history: VecDeque::with_capacity(30),
+            upload_history: VecDeque::with_capacity(30),
+            ping_history: VecDeque::with_capacity(30),
+            auto_scan_interval_secs,
+            last_scan_time: Instant::now(),
+            known_macs,
+            alerted_macs: HashSet::new(),
+            pending_intruder_alert: None,
+            router_connections: HashMap::new(),
+            is_tracing_route: false,
+            traceroute_hops: None,
+            traceroute_error: None,
         };
 
         (app, Task::done(Message::StartScan))
@@ -421,6 +482,8 @@ impl App {
             } else {
                 Some(self.router_password_input.clone())
             },
+            auto_scan_interval_secs: self.auto_scan_interval_secs,
+            known_macs: self.known_macs.iter().cloned().collect(),
         };
         if let Err(e) = Storage::save(&state) {
             eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
@@ -444,6 +507,36 @@ impl App {
         match message {
             Message::Tick => {
                 self.telemetry.update_sample(&self.network.interface);
+
+                // Telemetría con Sparklines: registrar muestras de los últimos 30 segundos
+                self.download_history
+                    .push_back(self.telemetry.download_speed_bps as f32);
+                if self.download_history.len() > 30 {
+                    self.download_history.pop_front();
+                }
+
+                self.upload_history
+                    .push_back(self.telemetry.upload_speed_bps as f32);
+                if self.upload_history.len() > 30 {
+                    self.upload_history.pop_front();
+                }
+
+                if let Some(stats) = &self.inspector_ping_stats {
+                    self.ping_history.push_back(stats.avg_ms);
+                    if self.ping_history.len() > 30 {
+                        self.ping_history.pop_front();
+                    }
+                }
+
+                // Auto-Discovery: si el intervalo está activo y transcurrió el tiempo, re-escanear automáticamente
+                if self.auto_scan_interval_secs > 0
+                    && !self.is_scanning
+                    && self.last_scan_time.elapsed().as_secs() >= self.auto_scan_interval_secs as u64
+                {
+                    self.last_scan_time = Instant::now();
+                    return Task::done(Message::StartScan);
+                }
+
                 Task::none()
             }
 
@@ -478,6 +571,13 @@ impl App {
 
             Message::ThemeChanged(theme) => {
                 self.current_theme = theme;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::AutoScanIntervalChanged(secs) => {
+                self.auto_scan_interval_secs = secs;
+                self.last_scan_time = Instant::now();
                 self.save_state();
                 Task::none()
             }
@@ -722,7 +822,83 @@ impl App {
                     }
                 }
                 Task::none()
-            },
+            }
+
+            Message::TrustDevice(mac) => {
+                let mac_norm = mac.trim().to_lowercase();
+                self.known_macs.insert(mac_norm.clone());
+                Storage::set_device_whitelist(&mut self.device_metadata, &mac_norm, true);
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.mac.trim().eq_ignore_ascii_case(&mac_norm)) {
+                    dev.is_whitelisted = true;
+                }
+                self.pending_intruder_alert = None;
+                self.save_state();
+                self.notification = Some(("Dispositivo verificado y añadido a Lista Blanca.".to_string(), true));
+                Task::none()
+            }
+
+            Message::DismissIntruderAlert => {
+                if let Some(alert) = &self.pending_intruder_alert {
+                    self.known_macs.insert(alert.mac.trim().to_lowercase());
+                }
+                self.pending_intruder_alert = None;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::FetchRouterTopology => {
+                let ip = self.router_ip_input.clone();
+                let pass = self.router_password_input.clone();
+                if pass.trim().is_empty() {
+                    return Task::none();
+                }
+                Task::future(async move {
+                    let res = LinksysRouter::get_network_connections(&ip, &pass).await;
+                    Message::RouterTopologyReceived(res)
+                })
+            }
+
+            Message::RouterTopologyReceived(res) => {
+                if let Ok(conns) = res {
+                    for c in conns {
+                        let key = c.mac_address.trim().to_uppercase();
+                        if let Some(dev) = self.devices.iter_mut().find(|d| d.mac.trim().eq_ignore_ascii_case(&key)) {
+                            if let Some(w) = &c.wireless {
+                                dev.connection_type = w.band.clone();
+                                dev.wifi_signal_dbm = w.signal_decibels;
+                            } else if c.negotiated_mbps.is_some() {
+                                dev.connection_type = Some("Ethernet".to_string());
+                            }
+                            dev.negotiated_mbps = c.negotiated_mbps;
+                        }
+                        self.router_connections.insert(key, c);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::StartTraceroute(target_ip) => {
+                self.is_tracing_route = true;
+                self.traceroute_error = None;
+                self.traceroute_hops = None;
+                Task::future(async move {
+                    let res = Traceroute::trace(&target_ip.to_string()).await;
+                    Message::TracerouteFinished(res)
+                })
+            }
+
+            Message::TracerouteFinished(res) => {
+                self.is_tracing_route = false;
+                match res {
+                    Ok(hops) => {
+                        self.traceroute_hops = Some(hops);
+                    }
+                    Err(err) => {
+                        self.traceroute_error = Some(err);
+                    }
+                }
+                Task::none()
+            }
 
             Message::ChangeDeviceCategory(ip, new_category) => {
                 if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
@@ -842,6 +1018,48 @@ impl App {
                         device.speed_limit_kbps = meta.speed_limit_kbps;
                     }
 
+                    // Enriquecer con topología del router si ya está disponible en cache
+                    let norm_mac = device.mac.trim().to_uppercase();
+                    if let Some(conn) = self.router_connections.get(&norm_mac) {
+                        if let Some(w) = &conn.wireless {
+                            device.connection_type = w.band.clone();
+                            device.wifi_signal_dbm = w.signal_decibels;
+                        } else if conn.negotiated_mbps.is_some() {
+                            device.connection_type = Some("Ethernet".to_string());
+                        }
+                        device.negotiated_mbps = conn.negotiated_mbps;
+                    }
+
+                    // Detección de Intrusos / Dispositivos Nuevos Desconocidos
+                    if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
+                        if !self.known_macs.contains(&mac_key) {
+                            if self.alerted_macs.insert(mac_key.clone()) {
+                                let dev_name = device.display_name();
+                                let dev_ip = device.ip.to_string();
+                                let dev_mac = device.mac.clone();
+                                tokio::spawn(async move {
+                                    let _ = tokio::process::Command::new("notify-send")
+                                        .arg("-u")
+                                        .arg("normal")
+                                        .arg("-i")
+                                        .arg("network-wireless")
+                                        .arg("-a")
+                                        .arg("NetLens")
+                                        .arg("⚠️ Nuevo Dispositivo en la Red")
+                                        .arg(format!("Dispositivo no reconocido:\n{} ({})\nMAC: {}", dev_name, dev_ip, dev_mac))
+                                        .spawn();
+                                });
+
+                                self.pending_intruder_alert = Some(IntruderAlert {
+                                    ip: device.ip,
+                                    mac: device.mac.clone(),
+                                    vendor: device.vendor.clone(),
+                                    hostname: device.hostname.clone(),
+                                });
+                            }
+                        }
+                    }
+
                     if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
                         let prev_alias = existing.custom_alias.clone();
                         let prev_category = existing.category;
@@ -877,12 +1095,18 @@ impl App {
                 } => {
                     self.is_scanning = false;
                     self.scan_progress = 1.0;
+                    self.last_scan_time = Instant::now();
                     self.status = AppStatus::ScanFinished {
                         total_found,
                         duration_secs: duration_ms as f32 / 1000.0,
                     };
                     self.save_state();
-                    Task::none()
+
+                    if !self.router_password_input.trim().is_empty() {
+                        Task::done(Message::FetchRouterTopology)
+                    } else {
+                        Task::none()
+                    }
                 }
                 ScanEvent::Error(err) => {
                     self.is_scanning = false;
@@ -1185,6 +1409,11 @@ impl App {
         // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
         content = content.push(self.view_telemetry_dashboard());
 
+        // Banner de Alerta de Intrusos (Rogue Device) si se detecta un dispositivo desconocido
+        if let Some(alert) = &self.pending_intruder_alert {
+            content = content.push(self.view_intruder_alert(alert));
+        }
+
         // 3. Barra de filtros, categorías, buscador y ordenación
         content = content.push(self.view_controls());
 
@@ -1215,6 +1444,55 @@ impl App {
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
+            .into()
+    }
+
+    /// Banner destacado de advertencia cuando se detecta un nuevo dispositivo no reconocido en la red local
+    fn view_intruder_alert(&self, alert: &IntruderAlert) -> Element<'_, Message> {
+        let title = text(Translations::intruder_alert_title(self.language))
+            .size(12)
+            .color(Color::from_rgb8(248, 113, 113));
+
+        let hostname_str = alert.hostname.as_deref().unwrap_or("Sin nombre DNS");
+        let info = text(format!(
+            "IP: {}   |   MAC: {}   |   {}   |   Fabricante: {}",
+            alert.ip,
+            alert.mac,
+            hostname_str,
+            alert.vendor
+        ))
+        .size(11)
+        .color(CustomStyles::text_primary());
+
+        let btn_trust = button(text(Translations::intruder_btn_trust(self.language)).size(11))
+            .style(|_, _| CustomStyles::success_button())
+            .padding(Padding::from([4, 8]))
+            .on_press(Message::TrustDevice(alert.mac.clone()));
+
+        let btn_block = button(text(Translations::intruder_btn_block(self.language)).size(11))
+            .style(|_, _| CustomStyles::danger_button())
+            .padding(Padding::from([4, 8]))
+            .on_press(Message::ToggleDeviceBlocked(alert.ip, alert.mac.clone()));
+
+        let btn_dismiss = button(text(Translations::intruder_btn_dismiss(self.language)).size(11))
+            .style(|_, _| CustomStyles::secondary_button())
+            .padding(Padding::from([4, 8]))
+            .on_press(Message::DismissIntruderAlert);
+
+        let row_content = row![
+            column![title, info].spacing(2),
+            space::horizontal(),
+            btn_trust,
+            btn_block,
+            btn_dismiss,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        container(row_content)
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_danger())
             .into()
     }
 
@@ -1364,7 +1642,47 @@ impl App {
         .align_y(Alignment::Center)
         .spacing(12);
 
-        // Ajuste 3: Control de Router (Linksys MR73 Mesh / JNAP)
+        // Ajuste 3: Escaneo Automático Periódico (Auto-Discovery)
+        let intervals: &[(u32, &'static str)] = &[
+            (0, Translations::auto_scan_disabled(self.language)),
+            (30, Translations::auto_scan_30s(self.language)),
+            (60, Translations::auto_scan_1m(self.language)),
+            (120, Translations::auto_scan_2m(self.language)),
+            (300, Translations::auto_scan_5m(self.language)),
+        ];
+
+        let mut auto_scan_buttons = row![].spacing(6).align_y(Alignment::Center);
+        for &(secs, label) in intervals {
+            let is_active = self.auto_scan_interval_secs == secs;
+            let btn = button(text(label).size(11))
+                .style(move |_, _| {
+                    if is_active {
+                        CustomStyles::primary_button()
+                    } else {
+                        CustomStyles::secondary_button()
+                    }
+                })
+                .padding(Padding::from([4, 8]))
+                .on_press(Message::AutoScanIntervalChanged(secs));
+            auto_scan_buttons = auto_scan_buttons.push(btn);
+        }
+
+        let auto_scan_section = column![
+            text(Translations::auto_scan_title(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            text(Translations::auto_scan_desc(self.language))
+                .size(11)
+                .color(CustomStyles::text_muted()),
+            auto_scan_buttons,
+        ]
+        .spacing(6);
+
+        let auto_scan_card = container(auto_scan_section)
+            .padding(12)
+            .style(|_| CustomStyles::card_container());
+
+        // Ajuste 4: Control de Router (Linksys MR73 Mesh / JNAP)
         let router_ip_input = text_input("192.168.1.1", &self.router_ip_input)
             .on_input(Message::RouterIpChanged)
             .padding(Padding::from([5, 8]))
@@ -1443,6 +1761,7 @@ impl App {
             title_row,
             theme_row,
             lang_row,
+            auto_scan_card,
             router_card,
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
             row![space::horizontal(), close_btn],
@@ -1714,9 +2033,16 @@ impl App {
 
     /// Dashboard superior de telemetría en vivo: Velocidad de bajada, subida, señal Wi-Fi y router
     fn view_telemetry_dashboard(&self) -> Element<'_, Message> {
-        // Card 1: Velocidad de Descarga (Download)
+        // Card 1: Velocidad de Descarga (Download con Sparkline)
         let rx_speed_str = Telemetry::format_speed(self.telemetry.download_speed_bps);
         let rx_session_str = Telemetry::format_bytes(self.telemetry.session_download_bytes());
+
+        let sparkline_dl = Canvas::new(Sparkline::new(
+            self.download_history.iter().copied().collect(),
+            CustomStyles::accent_emerald(),
+        ))
+        .width(Length::Fill)
+        .height(20);
 
         let card_download = container(
             column![
@@ -1727,6 +2053,7 @@ impl App {
                 ]
                 .align_y(Alignment::Center),
                 text(rx_speed_str).size(20).color(CustomStyles::accent_emerald()),
+                sparkline_dl,
                 text(format!("{}: {}", Translations::session(self.language), rx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
@@ -1735,9 +2062,16 @@ impl App {
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::card_download());
 
-        // Card 2: Velocidad de Subida (Upload)
+        // Card 2: Velocidad de Subida (Upload con Sparkline)
         let tx_speed_str = Telemetry::format_speed(self.telemetry.upload_speed_bps);
         let tx_session_str = Telemetry::format_bytes(self.telemetry.session_upload_bytes());
+
+        let sparkline_ul = Canvas::new(Sparkline::new(
+            self.upload_history.iter().copied().collect(),
+            CustomStyles::accent_purple(),
+        ))
+        .width(Length::Fill)
+        .height(20);
 
         let card_upload = container(
             column![
@@ -1748,6 +2082,7 @@ impl App {
                 ]
                 .align_y(Alignment::Center),
                 text(tx_speed_str).size(20).color(CustomStyles::accent_purple()),
+                sparkline_ul,
                 text(format!("{}: {}", Translations::session(self.language), tx_session_str)).size(11).color(CustomStyles::text_secondary()),
             ]
             .spacing(3),
@@ -2090,6 +2425,26 @@ impl App {
                 .style(|_| CustomStyles::badge_pill(Color::from_rgb8(40, 50, 70), CustomStyles::text_secondary())),
         );
 
+        // Badge de Topología de Conexión Router (Mesh / Wi-Fi / Ethernet)
+        if let Some(conn_type) = &device.connection_type {
+            let (top_label, top_bg, top_color) = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                (format!("📶 5GHz{}", sig), Color::from_rgb8(15, 45, 40), CustomStyles::accent_emerald())
+            } else if conn_type.contains("2.4GHz") || conn_type.contains("2.4 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                (format!("📶 2.4GHz{}", sig), Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())
+            } else {
+                let mbps = device.negotiated_mbps.map(|m| format!(" {}M", m)).unwrap_or_default();
+                (format!("🔌 LAN{}", mbps), Color::from_rgb8(25, 30, 50), CustomStyles::accent_cyan())
+            };
+
+            sub_tags = sub_tags.push(
+                container(text(top_label).size(10).color(top_color))
+                    .padding(Padding::from([2, 6]))
+                    .style(move |_| CustomStyles::badge_pill(top_bg, top_color)),
+            );
+        }
+
         // Servicios / Puertos detectados
         for p in device.open_ports.iter().take(2) {
             sub_tags = sub_tags.push(
@@ -2303,6 +2658,22 @@ impl App {
             Translations::spec_link_quality(self.language),
             Translations::link_quality_desc(device.latency_ms, self.language),
         ));
+
+        // Información de topología Linksys Mesh si está disponible
+        if let Some(conn_type) = &device.connection_type {
+            let label = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                format!("{} {}", Translations::topology_wifi_5g(self.language), sig)
+            } else if conn_type.contains("2.4GHz") || conn_type.contains("2.4 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                format!("{} {}", Translations::topology_wifi_24g(self.language), sig)
+            } else {
+                let mbps = device.negotiated_mbps.map(|m| format!(" ({} Mbps)", m)).unwrap_or_default();
+                format!("{}{}", Translations::topology_ethernet(self.language), mbps)
+            };
+            specs_col = specs_col.push(Self::spec_line("Topología Router", &label));
+        }
+
         specs_col = specs_col.push(Self::spec_line(Translations::spec_interface(self.language), &device.interface));
         specs_col = specs_col.push(Self::spec_line(
             Translations::spec_status(self.language),
@@ -2417,8 +2788,16 @@ impl App {
         .spacing(5);
 
         if let Some(stats) = &self.inspector_ping_stats {
+            let ping_sparkline = Canvas::new(Sparkline::new(
+                self.ping_history.iter().copied().collect(),
+                CustomStyles::accent_cyan(),
+            ))
+            .width(Length::Fill)
+            .height(20);
+
             ping_section = ping_section.push(
                 column![
+                    ping_sparkline,
                     row![
                         text(format!("{} {}", Translations::ping_sent(self.language), stats.transmitted)).size(11).color(CustomStyles::text_secondary()),
                         text(format!("{} {}", Translations::ping_received(self.language), stats.received)).size(11).color(CustomStyles::accent_emerald()),
@@ -2494,6 +2873,78 @@ impl App {
 
         insp = insp.push(
             container(ports_section)
+                .padding(8)
+                .style(|_| CustomStyles::card_container()),
+        );
+
+        // Herramienta 3: Diagnóstico de Ruta / Traceroute Visual
+        let trace_btn_text = if self.is_tracing_route {
+            Translations::traceroute_btn_tracing(self.language)
+        } else {
+            Translations::traceroute_btn_start(self.language)
+        };
+
+        let trace_btn = button(text(trace_btn_text).size(11))
+            .style(|_, _| CustomStyles::secondary_button())
+            .padding(Padding::from([5, 8]))
+            .on_press(Message::StartTraceroute(device.ip));
+
+        let mut trace_section = column![
+            row![
+                text(Translations::traceroute_title(self.language)).size(11).color(CustomStyles::text_muted()),
+                space::horizontal(),
+                trace_btn,
+            ]
+            .align_y(Alignment::Center),
+        ]
+        .spacing(5);
+
+        if let Some(err) = &self.traceroute_error {
+            trace_section = trace_section.push(text(err).size(11).color(Color::from_rgb8(239, 68, 68)));
+        } else if let Some(hops) = &self.traceroute_hops {
+            let hops_header = row![
+                text(Translations::traceroute_hop_col(self.language)).size(10).color(CustomStyles::text_muted()).width(36),
+                text(Translations::traceroute_ip_col(self.language)).size(10).color(CustomStyles::text_muted()).width(200),
+                space::horizontal(),
+                text(Translations::traceroute_latency_col(self.language)).size(10).color(CustomStyles::text_muted()),
+            ]
+            .spacing(6);
+            trace_section = trace_section.push(hops_header);
+
+            let mut hops_col = Column::new().spacing(4);
+            for h in hops {
+                let (ip_str, latency_str, color) = if h.is_timeout {
+                    ("---".to_string(), Translations::traceroute_timeout(self.language).to_string(), Color::from_rgb8(239, 68, 68))
+                } else {
+                    let lat = h.latency_ms.map(|ms| format!("{:.1} ms", ms)).unwrap_or_else(|| "-- ms".to_string());
+                    let col = if h.latency_ms.map(|ms| ms > 50.0).unwrap_or(false) {
+                        CustomStyles::accent_amber()
+                    } else {
+                        CustomStyles::accent_emerald()
+                    };
+                    let ip = h.ip.as_deref().unwrap_or("?");
+                    let label = h.label.as_deref().map(|l| format!(" ({})", l)).unwrap_or_default();
+                    (format!("{}{}", ip, label), lat, col)
+                };
+
+                hops_col = hops_col.push(
+                    row![
+                        container(text(format!("#{}", h.hop)).size(9).color(CustomStyles::accent_cyan()))
+                            .padding(Padding::from([1, 4]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
+                        text(ip_str).size(10).color(CustomStyles::text_primary()).width(200),
+                        space::horizontal(),
+                        text(latency_str).size(10).color(color),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                );
+            }
+            trace_section = trace_section.push(scrollable(hops_col).height(120));
+        }
+
+        insp = insp.push(
+            container(trace_section)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );

@@ -115,6 +115,9 @@ fn test_export_json_and_csv() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     let ctx = NetworkContext {
@@ -207,6 +210,9 @@ fn test_i18n_top_10_languages() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     for &lang in Language::ALL {
@@ -341,6 +347,9 @@ fn test_storage_persistence() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     let dev2 = Device {
@@ -362,6 +371,9 @@ fn test_storage_persistence() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     let mut list = vec![dev1, dev2];
@@ -402,6 +414,8 @@ fn test_storage_persistence() {
         ],
         router_ip: Some("192.168.1.1".to_string()),
         router_password: Some("my_router_pass".to_string()),
+        auto_scan_interval_secs: 0,
+        known_macs: Vec::new(),
     };
 
     let json = serde_json::to_string_pretty(&state).expect("Failed to serialize state");
@@ -464,6 +478,9 @@ fn test_whitelist_and_blacklist_persistence() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     let dev_blocked = Device {
@@ -485,6 +502,9 @@ fn test_whitelist_and_blacklist_persistence() {
         is_whitelisted: false,
         is_blocked: false,
         speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
     };
 
     let mut list = vec![dev_trusted.clone(), dev_blocked.clone()];
@@ -575,4 +595,123 @@ fn test_i18n_router_notifications() {
         assert!(!Translations::speed_test_col_download(lang).is_empty());
         assert!(!Translations::speed_test_col_upload(lang).is_empty());
     }
+}
+
+#[test]
+fn test_traceroute_output_parsing() {
+    use netlens::traceroute::Traceroute;
+
+    let sample_output = r#"
+ 1?: [LOCALHOST]     pmtu 1500
+ 1:  192.168.1.1                                           0.542ms 
+ 1:  192.168.1.1                                           0.481ms 
+ 2:  10.20.0.1                                             5.210ms 
+ 3:  no reply
+ 4:  8.8.8.8                                              12.350ms reached
+    "#;
+
+    let hops = Traceroute::parse_output(sample_output, "8.8.8.8");
+    assert_eq!(hops.len(), 4, "Debe haber 4 saltos distintos");
+
+    // Salto 1
+    assert_eq!(hops[0].hop, 1);
+    assert_eq!(hops[0].ip.as_deref(), Some("192.168.1.1"));
+    assert!(!hops[0].is_timeout);
+    assert!(hops[0].latency_ms.is_some());
+    assert_eq!(hops[0].label.as_deref(), Some("Router Local (Gateway)"));
+
+    // Salto 2
+    assert_eq!(hops[1].hop, 2);
+    assert_eq!(hops[1].ip.as_deref(), Some("10.20.0.1"));
+    assert!(!hops[1].is_timeout);
+    assert_eq!(hops[1].label.as_deref(), Some("Modem / ISP Gateway"));
+
+    // Salto 3
+    assert_eq!(hops[2].hop, 3);
+    assert!(hops[2].is_timeout);
+    assert!(hops[2].ip.is_none());
+
+    // Salto 4
+    assert_eq!(hops[3].hop, 4);
+    assert_eq!(hops[3].ip.as_deref(), Some("8.8.8.8"));
+    assert!(!hops[3].is_timeout);
+    assert_eq!(hops[3].label.as_deref(), Some("Destino Final"));
+}
+
+#[test]
+fn test_sparkline_widget() {
+    use iced::Color;
+    use netlens::widget::Sparkline;
+
+    let data = vec![10.5, 20.0, 15.2, 35.8];
+    let sparkline = Sparkline::new(data.clone(), Color::from_rgb8(16, 185, 129));
+    assert_eq!(sparkline.points.len(), 4);
+    assert_eq!(sparkline.points[1], 20.0);
+}
+
+#[test]
+fn test_i18n_v2_features_all_languages() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert!(!Translations::intruder_alert_title(lang).is_empty());
+        assert!(!Translations::intruder_btn_trust(lang).is_empty());
+        assert!(!Translations::intruder_btn_block(lang).is_empty());
+        assert!(!Translations::intruder_btn_dismiss(lang).is_empty());
+        assert!(!Translations::auto_scan_title(lang).is_empty());
+        assert!(!Translations::auto_scan_desc(lang).is_empty());
+        assert!(!Translations::auto_scan_disabled(lang).is_empty());
+        assert!(!Translations::auto_scan_30s(lang).is_empty());
+        assert!(!Translations::auto_scan_1m(lang).is_empty());
+        assert!(!Translations::auto_scan_2m(lang).is_empty());
+        assert!(!Translations::auto_scan_5m(lang).is_empty());
+        assert!(!Translations::topology_wifi_5g(lang).is_empty());
+        assert!(!Translations::topology_wifi_24g(lang).is_empty());
+        assert!(!Translations::topology_ethernet(lang).is_empty());
+        assert!(!Translations::traceroute_title(lang).is_empty());
+        assert!(!Translations::traceroute_btn_start(lang).is_empty());
+        assert!(!Translations::traceroute_btn_tracing(lang).is_empty());
+        assert!(!Translations::traceroute_timeout(lang).is_empty());
+        assert!(!Translations::traceroute_hop_col(lang).is_empty());
+        assert!(!Translations::traceroute_ip_col(lang).is_empty());
+        assert!(!Translations::traceroute_latency_col(lang).is_empty());
+    }
+}
+
+#[test]
+fn test_topology_and_auto_scan_state_serde() {
+    use netlens::router::RouterConnection;
+    use netlens::storage::AppState;
+
+    // Test RouterConnection serde
+    let conn_json = r#"{
+        "macAddress": "28:44:F4:9F:1B:09",
+        "ipAddress": "192.168.1.215",
+        "negotiatedMbps": 433,
+        "wireless": {
+            "bssid": "D8:EC:5E:9C:77:1C",
+            "band": "5GHz",
+            "signalDecibels": -58
+        }
+    }"#;
+    let conn: RouterConnection = serde_json::from_str(conn_json).expect("deserialize router connection");
+    assert_eq!(conn.mac_address, "28:44:F4:9F:1B:09");
+    assert_eq!(conn.negotiated_mbps, Some(433));
+    let wireless = conn.wireless.expect("wireless info");
+    assert_eq!(wireless.band.as_deref(), Some("5GHz"));
+    assert_eq!(wireless.signal_decibels, Some(-58));
+
+    // Test AppState with auto scan and known macs
+    let state_json = r#"{
+        "language": "Spanish",
+        "theme": "Dark",
+        "devices": [],
+        "device_metadata": {},
+        "auto_scan_interval_secs": 60,
+        "known_macs": ["28:44:F4:9F:1B:09", "6C:0B:5E:72:C8:D8"]
+    }"#;
+    let state: AppState = serde_json::from_str(state_json).expect("deserialize app state");
+    assert_eq!(state.auto_scan_interval_secs, 60);
+    assert_eq!(state.known_macs.len(), 2);
+    assert_eq!(state.known_macs[0], "28:44:F4:9F:1B:09");
 }

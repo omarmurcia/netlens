@@ -2621,4 +2621,319 @@ impl Translations {
             Language::Urdu => format!("✗ روٹر کی خرابی: {}۔ ڈیوائس کی حالت تبدیل نہیں ہوئی۔", err),
         }
     }
+
+    pub fn intruder_alert_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⚠️ NUEVO DISPOSITIVO NO RECONOCIDO EN LA RED",
+            Language::English => "⚠️ NEW UNRECOGNIZED DEVICE ON NETWORK",
+            Language::Chinese => "⚠️ 网络上发现新的未识别设备",
+            Language::Hindi => "⚠️ नेटवर्क पर नया अपरिचित उपकरण पाया गया",
+            Language::Arabic => "⚠️ جهاز جديد غير معروف تم اكتشافه على الشبكة",
+            Language::French => "⚠️ NOUVEL APPAREIL NON RECONNU DÉTECTÉ",
+            Language::Bengali => "⚠️ নেটওয়ার্কে নতুন অপরিচিত ডিভাইস সনাক্ত হয়েছে",
+            Language::Portuguese => "⚠️ NOVO DISPOSITIVO NÃO RECONHECIDO NA REDE",
+            Language::Russian => "⚠️ ОБНАРУЖЕНО НОВОЕ НЕИЗВЕСТНОЕ УСТРОЙСТВО",
+            Language::Urdu => "⚠️ نیٹ ورک پر نیا نامعلوم آلہ دیکھا گیا",
+        }
+    }
+
+    pub fn intruder_btn_trust(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🛡️ Confiar (Lista Blanca)",
+            Language::English => "🛡️ Trust (Whitelist)",
+            Language::Chinese => "🛡️ 信任并加入白名单",
+            Language::Hindi => "🛡️ विश्वास करें (श्वेतसूची)",
+            Language::Arabic => "🛡️ الوثوق (القائمة البيضاء)",
+            Language::French => "🛡️ Faire confiance (Liste blanche)",
+            Language::Bengali => "🛡️ বিশ্বাস করুন (হোয়াইটলিস্ট)",
+            Language::Portuguese => "🛡️ Confiar (Lista Branca)",
+            Language::Russian => "🛡️ Доверять (Белый список)",
+            Language::Urdu => "🛡️ اعتماد کریں (وائٹ لسٹ)",
+        }
+    }
+
+    pub fn intruder_btn_block(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🚫 Bloquear en Router 24/7",
+            Language::English => "🚫 Block on Router 24/7",
+            Language::Chinese => "🚫 在路由器上永久阻止 24/7",
+            Language::Hindi => "🚫 राउटर पर 24/7 ब्लॉक करें",
+            Language::Arabic => "🚫 حظر على الراوتر 24/7",
+            Language::French => "🚫 Bloquer sur le routeur 24/7",
+            Language::Bengali => "🚫 রাউটারে ২৪/৭ ব্লক করুন",
+            Language::Portuguese => "🚫 Bloquear no Roteador 24/7",
+            Language::Russian => "🚫 Блокировать на роутере 24/7",
+            Language::Urdu => "🚫 روٹر پر 24/7 بلاک کریں",
+        }
+    }
+
+    pub fn intruder_btn_dismiss(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "✕ Descartar",
+            Language::English => "✕ Dismiss",
+            Language::Chinese => "✕ 忽略",
+            Language::Hindi => "✕ खारिज करें",
+            Language::Arabic => "✕ تجاهل",
+            Language::French => "✕ Ignorer",
+            Language::Bengali => "✕ বাতিল",
+            Language::Portuguese => "✕ Descartar",
+            Language::Russian => "✕ Скрыть",
+            Language::Urdu => "✕ مسترد کریں",
+        }
+    }
+
+    pub fn auto_scan_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Escaneo Automático de Red (Auto-Discovery)",
+            Language::English => "Automatic Network Scan (Auto-Discovery)",
+            Language::Chinese => "自动网络扫描 (自动发现)",
+            Language::Hindi => "स्वचालित नेटवर्क स्कैन (स्वतः खोज)",
+            Language::Arabic => "الفحص التلقائي للشبكة (الاكتشاف التلقائي)",
+            Language::French => "Scan réseau automatique (Auto-Discovery)",
+            Language::Bengali => "স্বয়ংক্রিয় নেটওয়ার্ক স্ক্যান (অটো-ডিসকভারি)",
+            Language::Portuguese => "Varredura Automática de Rede (Auto-Discovery)",
+            Language::Russian => "Автоматическое сканирование сети (Автообнаружение)",
+            Language::Urdu => "خودکار نیٹ ورک اسکین (آٹو ڈسکوری)",
+        }
+    }
+
+    pub fn auto_scan_desc(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Mantiene el mapa de red actualizado en segundo plano para detectar intrusos y desconexiones.",
+            Language::English => "Keeps the network map fresh in the background to detect intruders and disconnections.",
+            Language::Chinese => "在后台自动保持网络拓扑最新，以发现新设备和断开连接。",
+            Language::Hindi => "नए उपकरणों और डिस्कनेक्शन का पता लगाने के लिए पृष्ठभूमि में नेटवर्क मानचित्र ताज़ा रखता है।",
+            Language::Arabic => "يحافظ على خريطة الشبكة محدثة في الخلفية لاكتشاف المتسللين وقطع الاتصال.",
+            Language::French => "Garde la carte réseau à jour en arrière-plan pour détecter les intrus et déconnexions.",
+            Language::Bengali => "অনুপ্রবেশকারী এবং সংযোগ বিচ্ছিন্নতা সনাক্ত করতে পটভূমিতে নেটওয়ার্ক মানচিত্র সতেজ রাখে।",
+            Language::Portuguese => "Mantém o mapa de rede atualizado em segundo plano para detectar intrusos e desconexões.",
+            Language::Russian => "Фоновое обновление карты сети для обнаружения посторонних и отключений.",
+            Language::Urdu => "گھس بیٹھ اور منقطع ہونے کا پتہ لگانے کے لیے پس منظر میں نیٹ ورک میپ اپ ڈیٹ رکھتا ہے۔",
+        }
+    }
+
+    pub fn auto_scan_disabled(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Desactivado",
+            Language::English => "Disabled",
+            Language::Chinese => "已关闭",
+            Language::Hindi => "अक्षम",
+            Language::Arabic => "معطل",
+            Language::French => "Désactivé",
+            Language::Bengali => "নিষ্ক্রিয়",
+            Language::Portuguese => "Desativado",
+            Language::Russian => "Отключено",
+            Language::Urdu => "غیر فعال",
+        }
+    }
+
+    pub fn auto_scan_30s(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Cada 30 s",
+            Language::English => "Every 30 s",
+            Language::Chinese => "每 30 秒",
+            Language::Hindi => "हर 30 सेकंड",
+            Language::Arabic => "كل 30 ثانية",
+            Language::French => "Toutes les 30 s",
+            Language::Bengali => "প্রতি ৩০ সেকেন্ড",
+            Language::Portuguese => "A cada 30 s",
+            Language::Russian => "Каждые 30 сек",
+            Language::Urdu => "ہر 30 سیکنڈ",
+        }
+    }
+
+    pub fn auto_scan_1m(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Cada 1 min",
+            Language::English => "Every 1 min",
+            Language::Chinese => "每 1 分钟",
+            Language::Hindi => "हर 1 मिनट",
+            Language::Arabic => "كل دقيقة",
+            Language::French => "Toutes les 1 min",
+            Language::Bengali => "প্রতি ১ মিনিট",
+            Language::Portuguese => "A cada 1 min",
+            Language::Russian => "Каждую 1 мин",
+            Language::Urdu => "ہر 1 منٹ",
+        }
+    }
+
+    pub fn auto_scan_2m(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Cada 2 min",
+            Language::English => "Every 2 min",
+            Language::Chinese => "每 2 分钟",
+            Language::Hindi => "हर 2 मिनट",
+            Language::Arabic => "كل دقيقتين",
+            Language::French => "Toutes les 2 min",
+            Language::Bengali => "প্রতি ২ মিনিট",
+            Language::Portuguese => "A cada 2 min",
+            Language::Russian => "Каждые 2 мин",
+            Language::Urdu => "ہر 2 منٹ",
+        }
+    }
+
+    pub fn auto_scan_5m(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Cada 5 min",
+            Language::English => "Every 5 min",
+            Language::Chinese => "每 5 分钟",
+            Language::Hindi => "हर 5 मिनट",
+            Language::Arabic => "كل 5 دقائق",
+            Language::French => "Toutes les 5 min",
+            Language::Bengali => "প্রতি ৫ মিনিট",
+            Language::Portuguese => "A cada 5 min",
+            Language::Russian => "Каждые 5 мин",
+            Language::Urdu => "ہر 5 منٹ",
+        }
+    }
+
+    pub fn traceroute_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Diagnóstico de Ruta (Traceroute)",
+            Language::English => "Route Diagnosis (Traceroute)",
+            Language::Chinese => "路由路径诊断 (Traceroute)",
+            Language::Hindi => "मार्ग निदान (Traceroute)",
+            Language::Arabic => "تشخيص المسار (Traceroute)",
+            Language::French => "Diagnostic d'itinéraire (Traceroute)",
+            Language::Bengali => "রুট রোগ নির্ণয় (Traceroute)",
+            Language::Portuguese => "Diagnóstico de Rota (Traceroute)",
+            Language::Russian => "Диагностика маршрута (Traceroute)",
+            Language::Urdu => "روٹ تشخیص (Traceroute)",
+        }
+    }
+
+    pub fn traceroute_btn_start(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🗺️ Trazar Ruta",
+            Language::English => "🗺️ Trace Route",
+            Language::Chinese => "🗺️ 跟踪路径",
+            Language::Hindi => "🗺️ मार्ग ट्रैक करें",
+            Language::Arabic => "🗺️ تتبع المسار",
+            Language::French => "🗺️ Tracer l'itinéraire",
+            Language::Bengali => "🗺️ রুট ট্রেস করুন",
+            Language::Portuguese => "🗺️ Trazar Rota",
+            Language::Russian => "🗺️ Трассировать",
+            Language::Urdu => "🗺️ راستہ ٹریس کریں",
+        }
+    }
+
+    pub fn traceroute_btn_tracing(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⏳ Trazando saltos...",
+            Language::English => "⏳ Tracing hops...",
+            Language::Chinese => "⏳ 正在探测跳数...",
+            Language::Hindi => "⏳ हॉप्स ट्रैक हो रहे हैं...",
+            Language::Arabic => "⏳ جاري تتبع القفزات...",
+            Language::French => "⏳ Traçage des sauts...",
+            Language::Bengali => "⏳ হপস ট্রেস হচ্ছে...",
+            Language::Portuguese => "⏳ Rastreando saltos...",
+            Language::Russian => "⏳ Трассировка узлов...",
+            Language::Urdu => "⏳ ہاپس ٹریس ہو رہے ہیں...",
+        }
+    }
+
+    pub fn traceroute_hop_col(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Salto",
+            Language::English => "Hop",
+            Language::Chinese => "跳数",
+            Language::Hindi => "हॉप",
+            Language::Arabic => "قفزة",
+            Language::French => "Saut",
+            Language::Bengali => "হপ",
+            Language::Portuguese => "Salto",
+            Language::Russian => "Узел",
+            Language::Urdu => "ہاپ",
+        }
+    }
+
+    pub fn traceroute_ip_col(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Dirección IP / Host",
+            Language::English => "IP Address / Host",
+            Language::Chinese => "IP 地址 / 主机",
+            Language::Hindi => "आईपी पता / होस्ट",
+            Language::Arabic => "عنوان IP / المضيف",
+            Language::French => "Adresse IP / Hôte",
+            Language::Bengali => "আইপি ঠিকানা / হোস্ট",
+            Language::Portuguese => "Endereço IP / Host",
+            Language::Russian => "IP-адрес / Хост",
+            Language::Urdu => "آئی پی ایڈریس / ہوسٹ",
+        }
+    }
+
+    pub fn traceroute_latency_col(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Latencia",
+            Language::English => "Latency",
+            Language::Chinese => "延迟",
+            Language::Hindi => "विलंबता",
+            Language::Arabic => "زمن الوصول",
+            Language::French => "Latence",
+            Language::Bengali => "লেটেন্সি",
+            Language::Portuguese => "Latência",
+            Language::Russian => "Задержка",
+            Language::Urdu => "تاخیر",
+        }
+    }
+
+    pub fn traceroute_timeout(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Sin respuesta (* * *)",
+            Language::English => "No response (* * *)",
+            Language::Chinese => "无响应 (* * *)",
+            Language::Hindi => "कोई प्रतिक्रिया नहीं (* * *)",
+            Language::Arabic => "لا يوجد رد (* * *)",
+            Language::French => "Pas de réponse (* * *)",
+            Language::Bengali => "কোনও প্রতিক্রিয়া নেই (* * *)",
+            Language::Portuguese => "Sem resposta (* * *)",
+            Language::Russian => "Нет ответа (* * *)",
+            Language::Urdu => "کوئی جواب نہیں (* * *)",
+        }
+    }
+
+    pub fn topology_wifi_5g(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Wi-Fi 5 GHz",
+            Language::English => "Wi-Fi 5 GHz",
+            Language::Chinese => "Wi-Fi 5 GHz",
+            Language::Hindi => "वाई-फ़ाई 5 GHz",
+            Language::Arabic => "واي فاي 5 جيجاهرتز",
+            Language::French => "Wi-Fi 5 GHz",
+            Language::Bengali => "ওয়াই-ফাই ৫ গিগাহার্টজ",
+            Language::Portuguese => "Wi-Fi 5 GHz",
+            Language::Russian => "Wi-Fi 5 ГГц",
+            Language::Urdu => "وائی فائی 5 گیگا ہرٹز",
+        }
+    }
+
+    pub fn topology_wifi_24g(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Wi-Fi 2.4 GHz",
+            Language::English => "Wi-Fi 2.4 GHz",
+            Language::Chinese => "Wi-Fi 2.4 GHz",
+            Language::Hindi => "वाई-फ़ाई 2.4 GHz",
+            Language::Arabic => "واي فاي 2.4 جيجاهرتز",
+            Language::French => "Wi-Fi 2.4 GHz",
+            Language::Bengali => "ওয়াই-ফাই ২.৪ গিগাহার্টজ",
+            Language::Portuguese => "Wi-Fi 2.4 GHz",
+            Language::Russian => "Wi-Fi 2.4 ГГц",
+            Language::Urdu => "وائی فائی 2.4 گیگا ہرٹز",
+        }
+    }
+
+    pub fn topology_ethernet(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Cable Ethernet",
+            Language::English => "Ethernet Cable",
+            Language::Chinese => "以太网有线",
+            Language::Hindi => "ईथरनेट केबल",
+            Language::Arabic => "كابل إيثرنت",
+            Language::French => "Câble Ethernet",
+            Language::Bengali => "ইথারনেট কেবল",
+            Language::Portuguese => "Cabo Ethernet",
+            Language::Russian => "Кабель Ethernet",
+            Language::Urdu => "ایتھرنیٹ کیبل",
+        }
+    }
 }

@@ -115,6 +115,12 @@ pub struct Device {
     pub is_blocked: bool,
     #[serde(default)]
     pub speed_limit_kbps: Option<u32>,
+    #[serde(default)]
+    pub connection_type: Option<String>,
+    #[serde(default)]
+    pub wifi_signal_dbm: Option<i32>,
+    #[serde(default)]
+    pub negotiated_mbps: Option<u32>,
 }
 
 impl Device {

@@ -476,6 +476,9 @@ impl Scanner {
                     is_whitelisted: false,
                     is_blocked: false,
                     speed_limit_kbps: None,
+                    connection_type: None,
+                    wifi_signal_dbm: None,
+                    negotiated_mbps: None,
                 }
             }));
         }

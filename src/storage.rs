@@ -31,6 +31,10 @@ pub struct AppState {
     pub router_ip: Option<String>,
     #[serde(default)]
     pub router_password: Option<String>,
+    #[serde(default)]
+    pub auto_scan_interval_secs: u32,
+    #[serde(default)]
+    pub known_macs: Vec<String>,
 }
 
 impl Default for AppState {
@@ -44,6 +48,8 @@ impl Default for AppState {
             speed_test_history: Vec::new(),
             router_ip: None,
             router_password: None,
+            auto_scan_interval_secs: 0,
+            known_macs: Vec::new(),
         }
     }
 }

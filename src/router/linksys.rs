@@ -20,6 +20,31 @@ pub struct MacFilterSettings {
     pub mac_addresses: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouterWirelessInfo {
+    pub bssid: Option<String>,
+    #[serde(rename = "isGuest", default)]
+    pub is_guest: bool,
+    pub band: Option<String>,
+    #[serde(rename = "signalDecibels")]
+    pub signal_decibels: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouterConnection {
+    #[serde(rename = "macAddress")]
+    pub mac_address: String,
+    #[serde(rename = "negotiatedMbps")]
+    pub negotiated_mbps: Option<u32>,
+    pub wireless: Option<RouterWirelessInfo>,
+}
+
+#[derive(Deserialize)]
+struct GetNetworkConnectionsOutput {
+    #[serde(default)]
+    connections: Vec<RouterConnection>,
+}
+
 #[derive(Deserialize)]
 struct JnapGenericResponse<T> {
     result: String,
@@ -256,5 +281,21 @@ impl LinksysRouter {
         }
 
         Self::set_mac_filter_settings(ip, password, &current).await
+    }
+
+    /// Obtiene las conexiones físicas y Wi-Fi activas directamente desde el router Linksys
+    pub async fn get_network_connections(
+        ip: &str,
+        password: &str,
+    ) -> Result<Vec<RouterConnection>, String> {
+        let out: GetNetworkConnectionsOutput = Self::execute_jnap(
+            ip,
+            "http://linksys.com/jnap/networkconnections/GetNetworkConnections",
+            "{}",
+            Some(password),
+        )
+        .await?;
+
+        Ok(out.connections)
     }
 }

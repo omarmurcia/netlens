@@ -8,6 +8,8 @@ mod speedtest;
 mod storage;
 mod telemetry;
 mod theme;
+mod traceroute;
+mod widget;
 
 use app::App;
 use iced::futures::StreamExt;

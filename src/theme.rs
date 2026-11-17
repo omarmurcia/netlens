@@ -121,6 +121,21 @@ impl CustomStyles {
         }
     }
 
+    // Estilo para banner de alerta de intrusos / peligro
+    pub fn card_danger() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(45, 18, 18))),
+            border: Border {
+                color: Color::from_rgb8(239, 68, 68),
+                width: 1.5,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
     // Estilo para badges / etiquetas
     pub fn badge_pill(bg_color: Color, text_color: Color) -> container::Style {
         container::Style {
