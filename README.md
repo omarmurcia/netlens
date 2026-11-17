@@ -17,7 +17,13 @@
    - **Intensidad de Señal Wi-Fi (📶):** Muestra la fuerza de la señal en dBm y porcentaje (ej. `100% (-39 dBm)`), SSID (`omar_internet`), banda (`5 GHz`) y bitrate negociado (`1200 Mbps`), o el estado del cable Ethernet Gigabit.
    - **Estimación de Calidad de Conexión:** Evalúa la señal de cada dispositivo conectado en la red según su latencia (Excelente, Buena, Moderada, Débil).
 
-2. **Descubrimiento Inteligente Multivectorial:**
+2. **Test de Velocidad de Internet Integrado (🚀 Speed Test):**
+   - **Medición de Latencia y RTT (🏓 Ping):** Mide con precisión la latencia hacia la red Anycast de Cloudflare.
+   - **Medición de Descarga (⬇️ Download):** Descarga datos reales en tiempo real reportando Mbps y MB/s con barra de progreso.
+   - **Medición de Subida (⬆️ Upload):** Envía datos mediante peticiones POST multihilo midiendo la tasa de transferencia en Mbps y MB/s.
+   - **Modal Interactivo:** Con diseño visual de alta fidelidad, animaciones de progreso, selección de servidor e historial del último test.
+
+3. **Descubrimiento Inteligente Multivectorial:**
    - **Sondeo ARP y Barrido ICMP/TCP:** Detecta equipos en la subred local (`/24`) en cuestión de segundos utilizando concurrencia asíncrona (`tokio`).
    - **Identificación de Fabricante (OUI IEEE/Wireshark):** Base de datos integrada con miles de fabricantes (Apple, Samsung, Intel, Belkin, Tuya Smart, Raspberry Pi, TP-Link, Xiaomi, etc.).
    - **Detección de Privacidad de MAC:** Identifica automáticamente si un dispositivo usa **dirección MAC aleatoria/privada** (LAA - *Locally Administered Address*, típico de Android, iOS y Windows 11).
@@ -114,6 +120,7 @@ netlens/
 │   ├── lib.rs               # Exportación de módulos para biblioteca y pruebas
 │   ├── model.rs             # Modelos de datos (Device, DeviceCategory, NetworkContext, PortInfo)
 │   ├── scanner.rs           # Motor de escaneo asíncrono, ARP, Ping, DNS inverso y WoL
+│   ├── speedtest.rs         # Motor de test de velocidad de Internet (Ping, Descarga, Subida)
 │   ├── telemetry.rs         # Telemetría de ancho de banda (/proc/net/dev) y señal Wi-Fi (iw)
 │   ├── i18n.rs              # Sistema de internacionalización (Top 10 idiomas mundiales)
 │   ├── export.rs            # Generador de informes en JSON y CSV

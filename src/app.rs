@@ -2,6 +2,7 @@ use crate::export::Exporter;
 use crate::i18n::{Language, Translations};
 use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
+use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use iced::futures::channel::mpsc;
@@ -191,6 +192,12 @@ pub struct App {
     pub current_theme: Theme,
     pub language: Language,
     pub is_settings_open: bool,
+    pub is_speed_test_open: bool,
+    pub speed_test_stage: SpeedTestStage,
+    pub speed_test_ping: Option<f32>,
+    pub speed_test_download: Option<f64>,
+    pub speed_test_upload: Option<f64>,
+    pub speed_test_result: Option<SpeedTestResult>,
 }
 
 #[derive(Debug, Clone)]
@@ -208,6 +215,12 @@ pub enum Message {
     CloseSettings,
     LanguageChanged(Language),
     ThemeChanged(Theme),
+
+    // Test de Velocidad de Internet
+    OpenSpeedTest,
+    CloseSpeedTest,
+    StartSpeedTest,
+    SpeedTestEventReceived(SpeedTestEvent),
 
     // Filtros y Búsqueda
     SearchChanged(String),
@@ -279,6 +292,12 @@ impl App {
             current_theme: Theme::TokyoNight,
             language,
             is_settings_open: false,
+            is_speed_test_open: false,
+            speed_test_stage: SpeedTestStage::Idle,
+            speed_test_ping: None,
+            speed_test_download: None,
+            speed_test_upload: None,
+            speed_test_result: None,
         };
 
         (app, Task::done(Message::StartScan))
@@ -336,6 +355,80 @@ impl App {
                 self.current_theme = theme;
                 Task::none()
             }
+
+            Message::OpenSpeedTest => {
+                self.is_speed_test_open = true;
+                self.is_settings_open = false;
+                Task::none()
+            }
+
+            Message::CloseSpeedTest => {
+                self.is_speed_test_open = false;
+                Task::none()
+            }
+
+            Message::StartSpeedTest => {
+                if self.speed_test_stage == SpeedTestStage::TestingPing
+                    || self.speed_test_stage == SpeedTestStage::TestingDownload
+                    || self.speed_test_stage == SpeedTestStage::TestingUpload
+                {
+                    return Task::none();
+                }
+
+                self.speed_test_stage = SpeedTestStage::TestingPing;
+                self.speed_test_ping = None;
+                self.speed_test_download = None;
+                self.speed_test_upload = None;
+
+                let (tx, rx) = mpsc::unbounded::<SpeedTestEvent>();
+                tokio::spawn(async move {
+                    SpeedTest::execute(tx).await;
+                });
+
+                Task::run(rx, Message::SpeedTestEventReceived)
+            }
+
+            Message::SpeedTestEventReceived(event) => match event {
+                SpeedTestEvent::PingStarted => {
+                    self.speed_test_stage = SpeedTestStage::TestingPing;
+                    Task::none()
+                }
+                SpeedTestEvent::PingDone(ping) => {
+                    self.speed_test_ping = Some(ping);
+                    self.speed_test_stage = SpeedTestStage::TestingDownload;
+                    Task::none()
+                }
+                SpeedTestEvent::DownloadStarted => {
+                    self.speed_test_stage = SpeedTestStage::TestingDownload;
+                    Task::none()
+                }
+                SpeedTestEvent::DownloadDone(dl) => {
+                    self.speed_test_download = Some(dl);
+                    self.speed_test_stage = SpeedTestStage::TestingUpload;
+                    Task::none()
+                }
+                SpeedTestEvent::UploadStarted => {
+                    self.speed_test_stage = SpeedTestStage::TestingUpload;
+                    Task::none()
+                }
+                SpeedTestEvent::UploadDone(ul) => {
+                    self.speed_test_upload = Some(ul);
+                    Task::none()
+                }
+                SpeedTestEvent::Finished(result) => {
+                    self.speed_test_stage = SpeedTestStage::Completed;
+                    self.speed_test_ping = Some(result.ping_ms);
+                    self.speed_test_download = Some(result.download_mbps);
+                    self.speed_test_upload = Some(result.upload_mbps);
+                    self.speed_test_result = Some(result);
+                    Task::none()
+                }
+                SpeedTestEvent::Error(err) => {
+                    self.speed_test_stage = SpeedTestStage::Failed;
+                    self.notification = Some((err, false));
+                    Task::none()
+                }
+            },
 
             Message::ChangeDeviceCategory(ip, new_category) => {
                 if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
@@ -732,6 +825,20 @@ impl App {
                 .into();
         }
 
+        // Si el test de velocidad está abierto, mostrar la vista modal de velocidad
+        if self.is_speed_test_open {
+            content = content.push(
+                container(center(self.view_speed_test_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
         // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
         content = content.push(self.view_telemetry_dashboard());
 
@@ -808,6 +915,24 @@ impl App {
                     Message::CloseSettings
                 } else {
                     Message::OpenSettings
+                }),
+        );
+
+        // Botón Test de Velocidad (Speed Test)
+        actions = actions.push(
+            button(text(Translations::speed_test_btn(self.language)).size(12))
+                .style(|_, _| {
+                    if self.is_speed_test_open {
+                        CustomStyles::primary_button()
+                    } else {
+                        CustomStyles::secondary_button()
+                    }
+                })
+                .padding(Padding::from([6, 11]))
+                .on_press(if self.is_speed_test_open {
+                    Message::CloseSpeedTest
+                } else {
+                    Message::OpenSpeedTest
                 }),
         );
 
@@ -931,6 +1056,182 @@ impl App {
         container(content)
             .padding(22)
             .width(560)
+            .style(|_| CustomStyles::settings_panel())
+            .into()
+    }
+
+    /// Modal de Test de Velocidad de Internet (Ping, Descarga y Subida en tiempo real)
+    fn view_speed_test_modal(&self) -> Element<'_, Message> {
+        let is_running = self.speed_test_stage == SpeedTestStage::TestingPing
+            || self.speed_test_stage == SpeedTestStage::TestingDownload
+            || self.speed_test_stage == SpeedTestStage::TestingUpload;
+
+        let title_row = row![
+            text(Translations::speed_test_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            button(text("✕").size(14))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 8]))
+                .on_press(Message::CloseSpeedTest),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::speed_test_subtitle(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        let (progress, stage_text, stage_color) = match self.speed_test_stage {
+            SpeedTestStage::Idle => (0.0, "Ready to test / Listo para comenzar", CustomStyles::text_muted()),
+            SpeedTestStage::TestingPing => (0.25, Translations::speed_stage_ping(self.language), CustomStyles::accent_amber()),
+            SpeedTestStage::TestingDownload => (0.65, Translations::speed_stage_download(self.language), CustomStyles::accent_emerald()),
+            SpeedTestStage::TestingUpload => (0.90, Translations::speed_stage_upload(self.language), CustomStyles::accent_purple()),
+            SpeedTestStage::Completed => (1.0, Translations::speed_stage_complete(self.language), CustomStyles::accent_emerald()),
+            SpeedTestStage::Failed => (0.0, "Error durante la prueba de velocidad", Color::from_rgb8(239, 68, 68)),
+        };
+
+        let status_row = row![
+            text(stage_text).size(13).color(stage_color),
+        ]
+        .align_y(Alignment::Center);
+
+        // Tarjetas de Métricas (Ping, Descarga, Subida)
+        let ping_str = self
+            .speed_test_ping
+            .map(|p| format!("{:.1} ms", p))
+            .unwrap_or_else(|| "-- ms".to_string());
+
+        let card_ping = container(
+            column![
+                text(Translations::speed_test_ping(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_amber()),
+                text(ping_str)
+                    .size(22)
+                    .color(CustomStyles::accent_amber()),
+                text("Round-Trip Time")
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(4),
+        )
+        .padding(14)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::card_signal());
+
+        let dl_str = self
+            .speed_test_download
+            .map(|d| format!("{:.2} Mbps", d))
+            .unwrap_or_else(|| "-- Mbps".to_string());
+        let dl_sub = self
+            .speed_test_download
+            .map(|d| format!("{:.2} MB/s", d / 8.0))
+            .unwrap_or_default();
+
+        let card_dl = container(
+            column![
+                text(Translations::speed_test_download(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_emerald()),
+                text(dl_str)
+                    .size(22)
+                    .color(CustomStyles::accent_emerald()),
+                text(dl_sub)
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
+            ]
+            .spacing(4),
+        )
+        .padding(14)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::card_download());
+
+        let ul_str = self
+            .speed_test_upload
+            .map(|u| format!("{:.2} Mbps", u))
+            .unwrap_or_else(|| "-- Mbps".to_string());
+        let ul_sub = self
+            .speed_test_upload
+            .map(|u| format!("{:.2} MB/s", u / 8.0))
+            .unwrap_or_default();
+
+        let card_ul = container(
+            column![
+                text(Translations::speed_test_upload(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_purple()),
+                text(ul_str)
+                    .size(22)
+                    .color(CustomStyles::accent_purple()),
+                text(ul_sub)
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
+            ]
+            .spacing(4),
+        )
+        .padding(14)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::card_upload());
+
+        let metrics_row = row![card_ping, card_dl, card_ul].spacing(10);
+
+        // Información de red / servidor
+        let server_info = column![
+            row![
+                text(Translations::speed_test_server(self.language))
+                    .size(12)
+                    .color(CustomStyles::text_muted())
+                    .width(130),
+                text("Cloudflare Anycast Global CDN")
+                    .size(12)
+                    .color(CustomStyles::text_primary()),
+            ],
+            row![
+                text(Translations::sys_active_iface(self.language))
+                    .size(12)
+                    .color(CustomStyles::text_muted())
+                    .width(130),
+                text(&self.network.interface)
+                    .size(12)
+                    .color(CustomStyles::accent_cyan()),
+            ],
+        ]
+        .spacing(6);
+
+        // Botones de acción
+        let start_btn = if is_running {
+            button(text(Translations::speed_test_running(self.language)).size(13))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([8, 18]))
+        } else {
+            button(text(Translations::speed_test_start(self.language)).size(13))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([8, 18]))
+                .on_press(Message::StartSpeedTest)
+        };
+
+        let close_btn = button(text(Translations::close(self.language)).size(13))
+            .style(|_, _| CustomStyles::secondary_button())
+            .padding(Padding::from([8, 16]))
+            .on_press(Message::CloseSpeedTest);
+
+        let content = column![
+            title_row,
+            subtitle,
+            status_row,
+            progress_bar(0.0..=1.0, progress),
+            metrics_row,
+            container(server_info)
+                .padding(12)
+                .style(|_| CustomStyles::card_container()),
+            row![space::horizontal(), close_btn, start_btn].spacing(10),
+        ]
+        .spacing(16);
+
+        container(content)
+            .padding(22)
+            .width(620)
             .style(|_| CustomStyles::settings_panel())
             .into()
     }
@@ -1614,7 +1915,7 @@ impl App {
                             .padding(Padding::from([1, 4]))
                             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
                         text(&p.service).size(11).color(CustomStyles::text_primary()),
-                        text(format!("({})", p.description)).size(10).color(CustomStyles::text_muted()),
+                        text(format!("({})", Translations::port_description(p.port, self.language))).size(10).color(CustomStyles::text_muted()),
                     ]
                     .spacing(5)
                     .align_y(Alignment::Center),

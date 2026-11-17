@@ -250,5 +250,45 @@ fn test_i18n_top_10_languages() {
             let short_cat = Translations::category_short_name(cat, lang);
             assert!(!short_cat.is_empty(), "Categoría corta {:?} vacía en idioma {:?}", cat, lang);
         }
+
+        // Validar traducciones de puertos y servicios
+        for &port in &[21, 22, 23, 25, 53, 80, 443, 445, 631, 8080, 9000] {
+            let desc = Translations::port_description(port, lang);
+            assert!(!desc.is_empty(), "Descripción de puerto {} vacía en idioma {:?}", port, lang);
+        }
+
+        // Validar traducciones del Test de Velocidad de Internet
+        assert!(!Translations::speed_test_btn(lang).is_empty());
+        assert!(!Translations::speed_test_title(lang).is_empty());
+        assert!(!Translations::speed_test_subtitle(lang).is_empty());
+        assert!(!Translations::speed_test_ping(lang).is_empty());
+        assert!(!Translations::speed_test_download(lang).is_empty());
+        assert!(!Translations::speed_test_upload(lang).is_empty());
+        assert!(!Translations::speed_test_start(lang).is_empty());
+        assert!(!Translations::speed_test_running(lang).is_empty());
+        assert!(!Translations::speed_stage_ping(lang).is_empty());
+        assert!(!Translations::speed_stage_download(lang).is_empty());
+        assert!(!Translations::speed_stage_upload(lang).is_empty());
+        assert!(!Translations::speed_stage_complete(lang).is_empty());
     }
+}
+
+#[test]
+fn test_speedtest_structures() {
+    use netlens::speedtest::{SpeedTestResult, SpeedTestStage};
+
+    let result = SpeedTestResult {
+        ping_ms: 25.4,
+        download_mbps: 112.5,
+        upload_mbps: 34.2,
+        timestamp: "12:00:00".to_string(),
+        server: "Cloudflare CDN".to_string(),
+    };
+
+    assert_eq!(result.ping_ms, 25.4);
+    assert!(result.download_mbps > 100.0);
+    assert!(result.upload_mbps > 30.0);
+
+    let stage = SpeedTestStage::default();
+    assert_eq!(stage, SpeedTestStage::Idle);
 }
