@@ -1,5 +1,5 @@
 use chrono::Local;
-use mac_oui::Oui;
+use netlens::oui::Oui;
 use netlens::export::Exporter;
 use netlens::model::{Device, DeviceCategory, DeviceStatus, NetworkContext, PortInfo};
 use netlens::scanner::Scanner;

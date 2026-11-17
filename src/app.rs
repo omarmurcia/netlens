@@ -18,7 +18,7 @@ use iced::widget::{
     text_input, Column,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Size, Subscription, Task, Theme};
-use mac_oui::Oui;
+use crate::oui::Oui;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::net::Ipv4Addr;
@@ -726,6 +726,7 @@ impl App {
                     // Cerrar y destruir la ventana completamente para que desaparezca de la barra de tareas
                     // y solo quede el icono de la bandeja del sistema (System Tray real).
                     self.active_window_id = None;
+                    crate::trim_memory();
                     iced::window::close(id)
                 } else {
                     std::process::exit(0);
@@ -736,6 +737,7 @@ impl App {
                 if self.active_window_id == Some(id) {
                     self.active_window_id = None;
                 }
+                crate::trim_memory();
                 Task::none()
             }
 
@@ -1393,6 +1395,7 @@ impl App {
                     };
                     self.sync_tray_state();
                     self.save_state();
+                    crate::trim_memory();
 
                     if !self.router_password_input.trim().is_empty() {
                         Task::done(Message::FetchRouterTopology)
@@ -1405,6 +1408,7 @@ impl App {
                     self.is_scanning = false;
                     self.is_background_scan = false;
                     self.sync_tray_state();
+                    crate::trim_memory();
                     if !was_background {
                         self.status = AppStatus::Error(err.clone());
                         self.notification = Some((err, false));

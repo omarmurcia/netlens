@@ -3,6 +3,7 @@ mod autostart;
 mod export;
 mod i18n;
 mod model;
+mod oui;
 mod router;
 mod scanner;
 mod speedtest;
@@ -15,15 +16,32 @@ mod widget;
 
 use app::App;
 use iced::futures::StreamExt;
-use mac_oui::Oui;
+use oui::Oui;
 use std::env;
 use std::sync::Arc;
+
+/// Solicita a la biblioteca C (glibc) liberar toda la memoria devuelta al kernel Linux
+#[cfg(target_os = "linux")]
+pub fn trim_memory() {
+    unsafe extern "C" {
+        fn malloc_trim(pad: usize) -> i32;
+    }
+    unsafe {
+        malloc_trim(0);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn trim_memory() {}
 
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
 
-    // Inicializar el runtime de Tokio multihilo con soporte completo de reactor de red y temporizadores
+    // Inicializar el runtime de Tokio multihilo optimizado (4 hilos de trabajo)
+    // Reduce drásticamente el uso de memoria RAM evitando crear 20 arenas de glibc en CPUs con muchos núcleos
     let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_stack_size(1024 * 1024)
         .enable_all()
         .build()
         .expect("Fallo al inicializar runtime de Tokio");

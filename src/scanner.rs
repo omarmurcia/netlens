@@ -3,7 +3,7 @@ use crate::model::{
 };
 use chrono::Local;
 use iced::futures::channel::mpsc::UnboundedSender;
-use mac_oui::Oui;
+use crate::oui::Oui;
 use std::collections::HashSet;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
