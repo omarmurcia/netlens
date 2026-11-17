@@ -2171,6 +2171,36 @@ impl Translations {
         }
     }
 
+    pub fn speed_stage_idle(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Listo para comenzar",
+            Language::English => "Ready to test",
+            Language::Chinese => "准备测试",
+            Language::Hindi => "परीक्षण के लिए तैयार",
+            Language::Arabic => "جاهز للاختبار",
+            Language::French => "Prêt à tester",
+            Language::Bengali => "পরীক্ষার জন্য প্রস্তুত",
+            Language::Portuguese => "Pronto para testar",
+            Language::Russian => "Готов к тестированию",
+            Language::Urdu => "ٹیسٹ کے لیے تیار",
+        }
+    }
+
+    pub fn speed_stage_failed(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Error durante la prueba de velocidad",
+            Language::English => "Error during speed test",
+            Language::Chinese => "测速过程中发生错误",
+            Language::Hindi => "स्पीड टेस्ट के दौरान त्रुटि",
+            Language::Arabic => "حدث خطأ أثناء اختبار السرعة",
+            Language::French => "Erreur lors du test de débit",
+            Language::Bengali => "স্পিড টেস্ট চলাকালীন ত্রুটি",
+            Language::Portuguese => "Erro durante o teste de velocidade",
+            Language::Russian => "Ошибка во время теста скорости",
+            Language::Urdu => "اسپیڈ ٹیسٹ کے دوران خرابی",
+        }
+    }
+
     #[allow(dead_code)]
     pub fn filter_all(lang: Language) -> &'static str {
         match lang {
@@ -2379,6 +2409,51 @@ impl Translations {
             Language::Portuguese => "Limpar Histórico",
             Language::Russian => "Очистить историю",
             Language::Urdu => "تاریخ صاف کریں",
+        }
+    }
+
+    pub fn speed_test_col_time_server(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Hora / Servidor",
+            Language::English => "Time / Server",
+            Language::Chinese => "时间 / 服务器",
+            Language::Hindi => "समय / सर्वर",
+            Language::Arabic => "الوقت / الخادم",
+            Language::French => "Heure / Serveur",
+            Language::Bengali => "সময় / সার্ভার",
+            Language::Portuguese => "Hora / Servidor",
+            Language::Russian => "Время / Сервер",
+            Language::Urdu => "وقت / سرور",
+        }
+    }
+
+    pub fn speed_test_col_download(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⬇️ Bajada",
+            Language::English => "⬇️ Download",
+            Language::Chinese => "⬇️ 下载",
+            Language::Hindi => "⬇️ डाउनलोड",
+            Language::Arabic => "⬇️ تنزيل",
+            Language::French => "⬇️ Téléchargement",
+            Language::Bengali => "⬇️ ডাউনলোড",
+            Language::Portuguese => "⬇️ Download",
+            Language::Russian => "⬇️ Скачивание",
+            Language::Urdu => "⬇️ ڈاؤن لوڈ",
+        }
+    }
+
+    pub fn speed_test_col_upload(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⬆️ Subida",
+            Language::English => "⬆️ Upload",
+            Language::Chinese => "⬆️ 上传",
+            Language::Hindi => "⬆️ अपलोड",
+            Language::Arabic => "⬆️ رفع",
+            Language::French => "⬆️ Téléversement",
+            Language::Bengali => "⬆️ আপলোড",
+            Language::Portuguese => "⬆️ Upload",
+            Language::Russian => "⬆️ Загрузка",
+            Language::Urdu => "⬆️ اپ لوڈ",
         }
     }
 

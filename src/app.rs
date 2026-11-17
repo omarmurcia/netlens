@@ -1479,12 +1479,12 @@ impl App {
             .color(CustomStyles::text_muted());
 
         let (progress, stage_text, stage_color) = match self.speed_test_stage {
-            SpeedTestStage::Idle => (0.0, "Ready to test / Listo para comenzar", CustomStyles::text_muted()),
+            SpeedTestStage::Idle => (0.0, Translations::speed_stage_idle(self.language), CustomStyles::text_muted()),
             SpeedTestStage::TestingPing => (0.25, Translations::speed_stage_ping(self.language), CustomStyles::accent_amber()),
             SpeedTestStage::TestingDownload => (0.65, Translations::speed_stage_download(self.language), CustomStyles::accent_emerald()),
             SpeedTestStage::TestingUpload => (0.90, Translations::speed_stage_upload(self.language), CustomStyles::accent_purple()),
             SpeedTestStage::Completed => (1.0, Translations::speed_stage_complete(self.language), CustomStyles::accent_emerald()),
-            SpeedTestStage::Failed => (0.0, "Error durante la prueba de velocidad", Color::from_rgb8(239, 68, 68)),
+            SpeedTestStage::Failed => (0.0, Translations::speed_stage_failed(self.language), Color::from_rgb8(239, 68, 68)),
         };
 
         let status_row = row![
@@ -1523,7 +1523,7 @@ impl App {
         let dl_sub = self
             .speed_test_download
             .map(|d| format!("{:.2} MB/s", d / 8.0))
-            .unwrap_or_default();
+            .unwrap_or_else(|| "-- MB/s".to_string());
 
         let card_dl = container(
             column![
@@ -1550,7 +1550,7 @@ impl App {
         let ul_sub = self
             .speed_test_upload
             .map(|u| format!("{:.2} MB/s", u / 8.0))
-            .unwrap_or_default();
+            .unwrap_or_else(|| "-- MB/s".to_string());
 
         let card_ul = container(
             column![
@@ -1618,21 +1618,22 @@ impl App {
             .on_press(Message::CloseSpeedTest);
 
         // Sección: Historial Persistente de Pruebas de Velocidad
-        let history_header = row![
+        let mut history_header = row![
             text(Translations::speed_test_history_title(self.language))
                 .size(13)
                 .color(CustomStyles::accent_cyan()),
             space::horizontal(),
-            if !self.speed_test_history.is_empty() {
+        ]
+        .align_y(Alignment::Center);
+
+        if !self.speed_test_history.is_empty() {
+            history_header = history_header.push(
                 button(text(Translations::speed_test_history_clear(self.language)).size(10))
                     .style(|_, _| CustomStyles::secondary_button())
                     .padding(Padding::from([2, 6]))
-                    .on_press(Message::ClearSpeedTestHistory)
-            } else {
-                button(text("").size(0))
-            },
-        ]
-        .align_y(Alignment::Center);
+                    .on_press(Message::ClearSpeedTestHistory),
+            );
+        }
 
         let mut history_col = Column::new().spacing(4);
         history_col = history_col.push(history_header);
@@ -1646,10 +1647,10 @@ impl App {
         } else {
             history_col = history_col.push(
                 row![
-                    text("Hora / Servidor").size(10).color(CustomStyles::text_muted()).width(160),
-                    text("Ping").size(10).color(CustomStyles::accent_amber()).width(70),
-                    text("⬇️ Bajada").size(10).color(CustomStyles::accent_emerald()).width(90),
-                    text("⬆️ Subida").size(10).color(CustomStyles::accent_purple()).width(90),
+                    text(Translations::speed_test_col_time_server(self.language)).size(10).color(CustomStyles::text_muted()).width(160),
+                    text(Translations::speed_test_ping(self.language)).size(10).color(CustomStyles::accent_amber()).width(70),
+                    text(Translations::speed_test_col_download(self.language)).size(10).color(CustomStyles::accent_emerald()).width(90),
+                    text(Translations::speed_test_col_upload(self.language)).size(10).color(CustomStyles::accent_purple()).width(90),
                 ]
                 .spacing(8),
             );

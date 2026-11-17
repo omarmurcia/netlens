@@ -569,5 +569,10 @@ fn test_i18n_router_notifications() {
         assert!(!Translations::router_block_success(lang, "192.168.1.100", "AA:BB:CC:DD:EE:FF").is_empty());
         assert!(!Translations::router_unblock_success(lang, "192.168.1.100", "AA:BB:CC:DD:EE:FF").is_empty());
         assert!(!Translations::router_operation_failed(lang, "Timeout").is_empty());
+        assert!(!Translations::speed_stage_idle(lang).is_empty());
+        assert!(!Translations::speed_stage_failed(lang).is_empty());
+        assert!(!Translations::speed_test_col_time_server(lang).is_empty());
+        assert!(!Translations::speed_test_col_download(lang).is_empty());
+        assert!(!Translations::speed_test_col_upload(lang).is_empty());
     }
 }
