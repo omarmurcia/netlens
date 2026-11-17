@@ -17,7 +17,7 @@ use iced::widget::{
     button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, Column,
 };
-use iced::{Alignment, Color, Element, Length, Padding, Subscription, Task, Theme};
+use iced::{Alignment, Color, Element, Length, Padding, Size, Subscription, Task, Theme};
 use mac_oui::Oui;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
@@ -230,6 +230,7 @@ pub struct App {
     pub oui_db: Option<Arc<Oui>>,
     pub telemetry: Telemetry,
     pub is_scanning: bool,
+    pub is_background_scan: bool,
     pub scan_progress: f32,
     pub status: AppStatus,
     pub search_query: String,
@@ -286,6 +287,9 @@ pub struct App {
     pub autostart_enabled: bool,
     pub minimize_on_close: bool,
 
+    // Ventana y Ciclo de Vida (Daemon)
+    pub active_window_id: Option<iced::window::Id>,
+
     // System Tray (Bandeja del Sistema)
     pub tray_state: Arc<Mutex<TrayState>>,
     pub tray_handle: Arc<Mutex<Option<ksni::Handle<NetLensTray>>>>,
@@ -295,11 +299,13 @@ pub struct App {
 pub enum Message {
     // Escaneo
     StartScan,
+    StartBackgroundScan,
     ScanEventReceived(ScanEvent),
     RefreshNetwork,
 
     // Ventana, System Tray y Segundo Plano
     WindowCloseRequested(iced::window::Id),
+    WindowClosed(iced::window::Id),
     RestoreWindowFromTray,
     ExitApp,
     ToggleAutostart(bool),
@@ -380,6 +386,18 @@ pub enum Message {
     DismissNotification,
 }
 
+/// Configuración de ventana predeterminada de NetLens (con icono oficial de la app)
+pub fn default_window_settings() -> iced::window::Settings {
+    let icon = crate::tray::get_window_icon();
+    iced::window::Settings {
+        size: Size::new(1220.0, 820.0),
+        position: iced::window::Position::Centered,
+        icon,
+        exit_on_close_request: false,
+        ..Default::default()
+    }
+}
+
 impl App {
     pub fn new() -> (Self, Task<Message>) {
         let network = Scanner::detect_network_context();
@@ -442,12 +460,13 @@ impl App {
         let initial_device_count = devices.len();
         let initial_gateway_ip = network.gateway_ip.map(|g| g.to_string());
 
-        let app = Self {
+        let mut app = Self {
             network,
             devices,
             oui_db,
             telemetry,
             is_scanning: false,
+            is_background_scan: false,
             scan_progress: 0.0,
             status,
             search_query: String::new(),
@@ -491,6 +510,7 @@ impl App {
             traceroute_error: None,
             autostart_enabled,
             minimize_on_close,
+            active_window_id: None,
             tray_state: Arc::new(Mutex::new(TrayState {
                 device_count: initial_device_count,
                 is_scanning: false,
@@ -504,15 +524,22 @@ impl App {
 
         let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--background");
         let initial_task = if start_minimized {
-            Task::batch(vec![
-                Task::done(Message::StartScan),
-                iced::window::latest().and_then(|id| iced::window::minimize(id, true)),
-            ])
+            Task::done(Message::StartBackgroundScan)
         } else {
-            Task::done(Message::StartScan)
+            let (id, open_task) = iced::window::open(default_window_settings());
+            app.active_window_id = Some(id);
+            Task::batch(vec![
+                open_task.discard(),
+                Task::done(Message::StartBackgroundScan),
+            ])
         };
 
         (app, initial_task)
+    }
+
+    /// Punto de arranque para la infraestructura iced::daemon
+    pub fn boot() -> (Self, Task<Message>) {
+        Self::new()
     }
 
     /// Sincroniza el estado actual de escaneo y dispositivos con el System Tray
@@ -569,7 +596,8 @@ impl App {
             )
         });
 
-        let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
+        let close_req_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
+        let close_evt_sub = iced::window::close_events().map(Message::WindowClosed);
 
         let tray_sub = Subscription::run(|| {
             let rx = crate::tray::get_tray_sender().subscribe();
@@ -592,7 +620,7 @@ impl App {
             })
         });
 
-        Subscription::batch(vec![tick_sub, close_sub, tray_sub])
+        Subscription::batch(vec![tick_sub, close_req_sub, close_evt_sub, tray_sub])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -620,13 +648,13 @@ impl App {
                     }
                 }
 
-                // Auto-Discovery: si el intervalo está activo y transcurrió el tiempo, re-escanear automáticamente
+                // Auto-Discovery: si el intervalo está activo y transcurrió el tiempo, re-escanear silenciosamente en segundo plano
                 if self.auto_scan_interval_secs > 0
                     && !self.is_scanning
                     && self.last_scan_time.elapsed().as_secs() >= self.auto_scan_interval_secs as u64
                 {
                     self.last_scan_time = Instant::now();
-                    return Task::done(Message::StartScan);
+                    return Task::done(Message::StartBackgroundScan);
                 }
 
                 self.sync_tray_state();
@@ -692,19 +720,37 @@ impl App {
 
             Message::WindowCloseRequested(id) => {
                 if self.minimize_on_close {
-                    iced::window::minimize(id, true)
-                } else {
+                    // Cerrar y destruir la ventana completamente para que desaparezca de la barra de tareas
+                    // y solo quede el icono de la bandeja del sistema (System Tray real).
+                    self.active_window_id = None;
                     iced::window::close(id)
+                } else {
+                    std::process::exit(0);
                 }
             }
 
+            Message::WindowClosed(id) => {
+                if self.active_window_id == Some(id) {
+                    self.active_window_id = None;
+                }
+                Task::none()
+            }
+
             Message::RestoreWindowFromTray => {
-                iced::window::latest().and_then(|id| {
+                if let Some(id) = self.active_window_id {
                     Task::batch(vec![
                         iced::window::minimize(id, false),
                         iced::window::gain_focus(id),
                     ])
-                })
+                } else {
+                    // Si la ventana estaba cerrada al minimizar a segundo plano, abrirla nuevamente de forma limpia
+                    let (id, open_task) = iced::window::open(default_window_settings());
+                    self.active_window_id = Some(id);
+                    Task::batch(vec![
+                        open_task.discard(),
+                        iced::window::gain_focus(id),
+                    ])
+                }
             }
 
             Message::ExitApp => {
@@ -1156,10 +1202,14 @@ impl App {
 
             Message::StartScan => {
                 if self.is_scanning {
+                    // Si ya había un escaneo en segundo plano corriendo, hacerlo visible inmediatamente
+                    self.is_background_scan = false;
+                    self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                     return Task::none();
                 }
 
                 self.is_scanning = true;
+                self.is_background_scan = false; // Escaneo manual: muestra barra de progreso en la UI
                 self.scan_progress = 0.0;
                 self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                 self.notification = None;
@@ -1177,12 +1227,36 @@ impl App {
                 Task::run(receiver, Message::ScanEventReceived)
             }
 
+            Message::StartBackgroundScan => {
+                if self.is_scanning {
+                    return Task::none();
+                }
+
+                self.is_scanning = true;
+                self.is_background_scan = true; // Escaneo en segundo plano: NO muestra barra de progreso
+                self.scan_progress = 0.0;
+                self.sync_tray_state();
+
+                let ctx = self.network.clone();
+                let oui_db = self.oui_db.clone();
+
+                let (sender, receiver) = mpsc::unbounded::<ScanEvent>();
+
+                tokio::spawn(async move {
+                    Scanner::execute_scan(ctx, oui_db, sender).await;
+                });
+
+                Task::run(receiver, Message::ScanEventReceived)
+            }
+
             Message::ScanEventReceived(event) => match event {
                 ScanEvent::Started { total_hosts, subnet } => {
-                    self.status = AppStatus::ProbingHosts {
-                        total: total_hosts,
-                        subnet,
-                    };
+                    if !self.is_background_scan {
+                        self.status = AppStatus::ProbingHosts {
+                            total: total_hosts,
+                            subnet,
+                        };
+                    }
                     Task::none()
                 }
                 ScanEvent::Progress { scanned, total } => {
@@ -1307,6 +1381,7 @@ impl App {
                     duration_ms,
                 } => {
                     self.is_scanning = false;
+                    self.is_background_scan = false;
                     self.scan_progress = 1.0;
                     self.last_scan_time = Instant::now();
                     self.status = AppStatus::ScanFinished {
@@ -1323,10 +1398,14 @@ impl App {
                     }
                 }
                 ScanEvent::Error(err) => {
+                    let was_background = self.is_background_scan;
                     self.is_scanning = false;
+                    self.is_background_scan = false;
                     self.sync_tray_state();
-                    self.status = AppStatus::Error(err.clone());
-                    self.notification = Some((err, false));
+                    if !was_background {
+                        self.status = AppStatus::Error(err.clone());
+                        self.notification = Some((err, false));
+                    }
                     Task::none()
                 }
             },
@@ -1575,14 +1654,14 @@ impl App {
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
         let mut content = Column::new().spacing(14).padding(16);
 
         // 1. Cabecera principal (Título, botón de Ajustes, botones de escaneo y exportación)
         content = content.push(self.view_header());
 
-        // Barra de progreso si está escaneando
-        if self.is_scanning {
+        // Barra de progreso de escaneo: SOLO se muestra si es escaneo manual iniciado por el botón
+        if self.is_scanning && !self.is_background_scan {
             content = content.push(
                 container(progress_bar(0.0..=1.0, self.scan_progress))
             );
@@ -1788,8 +1867,8 @@ impl App {
                 .on_press(Message::ExportJson),
         );
 
-        // Botón Escanear Red
-        let scan_btn = if self.is_scanning {
+        // Botón Escanear Red: Solo muestra estado de "Escaneando..." si es un escaneo manual visible
+        let scan_btn = if self.is_scanning && !self.is_background_scan {
             button(text(Translations::scanning(self.language)).size(13))
                 .style(|_, _| CustomStyles::secondary_button())
                 .padding(Padding::from([7, 14]))
@@ -2567,7 +2646,7 @@ impl App {
     /// Genera la lista scrolleable de tarjetas de dispositivos
     fn view_device_list<'a>(&'a self, devices: &[&'a Device]) -> Element<'a, Message> {
         if devices.is_empty() {
-            let empty_text = if self.is_scanning {
+            let empty_text = if self.is_scanning && !self.is_background_scan {
                 Translations::empty_scanning(self.language)
             } else if !self.search_query.is_empty() || self.selected_category.is_some() {
                 Translations::empty_filtered(self.language)

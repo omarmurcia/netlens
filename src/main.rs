@@ -15,7 +15,6 @@ mod widget;
 
 use app::App;
 use iced::futures::StreamExt;
-use iced::Size;
 use mac_oui::Oui;
 use std::env;
 use std::sync::Arc;
@@ -36,21 +35,11 @@ fn main() -> iced::Result {
         return Ok(());
     }
 
-    // Modo GUI con Iced
-    let icon = tray::get_window_icon();
-    let window_settings = iced::window::Settings {
-        size: Size::new(1220.0, 820.0),
-        position: iced::window::Position::Centered,
-        icon,
-        exit_on_close_request: false,
-        ..Default::default()
-    };
-
-    iced::application(App::new, App::update, App::view)
-        .title(|app: &App| i18n::Translations::window_title(app.language).to_string())
-        .theme(|app: &App| app.current_theme.clone())
+    // Modo GUI Daemon con Iced (permite ejecutarse en segundo plano en el System Tray sin ventana fija en la barra de tareas)
+    iced::daemon(App::boot, App::update, App::view)
+        .title(|app: &App, _win: iced::window::Id| i18n::Translations::window_title(app.language).to_string())
+        .theme(|app: &App, _win: iced::window::Id| Some(app.current_theme.clone()))
         .subscription(App::subscription)
-        .window(window_settings)
         .run()
 }
 

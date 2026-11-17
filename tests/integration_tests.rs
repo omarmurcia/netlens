@@ -795,3 +795,15 @@ fn test_system_tray_and_icons() {
     let menu = tray.menu();
     assert!(menu.len() >= 4, "Debe tener opciones de abrir, escanear, estado y salir");
 }
+
+#[test]
+fn test_background_scan_and_daemon_settings() {
+    use netlens::app::default_window_settings;
+
+    // Test default_window_settings generates proper window dimensions and icon
+    let win_settings = default_window_settings();
+    assert_eq!(win_settings.size.width, 1220.0);
+    assert_eq!(win_settings.size.height, 820.0);
+    assert!(!win_settings.exit_on_close_request, "exit_on_close_request should be false for daemon background operation");
+    assert!(win_settings.icon.is_some(), "Window settings must have the embedded icon configured");
+}
