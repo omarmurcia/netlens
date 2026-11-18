@@ -2451,18 +2451,18 @@ impl App {
                 if self.is_storage_demo_mode {
                     let dummy_text = format!(
                         "====================================================\n\
-                         📄 VISTA PREVIA DE ARCHIVO - NETLENS\n\
+                         📄 FILE PREVIEW - NETLENS\n\
                          ====================================================\n\n\
-                         Nombre del archivo: {}\n\
-                         Recurso compartido: {}\n\
-                         Ruta en el router:  /{}/{}\n\
-                         Modo:               Demostración Interactiva\n\n\
-                         Este archivo ha sido abierto automáticamente en tu sistema operativo.\n",
+                         File name:       {}\n\
+                         Shared resource: {}\n\
+                         Router path:     /{}/{}\n\
+                         Mode:            Interactive Demo\n\n\
+                         This file has been opened automatically in your operating system.\n",
                         file_name, share, share, full_rel_path
                     );
                     let _ = std::fs::write(&dest_path, dummy_text);
                     let _ = std::process::Command::new("xdg-open").arg(&dest_path).spawn();
-                    self.storage_status_msg = Some(format!("Abriendo archivo '{}'...", file_name));
+                    self.storage_status_msg = Some(format!("Opening file '{}'...", file_name));
                     return Task::none();
                 }
 
@@ -2474,7 +2474,7 @@ impl App {
                 let creds = self.storage_credentials.clone();
                 let file_name_clone = file_name.clone();
                 self.is_storage_loading = true;
-                self.storage_status_msg = Some(format!("Descargando para abrir: '{}'...", file_name));
+                self.storage_status_msg = Some(format!("Downloading to preview: '{}'...", file_name));
 
                 Task::future(async move {
                     let res = RouterStorageManager::download_file(
@@ -2488,16 +2488,16 @@ impl App {
                     match res {
                         Ok(p) => {
                             let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
-                            Message::StorageOperationCompleted(Ok(format!("Archivo '{}' abierto en el sistema", file_name_clone)))
+                            Message::StorageOperationCompleted(Ok(format!("File '{}' opened successfully", file_name_clone)))
                         }
-                        Err(e) => Message::StorageOperationCompleted(Err(format!("Error al abrir archivo: {}", e))),
+                        Err(e) => Message::StorageOperationCompleted(Err(format!("Error opening file: {}", e))),
                     }
                 })
             }
 
             Message::StorageDownloadFile(file_name) => {
                 if self.is_storage_demo_mode {
-                    self.notification = Some((format!("Descarga simulada de '{}' completada.", file_name), true));
+                    self.notification = Some((format!("Simulated download of '{}' completed.", file_name), true));
                     return Task::none();
                 }
 
@@ -2534,7 +2534,7 @@ impl App {
                     )
                     .await;
                     match res {
-                        Ok(p) => Message::StorageOperationCompleted(Ok(format!("Descargado con éxito en: {}", p.display()))),
+                        Ok(p) => Message::StorageOperationCompleted(Ok(format!("Downloaded successfully to: {}", p.display()))),
                         Err(e) => Message::StorageOperationCompleted(Err(e)),
                     }
                 })
@@ -2542,22 +2542,22 @@ impl App {
 
             Message::StoragePickFileAndUpload => {
                 if self.storage_active_share.is_none() {
-                    self.storage_error_msg = Some("Selecciona un recurso o unidad compartida primero".to_string());
+                    self.storage_error_msg = Some("Select a shared resource or drive first".to_string());
                     return Task::none();
                 }
                 Task::future(async move {
-                    let picked = RouterStorageManager::pick_path_with_file_dialog(false, "Seleccionar archivo para subir al Router").await;
+                    let picked = RouterStorageManager::pick_path_with_file_dialog(false, "Select file to upload to Router").await;
                     Message::StorageFilePicked(picked)
                 })
             }
 
             Message::StoragePickFolderAndUpload => {
                 if self.storage_active_share.is_none() {
-                    self.storage_error_msg = Some("Selecciona un recurso o unidad compartida primero".to_string());
+                    self.storage_error_msg = Some("Select a shared resource or drive first".to_string());
                     return Task::none();
                 }
                 Task::future(async move {
-                    let picked = RouterStorageManager::pick_path_with_file_dialog(true, "Seleccionar carpeta para subir al Router").await;
+                    let picked = RouterStorageManager::pick_path_with_file_dialog(true, "Select folder to upload to Router").await;
                     Message::StorageFolderPicked(picked)
                 })
             }
@@ -2571,14 +2571,14 @@ impl App {
                 let file_name = match local_path.file_name().and_then(|s| s.to_str()) {
                     Some(name) => name.to_string(),
                     None => {
-                        self.storage_error_msg = Some("Nombre de archivo inválido".to_string());
+                        self.storage_error_msg = Some("Invalid file name".to_string());
                         return Task::none();
                     }
                 };
 
                 let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(1024);
                 let target_dir = if self.storage_current_path.is_empty() {
-                    "Raíz".to_string()
+                    "Root".to_string()
                 } else {
                     self.storage_current_path.clone()
                 };
@@ -2591,7 +2591,7 @@ impl App {
                     tokio::spawn(async move {
                         let _ = tx.unbounded_send(StorageUploadEvent::Started {
                             is_folder: false,
-                            title: format!("Subiendo archivo: {}", file_name_clone),
+                            title: format!("Uploading file: {}", file_name_clone),
                             total_items: 1,
                             total_bytes: file_size,
                             target_dir: target_dir_clone,
@@ -2613,7 +2613,7 @@ impl App {
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
                         let _ = tx.unbounded_send(StorageUploadEvent::Completed {
-                            message: format!("Archivo '{}' subido con éxito (Demo)", file_name_clone),
+                            message: format!("File '{}' uploaded successfully (Demo)", file_name_clone),
                             total_items: 1,
                             total_bytes: file_size,
                         });
@@ -2623,7 +2623,7 @@ impl App {
                         file_name.clone(),
                         false,
                         file_size,
-                        "Ahora mismo".to_string(),
+                        "Just now".to_string(),
                         "A".to_string(),
                     );
                     let clean = self.storage_current_path.trim_matches('/').to_string();
@@ -2641,7 +2641,7 @@ impl App {
                 let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
                     Ok(ip) => ip,
                     Err(_) => {
-                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        self.storage_error_msg = Some(format!("Invalid IP: '{}'", self.storage_target_ip));
                         return Task::none();
                     }
                 };
@@ -2683,13 +2683,13 @@ impl App {
                 let folder_name = match local_path.file_name().and_then(|s| s.to_str()) {
                     Some(name) => name.to_string(),
                     None => {
-                        self.storage_error_msg = Some("Nombre de carpeta inválido".to_string());
+                        self.storage_error_msg = Some("Invalid folder name".to_string());
                         return Task::none();
                     }
                 };
 
                 let target_dir = if self.storage_current_path.is_empty() {
-                    "Raíz".to_string()
+                    "Root".to_string()
                 } else {
                     self.storage_current_path.clone()
                 };
@@ -2704,7 +2704,7 @@ impl App {
                     tokio::spawn(async move {
                         let _ = tx.unbounded_send(StorageUploadEvent::Started {
                             is_folder: true,
-                            title: format!("Subiendo carpeta: {} ({} archivos)", folder_name_clone, total_files),
+                            title: format!("Uploading folder: {} ({} files)", folder_name_clone, total_files),
                             total_items: total_files,
                             total_bytes,
                             target_dir: target_dir_clone,
@@ -2717,7 +2717,7 @@ impl App {
                                 let bytes = (sub_ratio * total_bytes as f32) as u64;
                                 let speed = 21.4 + ((i * 3 + sub) as f64 * 0.5).sin() * 1.8;
                                 let _ = tx.unbounded_send(StorageUploadEvent::Progress {
-                                    current_item: format!("archivo_{:02}.dat", i),
+                                    current_item: format!("file_{:02}.dat", i),
                                     current_index: i,
                                     total_items: total_files,
                                     bytes_uploaded: bytes,
@@ -2729,7 +2729,7 @@ impl App {
                         }
                         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
                         let _ = tx.unbounded_send(StorageUploadEvent::Completed {
-                            message: format!("Carpeta '{}' subida con éxito ({} archivos, Demo)", folder_name_clone, total_files),
+                            message: format!("Folder '{}' uploaded successfully ({} files, Demo)", folder_name_clone, total_files),
                             total_items: total_files,
                             total_bytes,
                         });
@@ -2739,7 +2739,7 @@ impl App {
                         folder_name.clone(),
                         true,
                         0,
-                        "Ahora mismo".to_string(),
+                        "Just now".to_string(),
                         "D".to_string(),
                     );
                     let clean = self.storage_current_path.trim_matches('/').to_string();
@@ -2757,7 +2757,7 @@ impl App {
                 let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
                     Ok(ip) => ip,
                     Err(_) => {
-                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        self.storage_error_msg = Some(format!("Invalid IP: '{}'", self.storage_target_ip));
                         return Task::none();
                     }
                 };
