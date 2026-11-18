@@ -2362,5 +2362,43 @@ fn test_all_modals_translations_in_all_10_languages() {
         assert!(!Translations::upnp_port_mappings_header(4, lang).is_empty());
         assert!(!Translations::upnp_no_mappings(lang).is_empty());
         assert!(!Translations::upnp_port_label(80, "TCP", lang).is_empty());
+
+        // 6. About NetLens
+        assert!(!Translations::about_btn(lang).is_empty());
+        assert!(!Translations::tip_about(lang).is_empty());
+        assert!(!Translations::about_modal_title(lang).is_empty());
+        assert!(!Translations::about_app_description(lang).is_empty());
+        assert!(!Translations::about_author_section(lang).is_empty());
+        assert!(!Translations::about_role(lang).is_empty());
+        assert!(!Translations::about_email_label(lang).is_empty());
+        assert!(!Translations::about_copy_email(lang).is_empty());
+        assert!(!Translations::about_send_email(lang).is_empty());
+        assert!(!Translations::about_repositories_section(lang).is_empty());
+        assert!(!Translations::about_source_code(lang).is_empty());
+        assert!(!Translations::about_pacman_repo(lang).is_empty());
+        assert!(!Translations::about_web_portal(lang).is_empty());
+        assert!(!Translations::about_tech_specs(lang).is_empty());
+        assert!(!Translations::about_license(lang).is_empty());
+        assert!(!Translations::about_open_in_browser(lang).is_empty());
+        assert!(!Translations::about_copy_url(lang).is_empty());
+    }
+}
+
+#[test]
+fn test_about_modal_dialog_and_author_info() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert_eq!(Translations::about_author_section(lang).is_empty(), false);
+        assert_eq!(Translations::about_role(lang).is_empty(), false);
+        assert_eq!(Translations::about_email_label(lang).is_empty(), false);
+        assert_eq!(Translations::about_copy_email(lang).is_empty(), false);
+        assert_eq!(Translations::about_send_email(lang).is_empty(), false);
+        assert_eq!(Translations::about_repositories_section(lang).is_empty(), false);
+        assert_eq!(Translations::about_source_code(lang).is_empty(), false);
+        assert_eq!(Translations::about_pacman_repo(lang).is_empty(), false);
+        assert_eq!(Translations::about_web_portal(lang).is_empty(), false);
+        assert_eq!(Translations::about_tech_specs(lang).is_empty(), false);
+        assert_eq!(Translations::about_license(lang).is_empty(), false);
     }
 }

@@ -258,6 +258,7 @@ pub struct App {
     pub current_theme: Theme,
     pub language: Language,
     pub is_settings_open: bool,
+    pub is_about_open: bool,
     pub is_speed_test_open: bool,
     pub speed_test_stage: SpeedTestStage,
     pub speed_test_ping: Option<f32>,
@@ -463,6 +464,9 @@ pub enum Message {
     // Settings / Configuration
     OpenSettings,
     CloseSettings,
+    OpenAbout,
+    CloseAbout,
+    OpenExternalUrl(String),
     LanguageChanged(Language),
     ThemeChanged(Theme),
     AutoScanIntervalChanged(u32),
@@ -701,6 +705,7 @@ impl App {
             current_theme,
             language,
             is_settings_open: false,
+            is_about_open: false,
             is_speed_test_open: false,
             speed_test_stage,
             speed_test_ping,
@@ -979,11 +984,47 @@ impl App {
 
             Message::OpenSettings => {
                 self.is_settings_open = true;
+                self.is_about_open = false;
                 Task::none()
             }
 
             Message::CloseSettings => {
                 self.is_settings_open = false;
+                Task::none()
+            }
+
+            Message::OpenAbout => {
+                self.is_about_open = true;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_audit_open = false;
+                self.is_wifi_analyzer_open = false;
+                self.is_upnp_open = false;
+                self.is_storage_explorer_open = false;
+                Task::none()
+            }
+
+            Message::CloseAbout => {
+                self.is_about_open = false;
+                Task::none()
+            }
+
+            Message::OpenExternalUrl(url) => {
+                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                let notif_msg = match self.language {
+                    Language::Spanish => "Abriendo enlace en el navegador...".to_string(),
+                    Language::English => "Opening link in browser...".to_string(),
+                    Language::Chinese => "正在浏览器中打开链接...".to_string(),
+                    Language::Hindi => "ब्राउज़र में लिंक खोला जा रहा है...".to_string(),
+                    Language::Arabic => "جاري فتح الرابط في المتصفح...".to_string(),
+                    Language::French => "Ouverture du lien dans le navigateur...".to_string(),
+                    Language::Bengali => "ব্রাউজারে লিঙ্ক খোলা হচ্ছে...".to_string(),
+                    Language::Portuguese => "Abrindo link no navegador...".to_string(),
+                    Language::Russian => "Открытие ссылки в браузере...".to_string(),
+                    Language::Urdu => "براؤزر میں لنک کھولا جا رہا ہے...".to_string(),
+                };
+                self.notification = Some((notif_msg, true));
                 Task::none()
             }
 
@@ -1578,6 +1619,7 @@ impl App {
             Message::OpenSpeedTest => {
                 self.is_speed_test_open = true;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 Task::none()
             }
 
@@ -1954,6 +1996,7 @@ impl App {
             Message::OpenTimeline => {
                 self.is_timeline_open = true;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 self.is_speed_test_open = false;
                 self.is_audit_open = false;
                 self.is_wifi_analyzer_open = false;
@@ -1975,6 +2018,7 @@ impl App {
             Message::OpenSecurityAudit => {
                 self.is_audit_open = true;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 self.is_speed_test_open = false;
                 self.is_timeline_open = false;
                 self.is_wifi_analyzer_open = false;
@@ -1999,6 +2043,7 @@ impl App {
             Message::OpenUpnpModal => {
                 self.is_upnp_open = true;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 self.is_speed_test_open = false;
                 self.is_timeline_open = false;
                 self.is_audit_open = false;
@@ -2043,6 +2088,7 @@ impl App {
                 self.is_storage_explorer_open = true;
                 self.is_upnp_open = false;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 self.is_speed_test_open = false;
                 self.is_timeline_open = false;
                 self.is_audit_open = false;
@@ -2899,6 +2945,7 @@ impl App {
             Message::OpenWifiAnalyzer => {
                 self.is_wifi_analyzer_open = true;
                 self.is_settings_open = false;
+                self.is_about_open = false;
                 self.is_speed_test_open = false;
                 self.is_timeline_open = false;
                 self.is_audit_open = false;
@@ -3659,6 +3706,20 @@ impl App {
                 .into();
         }
 
+        // If about open, show classic About dialog view
+        if self.is_about_open {
+            content = content.push(
+                container(center(self.view_about_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
         // If speed test open, show speed test modal view
         if self.is_speed_test_open {
             content = content.push(
@@ -4079,6 +4140,26 @@ impl App {
                         Message::OpenStorageExplorer
                     }),
                 Translations::tip_router_storage(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Classic About NetLens button
+            self.tip(
+                button(text(Translations::about_btn(self.language)).size(11))
+                    .style(|_, _| {
+                        if self.is_about_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_about_open {
+                        Message::CloseAbout
+                    } else {
+                        Message::OpenAbout
+                    }),
+                Translations::tip_about(self.language),
                 tooltip::Position::Bottom,
             ),
         ]
@@ -4550,6 +4631,24 @@ impl App {
         ]
         .spacing(6);
 
+        // Setting 7: About NetLens & Author Info
+        let about_card = container(
+            row![
+                column![
+                    text(Translations::about_modal_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
+                    text("Omar Murcia • MIT License • v0.1.0").size(11).color(CustomStyles::text_muted()),
+                ]
+                .width(Length::Fill),
+                button(text(Translations::about_btn(self.language)).size(11))
+                    .style(|_, _| CustomStyles::primary_button())
+                    .padding(Padding::from([5, 12]))
+                    .on_press(Message::OpenAbout),
+            ]
+            .align_y(Alignment::Center)
+        )
+        .padding(12)
+        .style(|_| CustomStyles::card_container());
+
         let close_btn = button(text(Translations::close(self.language)).size(13))
             .style(|_, _| CustomStyles::primary_button())
             .padding(Padding::from([7, 20]))
@@ -4565,6 +4664,7 @@ impl App {
             router_card,
             notifications_card,
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
+            about_card,
         ]
         .spacing(14)
         .padding(Padding {
@@ -4589,6 +4689,211 @@ impl App {
             .width(820)
             .max_height(720)
             .style(|_| CustomStyles::settings_panel())
+            .into()
+    }
+
+    /// Modal: Classic "About NetLens" with author information, repositories, logo and dynamic language switching
+    fn view_about_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::about_modal_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseAbout),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        // 1. App Header Card with official Logo
+        let app_icon = iced::widget::image(iced::widget::image::Handle::from_bytes(
+            include_bytes!("../assets/netlens.png").as_slice(),
+        ))
+        .width(68)
+        .height(68);
+
+        let app_info = column![
+            row![
+                text("NetLens").size(24).color(CustomStyles::accent_cyan()),
+                container(text("v0.1.0").size(11).color(CustomStyles::accent_emerald()))
+                    .padding(Padding::from([2, 8]))
+                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_emerald(), Color::BLACK)),
+                container(text("CachyOS / Arch Linux").size(10).color(CustomStyles::accent_purple()))
+                    .padding(Padding::from([2, 7]))
+                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+            text(Translations::app_subtitle(self.language))
+                .size(12)
+                .color(CustomStyles::text_secondary()),
+            text(Translations::about_app_description(self.language))
+                .size(11)
+                .color(CustomStyles::text_muted()),
+        ]
+        .spacing(4)
+        .width(Length::Fill);
+
+        let branding_card = container(
+            row![
+                app_icon,
+                app_info,
+            ]
+            .spacing(16)
+            .align_y(Alignment::Center)
+        )
+        .padding(14)
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
+
+        // 2. Author & Developer Card
+        let author_col = column![
+            text(Translations::about_author_section(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            row![
+                column![
+                    text("Omar Murcia").size(16).color(CustomStyles::text_primary()),
+                    text(Translations::about_role(self.language)).size(11).color(CustomStyles::text_muted()),
+                ]
+                .width(Length::Fill),
+                row![
+                    text(format!("✉️ {}: ing.omarmurcia@gmail.com", Translations::about_email_label(self.language)))
+                        .size(12)
+                        .color(CustomStyles::text_secondary()),
+                    button(text(format!("📋 {}", Translations::about_copy_email(self.language))).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([4, 8]))
+                        .on_press(Message::CopyToClipboard("ing.omarmurcia@gmail.com".to_string(), "Email".to_string())),
+                    button(text(format!("✉️ {}", Translations::about_send_email(self.language))).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([4, 8]))
+                        .on_press(Message::OpenExternalUrl("mailto:ing.omarmurcia@gmail.com".to_string())),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            ]
+            .align_y(Alignment::Center),
+        ]
+        .spacing(6);
+
+        let author_card = container(author_col)
+            .padding(14)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+        // 3. Repositories & Distribution Card
+        let make_repo_row = |icon: &'static str, title: &'static str, url: &'static str, open_label: &'static str, copy_label: &'static str| {
+            row![
+                column![
+                    text(format!("{} {}", icon, title)).size(12).color(CustomStyles::text_primary()),
+                    text(url).size(10).color(CustomStyles::accent_cyan()),
+                ]
+                .width(Length::Fill),
+                row![
+                    button(text(format!("🌐 {}", open_label)).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([3, 8]))
+                        .on_press(Message::OpenExternalUrl(url.to_string())),
+                    button(text(format!("📋 {}", copy_label)).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([3, 8]))
+                        .on_press(Message::CopyToClipboard(url.to_string(), title.to_string())),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            ]
+            .align_y(Alignment::Center)
+            .spacing(8)
+        };
+
+        let repos_col = column![
+            text(Translations::about_repositories_section(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            make_repo_row("💻", Translations::about_source_code(self.language), "https://github.com/omarmurcia/netlens", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
+            make_repo_row("📦", Translations::about_pacman_repo(self.language), "https://github.com/omarmurcia/netlens-repo", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
+            make_repo_row("🚀", Translations::about_web_portal(self.language), "https://omarmurcia.github.io/netlens-repo", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
+        ]
+        .spacing(8);
+
+        let repos_card = container(repos_col)
+            .padding(14)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+        // 4. Technical Specs & License Card
+        let specs_col = column![
+            text(Translations::about_tech_specs(self.language))
+                .size(13)
+                .color(CustomStyles::accent_cyan()),
+            row![
+                column![
+                    text(format!("⚖️ {}", Translations::about_license(self.language))).size(11).color(CustomStyles::text_muted()),
+                    text("MIT License (Free & Open Source)").size(11).color(CustomStyles::text_primary()),
+                ]
+                .width(Length::Fill),
+                column![
+                    text("⚡ Target OS").size(11).color(CustomStyles::text_muted()),
+                    text("Linux x86_64 (CachyOS / Arch / System Tray)").size(11).color(CustomStyles::text_primary()),
+                ]
+                .width(Length::Fill),
+                column![
+                    text("🦀 Core Engine").size(11).color(CustomStyles::text_muted()),
+                    text("Rust + Iced 0.13 + Tokio Runtime").size(11).color(CustomStyles::text_primary()),
+                ]
+                .width(Length::Fill),
+            ]
+            .spacing(12),
+            text("© 2026 Omar Murcia. All rights reserved.")
+                .size(10)
+                .color(CustomStyles::text_muted()),
+        ]
+        .spacing(6);
+
+        let specs_card = container(specs_col)
+            .padding(14)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+        // 5. Footer with Language Switcher and Close Button
+        let footer_row = row![
+            text(format!("🌐 {}:", Translations::language_label(self.language)))
+                .size(12)
+                .color(CustomStyles::text_muted()),
+            pick_list(
+                Language::ALL,
+                Some(self.language),
+                Message::LanguageChanged,
+            ),
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 20]))
+                .on_press(Message::CloseAbout),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+
+        let content = column![
+            title_row,
+            branding_card,
+            author_card,
+            repos_card,
+            specs_card,
+            footer_row,
+        ]
+        .spacing(12);
+
+        container(content)
+            .padding(22)
+            .width(760)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
 

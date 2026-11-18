@@ -7137,6 +7137,261 @@ impl Translations {
             Language::Urdu => format!("CSV برآمد کر دیا گیا: {}", fname),
         }
     }
+
+    pub fn about_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "ℹ️ Acerca de",
+            Language::English => "ℹ️ About",
+            Language::Chinese => "ℹ️ 关于",
+            Language::Hindi => "ℹ️ के बारे में",
+            Language::Arabic => "ℹ️ حول",
+            Language::French => "ℹ️ À propos",
+            Language::Bengali => "ℹ️ সম্পর্কে",
+            Language::Portuguese => "ℹ️ Sobre",
+            Language::Russian => "ℹ️ О программе",
+            Language::Urdu => "ℹ️ کے بارے میں",
+        }
+    }
+
+    pub fn tip_about(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Acerca de NetLens y créditos del autor",
+            Language::English => "About NetLens and author credits",
+            Language::Chinese => "关于 NetLens 及作者信息",
+            Language::Hindi => "NetLens और लेखक क्रेडिट के बारे में",
+            Language::Arabic => "حول NetLens ومعلومات المطور",
+            Language::French => "À propos de NetLens et crédits de l'auteur",
+            Language::Bengali => "NetLens এবং লেখক কৃতিত্ব সম্পর্কে",
+            Language::Portuguese => "Sobre o NetLens e créditos do autor",
+            Language::Russian => "О NetLens и об авторе",
+            Language::Urdu => "NetLens اور مصنف کے کریڈٹ کے بارے میں",
+        }
+    }
+
+    pub fn about_modal_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Acerca de NetLens",
+            Language::English => "About NetLens",
+            Language::Chinese => "关于 NetLens",
+            Language::Hindi => "NetLens के बारे में",
+            Language::Arabic => "حول NetLens",
+            Language::French => "À propos de NetLens",
+            Language::Bengali => "NetLens সম্পর্কে",
+            Language::Portuguese => "Sobre o NetLens",
+            Language::Russian => "О программе NetLens",
+            Language::Urdu => "NetLens کے بارے میں",
+        }
+    }
+
+    pub fn about_app_description(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Monitor y explorador visual de red local de alto rendimiento, con análisis de espectro Wi-Fi, gestión de almacenamiento USB en router y auditoría de seguridad.",
+            Language::English => "High-performance visual local network monitor and explorer, featuring Wi-Fi spectrum analysis, router USB storage management, and security auditing.",
+            Language::Chinese => "高性能可视化局域网监控与探测器，配备 Wi-Fi 频谱分析、路由器 USB 存储管理与网络安全审计。",
+            Language::Hindi => "उच्च-प्रदर्शन दृश्य स्थानीय नेटवर्क मॉनिटर और एक्सप्लोरर, वाई-फाई स्पेक्ट्रम विश्लेषण, राउटर यूएसबी स्टोरेज प्रबंधन और सुरक्षा ऑडिटिंग के साथ।",
+            Language::Arabic => "مراقب واستكشاف مرئي عالي الأداء للشبكة المحلية، يتميز بتحليل طيف الواي فاي وإدارة وحدة تخزين راوتر USB والتدقيق الأمني.",
+            Language::French => "Moniteur et explorateur visuel de réseau local haute performance, avec analyse spectrale Wi-Fi, gestion du stockage USB du routeur et audit de sécurité.",
+            Language::Bengali => "উচ্চ-কার্যক্ষমতাসম্পন্ন ভিজ্যুয়াল লোকাল নেটওয়ার্ক মনিটর এবং এক্সপ্লোরার, সাথে ওয়াই-ফাই স্পেকট্রাম বিশ্লেষণ, রাউটার ইউএসবি স্টোরেজ ব্যবস্থাপনা এবং নিরাপত্তা অডিট।",
+            Language::Portuguese => "Monitor e explorador visual de rede local de alto desempenho, com análise de espectro Wi-Fi, gerenciamento de armazenamento USB do roteador e auditoria de segurança.",
+            Language::Russian => "Высокопроизводительный визуальный монитор и сканер локальной сети с анализом спектра Wi-Fi, управлением USB-накопителем роутера и аудитом безопасности.",
+            Language::Urdu => "اعلی کارکردگی کا حامل بصری لوکل نیٹ ورک مانیٹر اور ایکسپلورر، وائی فائی اسپیکٹرم تجزیہ، راؤٹر یو ایس بی اسٹوریج مینجمنٹ اور سیکیورٹی آڈٹ کے ساتھ۔",
+        }
+    }
+
+    pub fn about_author_section(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Autor y Desarrollador",
+            Language::English => "Author & Lead Developer",
+            Language::Chinese => "作者与主开发者",
+            Language::Hindi => "लेखक और मुख्य डेवलपर",
+            Language::Arabic => "المؤلف والمطور الرئيسي",
+            Language::French => "Auteur et Développeur Principal",
+            Language::Bengali => "লেখক এবং প্রধান বিকাশকারী",
+            Language::Portuguese => "Autor e Desenvolvedor Principal",
+            Language::Russian => "Автор и главный разработчик",
+            Language::Urdu => "مصنف اور اہم ڈویلپر",
+        }
+    }
+
+    pub fn about_role(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Ingeniero de Software y Arquitectura de Sistemas",
+            Language::English => "Software Engineer & Systems Architect",
+            Language::Chinese => "软件工程师与系统架构师",
+            Language::Hindi => "सॉफ्टवेयर इंजीनियर और सिस्टम्स आर्किटेक्ट",
+            Language::Arabic => "مهندس برمجيات ومهندس أنظمة",
+            Language::French => "Ingénieur Logiciel et Architecte Systèmes",
+            Language::Bengali => "সফটওয়্যার ইঞ্জিনিয়ার এবং সিস্টেম আর্কিটেক্ট",
+            Language::Portuguese => "Engenheiro de Software e Arquiteto de Sistemas",
+            Language::Russian => "Инженер-программист и системный архитектор",
+            Language::Urdu => "سافٹ ویئر انجینئر اور سسٹمز آرکیٹیکٹ",
+        }
+    }
+
+    pub fn about_email_label(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Correo de Contacto",
+            Language::English => "Contact Email",
+            Language::Chinese => "联系邮箱",
+            Language::Hindi => "संपर्क ईमेल",
+            Language::Arabic => "البريد الإلكتروني للتواصل",
+            Language::French => "E-mail de Contact",
+            Language::Bengali => "যোগাযোগের ইমেল",
+            Language::Portuguese => "E-mail de Contato",
+            Language::Russian => "Контактный e-mail",
+            Language::Urdu => "رابطہ ای میل",
+        }
+    }
+
+    pub fn about_copy_email(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Copiar Correo",
+            Language::English => "Copy Email",
+            Language::Chinese => "复制邮箱",
+            Language::Hindi => "ईमेल कॉपी करें",
+            Language::Arabic => "نسخ البريد",
+            Language::French => "Copier l'e-mail",
+            Language::Bengali => "ইমেল কপি করুন",
+            Language::Portuguese => "Copiar E-mail",
+            Language::Russian => "Скопировать email",
+            Language::Urdu => "ای میل کاپی کریں",
+        }
+    }
+
+    pub fn about_send_email(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Enviar Correo",
+            Language::English => "Send Email",
+            Language::Chinese => "发送邮件",
+            Language::Hindi => "ईमेल भेजें",
+            Language::Arabic => "إرسال بريد",
+            Language::French => "Envoyer un e-mail",
+            Language::Bengali => "ইমেল পাঠান",
+            Language::Portuguese => "Enviar E-mail",
+            Language::Russian => "Написать письмо",
+            Language::Urdu => "ای میل بھیجیں",
+        }
+    }
+
+    pub fn about_repositories_section(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Repositorios Oficiales",
+            Language::English => "Official Repositories",
+            Language::Chinese => "官方代码仓库",
+            Language::Hindi => "आधिकारिक रिपॉजिटरी",
+            Language::Arabic => "المستودعات الرسمية",
+            Language::French => "Dépôts Officiels",
+            Language::Bengali => "অফিসিয়াল রিপোজিটরি",
+            Language::Portuguese => "Repositórios Oficiais",
+            Language::Russian => "Официальные репозитории",
+            Language::Urdu => "سرکاری ریپوزٹریز",
+        }
+    }
+
+    pub fn about_source_code(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Código Fuente (NetLens)",
+            Language::English => "Source Code (NetLens)",
+            Language::Chinese => "源代码 (NetLens)",
+            Language::Hindi => "स्रोत कोड (NetLens)",
+            Language::Arabic => "شفرة المصدر (NetLens)",
+            Language::French => "Code Source (NetLens)",
+            Language::Bengali => "উৎস কোড (NetLens)",
+            Language::Portuguese => "Código-Fonte (NetLens)",
+            Language::Russian => "Исходный код (NetLens)",
+            Language::Urdu => "ماخذ کوڈ (NetLens)",
+        }
+    }
+
+    pub fn about_pacman_repo(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Repositorio Pacman (CachyOS / Arch)",
+            Language::English => "Pacman Repository (CachyOS / Arch)",
+            Language::Chinese => "Pacman 软件源 (CachyOS / Arch)",
+            Language::Hindi => "पैकमैन रिपॉजिटरी (CachyOS / Arch)",
+            Language::Arabic => "مستودع Pacman (CachyOS / Arch)",
+            Language::French => "Dépôt Pacman (CachyOS / Arch)",
+            Language::Bengali => "প্যাকম্যান রিপোজিটরি (CachyOS / Arch)",
+            Language::Portuguese => "Repositório Pacman (CachyOS / Arch)",
+            Language::Russian => "Репозиторий Pacman (CachyOS / Arch)",
+            Language::Urdu => "پیک مین ریپوزٹری (CachyOS / Arch)",
+        }
+    }
+
+    pub fn about_web_portal(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Portal Web e Instalador",
+            Language::English => "Web Portal & Installer",
+            Language::Chinese => "网页门户与安装器",
+            Language::Hindi => "वेब पोर्टल और इंस्टॉलर",
+            Language::Arabic => "بوابة الويب والمثبت",
+            Language::French => "Portail Web & Installateur",
+            Language::Bengali => "ওয়েব পোর্টাল এবং ইনস্টলার",
+            Language::Portuguese => "Portal Web e Instalador",
+            Language::Russian => "Веб-портал и установщик",
+            Language::Urdu => "ویب پورٹل اور انسٹالر",
+        }
+    }
+
+    pub fn about_tech_specs(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Especificaciones Técnicas",
+            Language::English => "Technical Specifications",
+            Language::Chinese => "技术规格",
+            Language::Hindi => "तकनीकी विवरण",
+            Language::Arabic => "المواصفات التقنية",
+            Language::French => "Spécifications Techniques",
+            Language::Bengali => "প্রযুক্তিগত বৈশিষ্ট্য",
+            Language::Portuguese => "Especificações Técnicas",
+            Language::Russian => "Технические спецификации",
+            Language::Urdu => "تکنیکی وضاحتیں",
+        }
+    }
+
+    pub fn about_license(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Licencia MIT de Código Abierto",
+            Language::English => "MIT Open Source License",
+            Language::Chinese => "MIT 开源许可证",
+            Language::Hindi => "एमआईटी ओपन सोर्स लाइसेंस",
+            Language::Arabic => "ترخيص MIT مفتوح المصدر",
+            Language::French => "Licence Open Source MIT",
+            Language::Bengali => "এমআইটি ওপেন সোর্স লাইসেন্স",
+            Language::Portuguese => "Licença de Código Aberto MIT",
+            Language::Russian => "Открытая лицензия MIT",
+            Language::Urdu => "MIT اوپن سورس لائسنس",
+        }
+    }
+
+    pub fn about_open_in_browser(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Abrir",
+            Language::English => "Open",
+            Language::Chinese => "打开",
+            Language::Hindi => "खोलें",
+            Language::Arabic => "فتح",
+            Language::French => "Ouvrir",
+            Language::Bengali => "খুলুন",
+            Language::Portuguese => "Abrir",
+            Language::Russian => "Открыть",
+            Language::Urdu => "کھولیں",
+        }
+    }
+
+    pub fn about_copy_url(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Copiar",
+            Language::English => "Copy",
+            Language::Chinese => "复制",
+            Language::Hindi => "कॉपी",
+            Language::Arabic => "نسخ",
+            Language::French => "Copier",
+            Language::Bengali => "কপি",
+            Language::Portuguese => "Copiar",
+            Language::Russian => "Копировать",
+            Language::Urdu => "کاپی",
+        }
+    }
 }
 
 fn extract_target_prefix<'a>(original: &'a str, patterns: &[&str]) -> &'a str {
