@@ -7697,16 +7697,16 @@ impl Translations {
 
     pub fn update_authorizing_and_installing(lang: Language) -> &'static str {
         match lang {
-            Language::Spanish => "⏳ Solicitando autorización e instalando actualización en segundo plano...",
-            Language::English => "⏳ Requesting authorization and installing update in background...",
-            Language::Chinese => "⏳ 正在请求授权并在后台安装更新...",
-            Language::Hindi => "⏳ प्राधिकरण का अनुरोध किया जा रहा है और पृष्ठभूमि में अपडेट इंस्टॉल हो रहा है...",
-            Language::Arabic => "⏳ جاري طلب المصادقة وتثبيت التحديث في الخلفية...",
-            Language::French => "⏳ Demande d'autorisation et installation de la mise à jour en arrière-plan...",
-            Language::Bengali => "⏳ অনুমোদন অনুরোধ করা হচ্ছে এবং পটভূমিতে আপডেট ইনস্টল করা হচ্ছে...",
-            Language::Portuguese => "⏳ Solicitando autorização e instalando atualização em segundo plano...",
-            Language::Russian => "⏳ Запрос авторизации и установка обновления в фоновом режиме...",
-            Language::Urdu => "⏳ اجازت کی درخواست کی جا رہی ہے اور پس منظر میں اپ ڈیٹ انسٹال ہو رہی ہے...",
+            Language::Spanish => "Solicitando autorización e instalando actualización en segundo plano...",
+            Language::English => "Requesting authorization and installing update in background...",
+            Language::Chinese => "正在请求授权并在后台安装更新...",
+            Language::Hindi => "प्राधिकरण का अनुरोध किया जा रहा है और पृष्ठभूमि में अपडेट इंस्टॉल हो रहा है...",
+            Language::Arabic => "جاري طلب المصادقة وتثبيت التحديث في الخلفية...",
+            Language::French => "Demande d'autorisation et installation de la mise à jour en arrière-plan...",
+            Language::Bengali => "অনুমোদন অনুরোধ করা হচ্ছে এবং পটভূমিতে আপডেট ইনস্টল করা হচ্ছে...",
+            Language::Portuguese => "Solicitando autorização e instalando atualização em segundo plano...",
+            Language::Russian => "Запрос авторизации и установка обновления в фоновом режиме...",
+            Language::Urdu => "اجازت کی درخواست کی جا رہی ہے اور پس منظر میں اپ ڈیٹ انسٹال ہو رہی ہے...",
         }
     }
 

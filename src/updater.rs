@@ -200,10 +200,54 @@ impl UpdateChecker {
         Err("No se encontró ningún emulador de terminal compatible instalado.".to_string())
     }
 
-    /// Spawns the newly installed binary and terminates the current instance cleanly
+    /// Spawns the newly installed binary detached and terminates the current instance cleanly
     pub fn restart_application() {
-        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("/usr/bin/netlens"));
-        let _ = std::process::Command::new(exe).spawn();
+        // Determine the canonical binary path avoiding "(deleted)" suffix after pacman update
+        let exe_path = if let Ok(appimage) = std::env::var("APPIMAGE") {
+            let p = std::path::PathBuf::from(appimage.trim());
+            if p.exists() {
+                p
+            } else {
+                std::path::PathBuf::from("/usr/bin/netlens")
+            }
+        } else if std::path::Path::new("/usr/bin/netlens").exists() {
+            std::path::PathBuf::from("/usr/bin/netlens")
+        } else {
+            let raw = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("netlens"));
+            let clean = raw.to_string_lossy().replace(" (deleted)", "");
+            std::path::PathBuf::from(clean)
+        };
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let mut cmd = std::process::Command::new(&exe_path);
+            cmd.stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+
+            unsafe {
+                cmd.pre_exec(|| {
+                    libc::setsid();
+                    Ok(())
+                });
+            }
+
+            if let Err(e) = cmd.spawn() {
+                eprintln!("Error al reiniciar NetLens ({:?}): {}", exe_path, e);
+                // Fallback attempt with gtk-launch
+                let _ = std::process::Command::new("gtk-launch")
+                    .arg("netlens")
+                    .spawn();
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = std::process::Command::new(&exe_path).spawn();
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(150));
         std::process::exit(0);
     }
 }
