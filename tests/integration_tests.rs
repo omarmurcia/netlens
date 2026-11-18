@@ -80,6 +80,48 @@ fn test_device_categorization() {
     // 6. Ordenador personal
     let cat_pc = Scanner::categorize_device(false, true, Some("cachyos-x8664"), "Intel", &[]);
     assert_eq!(cat_pc, DeviceCategory::Computer);
+
+    // 7. Consolas de Videojuegos (PlayStation, Xbox, Nintendo, Steam Deck)
+    let cat_ps5 = Scanner::categorize_device(false, false, Some("PS5-Office"), "Sony Interactive Entertainment Inc.", &[]);
+    assert_eq!(cat_ps5, DeviceCategory::GamingConsole);
+
+    let cat_xbox = Scanner::categorize_device(false, false, Some("Xbox-LivingRoom"), "Microsoft Corporation", &[]);
+    assert_eq!(cat_xbox, DeviceCategory::GamingConsole);
+
+    let cat_switch = Scanner::categorize_device(false, false, Some("Switch-OLED"), "Nintendo Co., Ltd.", &[]);
+    assert_eq!(cat_switch, DeviceCategory::GamingConsole);
+
+    let cat_deck = Scanner::categorize_device(false, false, Some("steamdeck"), "Valve Corporation", &[]);
+    assert_eq!(cat_deck, DeviceCategory::GamingConsole);
+
+    let ports_psn = vec![PortInfo {
+        port: 3074,
+        service: "XboxLive/PSN".to_string(),
+        description: "Console Gaming Port".to_string(),
+    }];
+    let cat_port_console = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_psn);
+    assert_eq!(cat_port_console, DeviceCategory::GamingConsole);
+
+    // 8. Dispositivos de Streaming (Roku, Chromecast, Fire TV, Apple TV, etc.)
+    let cat_roku = Scanner::categorize_device(false, false, Some("Roku-Express-4K"), "Roku, Inc.", &[]);
+    assert_eq!(cat_roku, DeviceCategory::StreamingDevice);
+
+    let cat_chromecast = Scanner::categorize_device(false, false, Some("Chromecast-LivingRoom"), "Google LLC", &[]);
+    assert_eq!(cat_chromecast, DeviceCategory::StreamingDevice);
+
+    let cat_firetv = Scanner::categorize_device(false, false, Some("FireTVStick-Master"), "Amazon Technologies Inc.", &[]);
+    assert_eq!(cat_firetv, DeviceCategory::StreamingDevice);
+
+    let cat_appletv = Scanner::categorize_device(false, false, Some("Apple-TV-Living"), "Apple Inc.", &[]);
+    assert_eq!(cat_appletv, DeviceCategory::StreamingDevice);
+
+    let ports_cast = vec![PortInfo {
+        port: 8009,
+        service: "Google Cast".to_string(),
+        description: "Chromecast Streaming Protocol".to_string(),
+    }];
+    let cat_cast_port = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_cast);
+    assert_eq!(cat_cast_port, DeviceCategory::StreamingDevice);
 }
 
 #[test]
@@ -118,6 +160,9 @@ fn test_export_json_and_csv() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     let ctx = NetworkContext {
@@ -139,13 +184,24 @@ fn test_export_json_and_csv() {
     let _ = fs::remove_file(json_path);
 
     // Probar exportación a CSV
-    let csv_path = Exporter::export_csv(&[sample_device]).expect("CSV export failed");
+    let csv_path = Exporter::export_csv(&[sample_device.clone()]).expect("CSV export failed");
     assert!(csv_path.exists());
     let csv_content = fs::read_to_string(&csv_path).expect("Failed to read CSV");
     assert!(csv_content.contains("192.168.1.1"));
     assert!(csv_content.contains("d8:ec:5e:9c:77:1b"));
     assert!(csv_content.contains("Router / Puerta de Enlace"));
     let _ = fs::remove_file(csv_path);
+
+    // Probar guardado en ubicación personalizada elegida por el usuario
+    let custom_json_path = std::env::temp_dir().join(format!("custom_test_{}", Exporter::generate_json_filename()));
+    Exporter::save_json_to_path(&custom_json_path, &[sample_device.clone()], &ctx).expect("Custom JSON save failed");
+    assert!(custom_json_path.exists());
+    let _ = fs::remove_file(custom_json_path);
+
+    let custom_csv_path = std::env::temp_dir().join(format!("custom_test_{}", Exporter::generate_csv_filename()));
+    Exporter::save_csv_to_path(&custom_csv_path, &[sample_device]).expect("Custom CSV save failed");
+    assert!(custom_csv_path.exists());
+    let _ = fs::remove_file(custom_csv_path);
 }
 
 #[test]
@@ -213,6 +269,9 @@ fn test_i18n_top_10_languages() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     for &lang in Language::ALL {
@@ -350,6 +409,9 @@ fn test_storage_persistence() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     let dev2 = Device {
@@ -374,6 +436,9 @@ fn test_storage_persistence() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     let mut list = vec![dev1, dev2];
@@ -389,6 +454,7 @@ fn test_storage_persistence() {
         theme: "Nord".to_string(),
         devices: list.clone(),
         device_metadata: metadata.clone(),
+        network_events: vec![],
         last_speed_test: Some(SpeedTestResult {
             ping_ms: 15.2,
             download_mbps: 245.8,
@@ -418,6 +484,8 @@ fn test_storage_persistence() {
         known_macs: Vec::new(),
         autostart: false,
         minimize_to_tray_on_close: false,
+        notification_settings: netlens::notification::NotificationSettings::default(),
+        storage_credentials: None,
     };
 
     let json = serde_json::to_string_pretty(&state).expect("Failed to serialize state");
@@ -483,6 +551,9 @@ fn test_whitelist_and_blacklist_persistence() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     let dev_blocked = Device {
@@ -507,6 +578,9 @@ fn test_whitelist_and_blacklist_persistence() {
         connection_type: None,
         wifi_signal_dbm: None,
         negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
     };
 
     let mut list = vec![dev_trusted.clone(), dev_blocked.clone()];
@@ -857,4 +931,1428 @@ fn test_background_scan_and_daemon_settings() {
     assert_eq!(win_settings.size.height, 820.0);
     assert!(!win_settings.exit_on_close_request, "exit_on_close_request should be false for daemon background operation");
     assert!(win_settings.icon.is_some(), "Window settings must have the embedded icon configured");
+}
+
+#[test]
+fn test_security_audit_score_and_checks() {
+    use netlens::security_audit::SecurityAuditor;
+    use netlens::router::upnp::UpnpPortMapping;
+
+    let now = Local::now();
+    let safe_device = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 10),
+        mac: "aa:bb:cc:dd:ee:ff".to_string(),
+        vendor: "Apple".to_string(),
+        hostname: Some("MacBook".to_string()),
+        category: DeviceCategory::Computer,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "wlan0".to_string(),
+        latency_ms: Some(2.0),
+        open_ports: vec![PortInfo {
+            port: 443,
+            service: "HTTPS".to_string(),
+            description: "Encrypted Web".to_string(),
+        }],
+        status: DeviceStatus::Online,
+        first_seen: now,
+        last_seen: now,
+        custom_alias: None,
+        is_whitelisted: true,
+        is_blocked: false,
+        speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
+        model_name: Some("MacBook Pro 16".to_string()),
+        discovered_services: vec!["AirPlay".to_string()],
+        request_history: vec![],
+    };
+
+    let vulnerable_device = Device {
+        ip: Ipv4Addr::new(192, 168, 1, 20),
+        mac: "11:22:33:44:55:66".to_string(),
+        vendor: "OldVendor".to_string(),
+        hostname: Some("LegacyBox".to_string()),
+        category: DeviceCategory::Unknown,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "wlan0".to_string(),
+        latency_ms: Some(5.0),
+        open_ports: vec![
+            PortInfo {
+                port: 23,
+                service: "Telnet".to_string(),
+                description: "Unencrypted Telnet".to_string(),
+            },
+            PortInfo {
+                port: 21,
+                service: "FTP".to_string(),
+                description: "Unencrypted FTP".to_string(),
+            },
+        ],
+        status: DeviceStatus::Online,
+        first_seen: now,
+        last_seen: now,
+        custom_alias: None,
+        is_whitelisted: false,
+        is_blocked: false,
+        speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
+    };
+
+    let port_mappings = vec![
+        UpnpPortMapping {
+            external_port: 80,
+            internal_port: 80,
+            internal_client: "192.168.1.20".to_string(),
+            protocol: "TCP".to_string(),
+            description: "Web Port".to_string(),
+            enabled: true,
+        },
+    ];
+
+    // Audit with vulnerable device and dangerous forwarded port
+    let report = SecurityAuditor::audit(&[safe_device, vulnerable_device], &port_mappings, false);
+    assert!(report.score < 80, "Score should reflect detected vulnerabilities");
+    assert!(report.critical_count >= 1, "Should identify critical issues (Telnet or forwarded port 80)");
+    assert_eq!(report.total_devices_analyzed, 2);
+}
+
+#[test]
+fn test_uptime_tracker_and_outages() {
+    use netlens::uptime::UptimeTracker;
+    use netlens::history::NetworkEventType;
+
+    let mut tracker = UptimeTracker::default();
+    assert_eq!(tracker.uptime_percentage(), 100.0);
+    assert!(tracker.is_online);
+
+    // Normal successful probes
+    let ev1 = tracker.record_probe(true, true);
+    assert!(ev1.is_none());
+    assert_eq!(tracker.uptime_percentage(), 100.0);
+
+    // First failure (does not immediately trigger outage to avoid false positives)
+    let ev_fail1 = tracker.record_probe(true, false);
+    assert!(ev_fail1.is_none());
+    assert!(tracker.is_online);
+
+    // Second failure confirms outage
+    let ev_fail2 = tracker.record_probe(true, false);
+    assert!(ev_fail2.is_some());
+    let (evt_type, title, _) = ev_fail2.unwrap();
+    assert_eq!(evt_type, NetworkEventType::InternetOutage);
+    assert!(title.contains("Corte de ISP"));
+    assert!(!tracker.is_online);
+
+    // Recovery probe
+    let ev_rec = tracker.record_probe(true, true);
+    assert!(ev_rec.is_some());
+    let (rec_type, _, _) = ev_rec.unwrap();
+    assert_eq!(rec_type, NetworkEventType::InternetRestored);
+    assert!(tracker.is_online);
+    assert_eq!(tracker.outages.len(), 1);
+}
+
+#[test]
+fn test_history_manager_and_events() {
+    use netlens::history::{HistoryManager, NetworkEventType};
+
+    let evt = HistoryManager::create_event(
+        NetworkEventType::NewDeviceDetected,
+        "Nuevo Equipo".to_string(),
+        "Chromecast detectado en la red".to_string(),
+        Some(Ipv4Addr::new(192, 168, 1, 55)),
+        Some("00:11:22:33:44:55".to_string()),
+    );
+
+    assert_eq!(evt.event_type, NetworkEventType::NewDeviceDetected);
+    assert_eq!(evt.event_type.icon(), "✨");
+    assert_eq!(evt.event_type.label(), "Nuevo Dispositivo");
+    assert_eq!(evt.title, "Nuevo Equipo");
+    assert!(evt.details.contains("Chromecast"));
+    assert_eq!(evt.ip, Some(Ipv4Addr::new(192, 168, 1, 55)));
+}
+
+#[test]
+fn test_upnp_models_serde() {
+    use netlens::router::upnp::{UpnpPortMapping, UpnpRouterStatus};
+
+    let mapping = UpnpPortMapping {
+        external_port: 32400,
+        internal_port: 32400,
+        internal_client: "192.168.1.50".to_string(),
+        protocol: "TCP".to_string(),
+        description: "Plex Media Server".to_string(),
+        enabled: true,
+    };
+
+    let json = serde_json::to_string(&mapping).expect("Serialización UPnP exitosa");
+    let deserialized: UpnpPortMapping = serde_json::from_str(&json).expect("Deserialización UPnP exitosa");
+    assert_eq!(mapping, deserialized);
+
+    let status = UpnpRouterStatus {
+        external_ip: Some("201.240.110.45".to_string()),
+        connection_status: Some("Connected".to_string()),
+        uptime_secs: Some(86400),
+        total_bytes_received: Some(1024 * 1024 * 500),
+        total_bytes_sent: Some(1024 * 1024 * 100),
+        port_mappings: vec![mapping],
+        model_name: Some("Linksys WHW03".to_string()),
+        manufacturer: Some("Linksys".to_string()),
+    };
+
+    assert_eq!(status.external_ip.as_deref(), Some("201.240.110.45"));
+    assert_eq!(status.port_mappings.len(), 1);
+}
+
+#[test]
+fn test_wifi_analyzer_report_structure() {
+    use netlens::wifi_analyzer::{ChannelOccupancy, WifiAnalyzerReport, WifiNetworkInfo};
+
+    let report = WifiAnalyzerReport {
+        networks: vec![
+            WifiNetworkInfo {
+                ssid: "MiWifi_Casa".to_string(),
+                bssid: "00:11:22:33:44:55".to_string(),
+                channel: 6,
+                frequency_mhz: 2437,
+                signal_percent: 85,
+                security: "WPA2".to_string(),
+                is_current: true,
+            },
+        ],
+        current_ssid: Some("MiWifi_Casa".to_string()),
+        current_channel: Some(6),
+        recommended_channel_24: 1,
+        recommended_channel_5: 36,
+        recommendation_text: "El canal 1 de 2.4 GHz tiene menor interferencia.".to_string(),
+        channels_24: vec![ChannelOccupancy {
+            channel: 6,
+            networks_count: 1,
+            max_signal: 85,
+            ssids: vec!["MiWifi_Casa".to_string()],
+        }],
+        channels_5: vec![],
+    };
+
+    assert_eq!(report.recommended_channel_24, 1);
+    assert_eq!(report.recommended_channel_5, 36);
+    assert_eq!(report.networks.len(), 1);
+    assert!(report.networks[0].is_current);
+}
+
+#[test]
+fn test_device_request_history() {
+    use netlens::model::{Device, DeviceCategory, DeviceStatus};
+
+    let now = chrono::Local::now();
+    let mut dev = Device {
+        ip: std::net::Ipv4Addr::new(192, 168, 1, 88),
+        mac: "aa:bb:cc:11:22:33".to_string(),
+        vendor: "Google".to_string(),
+        hostname: Some("Chromecast".to_string()),
+        category: DeviceCategory::SmartTv,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "wlan0".to_string(),
+        latency_ms: Some(1.2),
+        open_ports: vec![],
+        status: DeviceStatus::Online,
+        first_seen: now,
+        last_seen: now,
+        custom_alias: None,
+        is_whitelisted: true,
+        is_blocked: false,
+        speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
+        model_name: Some("Chromecast with Google TV".to_string()),
+        discovered_services: vec!["Google Cast".to_string()],
+        request_history: vec![],
+    };
+
+    assert_eq!(dev.request_history.len(), 0);
+    dev.add_request("youtubei.googleapis.com".to_string(), "Streaming Video".to_string(), "HTTPS SNI".to_string());
+    dev.add_request("www.google.com".to_string(), "Búsqueda Web".to_string(), "DNS A".to_string());
+
+    assert_eq!(dev.request_history.len(), 2);
+    assert_eq!(dev.request_history[0].query, "www.google.com");
+    assert_eq!(dev.request_history[1].query, "youtubei.googleapis.com");
+}
+
+#[test]
+fn test_notification_settings_serde_and_defaults() {
+    use netlens::notification::{NotificationDetailLevel, NotificationSettings, NotificationUrgency};
+
+    let default_settings = NotificationSettings::default();
+    assert!(default_settings.enabled);
+    assert!(default_settings.notify_unknown_intruders);
+    assert!(!default_settings.notify_known_unwhitelisted_reconnect);
+    assert!(!default_settings.notify_whitelisted_reconnect);
+    assert!(!default_settings.notify_device_disconnected);
+    assert!(!default_settings.notify_internet_outages);
+    assert!(!default_settings.notify_security_critical);
+    assert_eq!(default_settings.urgency, NotificationUrgency::Normal);
+    assert_eq!(default_settings.timeout_secs, 7);
+    assert_eq!(default_settings.detail_level, NotificationDetailLevel::Detailed);
+    assert!(default_settings.show_mac);
+    assert!(default_settings.show_vendor);
+    assert_eq!(default_settings.custom_prefix, "NetLens");
+    assert!(default_settings.play_sound);
+
+    // Test JSON Serialization & Deserialization
+    let json = serde_json::to_string(&default_settings).expect("JSON serialization failed");
+    let deserialized: NotificationSettings = serde_json::from_str(&json).expect("JSON deserialization failed");
+    assert_eq!(default_settings, deserialized);
+
+    // Test backwards compatibility with empty JSON object (defaults for fresh install)
+    let empty_json = "{}";
+    let loaded: NotificationSettings = serde_json::from_str(empty_json).expect("Failed to deserialize empty json");
+    assert!(loaded.enabled);
+    assert!(loaded.notify_unknown_intruders);
+    assert!(!loaded.notify_known_unwhitelisted_reconnect);
+    assert!(!loaded.notify_device_disconnected);
+    assert!(!loaded.notify_internet_outages);
+    assert!(!loaded.notify_security_critical);
+    assert_eq!(loaded.timeout_secs, 7);
+    assert_eq!(loaded.custom_prefix, "NetLens");
+}
+
+#[test]
+fn test_notification_message_formatting_and_content() {
+    use netlens::notification::{NotificationDetailLevel, NotificationSettings};
+    use std::net::Ipv4Addr;
+
+    let mut settings = NotificationSettings::default();
+    settings.custom_prefix = "[MiRed]".to_string();
+
+    // Title formatting with prefix
+    assert_eq!(settings.format_title("Alerta"), "[MiRed]: Alerta");
+    settings.custom_prefix = "".to_string();
+    assert_eq!(settings.format_title("Alerta"), "Alerta");
+
+    // Message formatting in Compact mode
+    settings.detail_level = NotificationDetailLevel::Compact;
+    let compact_msg = settings.format_device_message(
+        "Reconexión",
+        "Tablet-Android",
+        Ipv4Addr::new(192, 168, 1, 45),
+        "00:11:22:33:44:55",
+        "Samsung",
+        Some("Fuera de whitelist"),
+    );
+    assert!(compact_msg.contains("Reconexión"));
+    assert!(compact_msg.contains("Tablet-Android"));
+    assert!(compact_msg.contains("192.168.1.45"));
+    assert!(compact_msg.contains("Fuera de whitelist"));
+
+    // Message formatting in Detailed mode
+    settings.detail_level = NotificationDetailLevel::Detailed;
+    settings.show_mac = true;
+    let detailed_msg = settings.format_device_message(
+        "Reconexión",
+        "Tablet-Android",
+        Ipv4Addr::new(192, 168, 1, 45),
+        "00:11:22:33:44:55",
+        "Samsung",
+        Some("No está en Lista Blanca"),
+    );
+    assert!(detailed_msg.contains("MAC: 00:11:22:33:44:55"));
+    assert!(!detailed_msg.contains("Fabricante"));
+
+    // Message formatting in Full mode with vendor
+    settings.detail_level = NotificationDetailLevel::Full;
+    settings.show_vendor = true;
+    let full_msg = settings.format_device_message(
+        "Reconexión",
+        "Tablet-Android",
+        Ipv4Addr::new(192, 168, 1, 45),
+        "00:11:22:33:44:55",
+        "Samsung Electronics",
+        Some("No está en Lista Blanca"),
+    );
+    assert!(full_msg.contains("MAC: 00:11:22:33:44:55"));
+    assert!(full_msg.contains("Fabricante: Samsung Electronics"));
+
+    // Hiding MAC and Vendor
+    settings.show_mac = false;
+    settings.show_vendor = false;
+    let filtered_msg = settings.format_device_message(
+        "Reconexión",
+        "Tablet-Android",
+        Ipv4Addr::new(192, 168, 1, 45),
+        "00:11:22:33:44:55",
+        "Samsung Electronics",
+        None,
+    );
+    assert!(!filtered_msg.contains("MAC"));
+    assert!(!filtered_msg.contains("Samsung Electronics"));
+}
+
+#[test]
+fn test_unwhitelisted_known_device_reconnection_detection() {
+    use netlens::model::{Device, DeviceCategory, DeviceStatus};
+    use netlens::notification::NotificationSettings;
+    use std::collections::HashSet;
+
+    let mut settings = NotificationSettings::default();
+    assert!(!settings.notify_known_unwhitelisted_reconnect);
+    settings.notify_known_unwhitelisted_reconnect = true;
+
+    let dev_mac = "12:34:56:78:9a:bc".to_string();
+    let mac_key = dev_mac.to_lowercase();
+
+    // 1. Setup: Known MAC exists (e.g. from previous scan), but NOT whitelisted
+    let mut known_macs = HashSet::new();
+    known_macs.insert(mac_key.clone());
+
+    let active_online_macs: HashSet<String> = HashSet::new();
+    let initial_scan_completed = true;
+
+    // Previous device in device list was marked Offline after last scan cycle
+    let devices = vec![Device {
+        ip: std::net::Ipv4Addr::new(192, 168, 1, 77),
+        mac: dev_mac.clone(),
+        vendor: "Apple Inc.".to_string(),
+        hostname: Some("iPhone-Invitado".to_string()),
+        category: DeviceCategory::Smartphone,
+        is_randomized_mac: false,
+        is_gateway: false,
+        is_current_host: false,
+        interface: "eth0".to_string(),
+        latency_ms: Some(2.5),
+        open_ports: vec![],
+        status: DeviceStatus::Offline, // Estaba desconectado
+        first_seen: chrono::Local::now(),
+        last_seen: chrono::Local::now(),
+        custom_alias: None,
+        is_whitelisted: false, // NO está en la lista blanca
+        is_blocked: false,
+        speed_limit_kbps: None,
+        connection_type: None,
+        wifi_signal_dbm: None,
+        negotiated_mbps: None,
+        model_name: None,
+        discovered_services: vec![],
+        request_history: vec![],
+    }];
+
+    // 2. A new scan occurs: device responds and HostFound is received
+    let mut scanned_macs_current_cycle = HashSet::new();
+    scanned_macs_current_cycle.insert(mac_key.clone());
+
+    let existing_idx = devices.iter().position(|d| d.mac.trim().to_lowercase() == mac_key);
+    assert!(existing_idx.is_some());
+
+    let was_offline = existing_idx.map(|idx| devices[idx].status == DeviceStatus::Offline).unwrap_or(true);
+    let was_not_active = !active_online_macs.contains(&mac_key);
+    let is_reconnection = (was_offline || was_not_active) && initial_scan_completed;
+    let is_new_device = !known_macs.contains(&mac_key);
+
+    assert!(is_reconnection, "Device should be identified as reconnecting!");
+    assert!(!is_new_device, "Device is already known from previous scans!");
+
+    let incoming_device = &devices[existing_idx.unwrap()];
+    assert!(!incoming_device.is_whitelisted, "Device is not whitelisted!");
+    assert!(!incoming_device.is_gateway && !incoming_device.is_current_host);
+
+    // 3. Verify notification trigger condition matches user's bug fix:
+    let should_notify_unwhitelisted_reconnect = !is_new_device
+        && is_reconnection
+        && !incoming_device.is_whitelisted
+        && !incoming_device.is_gateway
+        && !incoming_device.is_current_host
+        && settings.enabled
+        && settings.notify_known_unwhitelisted_reconnect;
+
+    assert!(
+        should_notify_unwhitelisted_reconnect,
+        "Reconnection of known unwhitelisted device MUST trigger notification!"
+    );
+}
+
+#[test]
+fn test_i18n_notification_settings_all_languages() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert!(!Translations::notif_settings_title(lang).is_empty());
+        assert!(!Translations::notif_settings_desc(lang).is_empty());
+        assert!(!Translations::notif_master_enabled(lang).is_empty());
+        assert!(!Translations::notif_master_disabled(lang).is_empty());
+        assert!(!Translations::notif_trigger_unknown(lang).is_empty());
+        assert!(!Translations::notif_trigger_unwhitelisted_reconnect(lang).is_empty());
+        assert!(!Translations::notif_trigger_whitelisted_reconnect(lang).is_empty());
+        assert!(!Translations::notif_trigger_disconnected(lang).is_empty());
+        assert!(!Translations::notif_trigger_outages(lang).is_empty());
+        assert!(!Translations::notif_trigger_security(lang).is_empty());
+        assert!(!Translations::notif_urgency_label(lang).is_empty());
+        assert!(!Translations::notif_timeout_label(lang).is_empty());
+        assert!(!Translations::notif_sound_label(lang).is_empty());
+        assert!(!Translations::notif_detail_label(lang).is_empty());
+        assert!(!Translations::notif_show_mac_label(lang).is_empty());
+        assert!(!Translations::notif_show_vendor_label(lang).is_empty());
+        assert!(!Translations::notif_prefix_label(lang).is_empty());
+        assert!(!Translations::notif_test_btn(lang).is_empty());
+        assert!(!Translations::notif_reconnect_unwhitelisted_title(lang).is_empty());
+        assert!(!Translations::notif_reconnect_whitelisted_title(lang).is_empty());
+        assert!(!Translations::notif_device_disconnected_title(lang).is_empty());
+        assert!(!Translations::notif_realtime_label(lang).is_empty());
+        assert!(!Translations::notif_realtime_desc(lang).is_empty());
+    }
+}
+
+#[test]
+fn test_realtime_monitor_parsing() {
+    use netlens::realtime_monitor::{NeighborAction, RealtimeMonitor};
+    use std::net::Ipv4Addr;
+
+    // Line 1: Normal STALE state
+    let line1 = "192.168.1.165 dev eno1 lladdr 28:92:00:09:72:02 STALE";
+    let action1 = RealtimeMonitor::parse_neighbor_line(line1);
+    assert_eq!(
+        action1,
+        Some(NeighborAction::Appeared {
+            ip: Ipv4Addr::new(192, 168, 1, 165),
+            mac: "28:92:00:09:72:02".to_string(),
+            iface: "eno1".to_string(),
+        })
+    );
+
+    // Line 2: REACHABLE state
+    let line2 = "192.168.1.55 dev wlan0 lladdr c0:23:8d:66:79:fe REACHABLE";
+    let action2 = RealtimeMonitor::parse_neighbor_line(line2);
+    assert_eq!(
+        action2,
+        Some(NeighborAction::Appeared {
+            ip: Ipv4Addr::new(192, 168, 1, 55),
+            mac: "c0:23:8d:66:79:fe".to_string(),
+            iface: "wlan0".to_string(),
+        })
+    );
+
+    // Line 3: FAILED state (must be ignored)
+    let line3 = "192.168.1.200 dev eno1 FAILED";
+    assert_eq!(RealtimeMonitor::parse_neighbor_line(line3), None);
+
+    // Line 4: Deleted neighbor entry
+    let line4 = "Deleted 192.168.1.165 dev eno1 lladdr 28:92:00:09:72:02 STALE";
+    let action4 = RealtimeMonitor::parse_neighbor_line(line4);
+    assert_eq!(
+        action4,
+        Some(NeighborAction::Disappeared {
+            ip: Ipv4Addr::new(192, 168, 1, 165),
+            mac: Some("28:92:00:09:72:02".to_string()),
+            iface: "eno1".to_string(),
+        })
+    );
+
+    // Line 5: IPv6 neighbor (must be ignored)
+    let line5 = "fe80::1 dev eno1 lladdr 28:92:00:09:72:02 STALE";
+    assert_eq!(RealtimeMonitor::parse_neighbor_line(line5), None);
+
+    // Line 6: Empty or invalid
+    assert_eq!(RealtimeMonitor::parse_neighbor_line(""), None);
+    assert_eq!(RealtimeMonitor::parse_neighbor_line("   \n"), None);
+
+    // Line 7: All zeros MAC (must be ignored)
+    let line7 = "192.168.1.99 dev eno1 lladdr 00:00:00:00:00:00 STALE";
+    assert_eq!(RealtimeMonitor::parse_neighbor_line(line7), None);
+}
+
+#[test]
+fn test_realtime_monitor_settings_serde() {
+    use netlens::notification::NotificationSettings;
+
+    let settings = NotificationSettings::default();
+    assert!(settings.realtime_netlink_monitor);
+
+    let json = serde_json::to_string(&settings).expect("Serialization failed");
+    let deserialized: NotificationSettings = serde_json::from_str(&json).expect("Deserialization failed");
+    assert!(deserialized.realtime_netlink_monitor);
+
+    // Backwards compatibility with JSON missing the field
+    let empty_json = "{}";
+    let loaded: NotificationSettings = serde_json::from_str(empty_json).expect("Deserialization failed");
+    assert!(loaded.realtime_netlink_monitor);
+}
+
+#[test]
+fn test_fast_disconnection_heartbeat_settings_and_logic() {
+    use netlens::notification::NotificationSettings;
+    use std::collections::{HashMap, HashSet};
+
+    // 1. Verificación de defaults y serialización de configuración
+    let settings = NotificationSettings::default();
+    assert!(settings.fast_disconnection_heartbeat);
+
+    let json = serde_json::to_string(&settings).expect("Serialization failed");
+    let deserialized: NotificationSettings = serde_json::from_str(&json).expect("Deserialization failed");
+    assert!(deserialized.fast_disconnection_heartbeat);
+
+    // Compatibilidad retroactiva con configuraciones antiguas donde no existía el campo
+    let empty_json = "{}";
+    let loaded: NotificationSettings = serde_json::from_str(empty_json).expect("Deserialization failed");
+    assert!(loaded.fast_disconnection_heartbeat);
+
+    // 2. Simulación de la lógica de Heartbeat Keep-Alive
+    let mut missed_heartbeats: HashMap<Ipv4Addr, u32> = HashMap::new();
+    let mut active_online_macs: HashSet<String> = HashSet::new();
+
+    let test_ip = Ipv4Addr::new(192, 168, 1, 142);
+    let test_mac = "76:da:ef:0a:3e:8e".to_string();
+
+    // El dispositivo está inicialmente activo y conectado
+    active_online_macs.insert(test_mac.clone());
+    missed_heartbeats.insert(test_ip, 0);
+
+    // Fallo de sondeo 1: no responde
+    let misses = missed_heartbeats.entry(test_ip).or_insert(0);
+    *misses += 1;
+    assert_eq!(*misses, 1);
+    // Con 1 solo fallo NO debe marcarse como desconectado (evita falsos positivos por jitter de Wi-Fi)
+    assert!(active_online_macs.contains(&test_mac));
+
+    // Fallo de sondeo 2 consecutivo: desconexión confirmada (4s + 4s = 8s)
+    let misses = missed_heartbeats.entry(test_ip).or_insert(0);
+    *misses += 1;
+    assert_eq!(*misses, 2);
+
+    let was_online = active_online_macs.remove(&test_mac);
+    assert!(was_online);
+    assert!(!active_online_macs.contains(&test_mac));
+
+    // Si el equipo responde más adelante, el contador se resetea a 0
+    missed_heartbeats.insert(test_ip, 0);
+    assert_eq!(*missed_heartbeats.get(&test_ip).unwrap(), 0);
+}
+
+#[test]
+fn test_i18n_heartbeat_and_settings_buttons_all_languages() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::notification::{NotificationDetailLevel, NotificationUrgency};
+
+    for &lang in Language::ALL {
+        // Botones de estado (activado / desactivado) y badge de prioridad
+        let btn_on = Translations::btn_enabled(lang);
+        let btn_off = Translations::btn_disabled(lang);
+        let badge = Translations::badge_priority(lang);
+
+        assert!(!btn_on.is_empty(), "btn_enabled vacío para {:?}", lang);
+        assert!(!btn_off.is_empty(), "btn_disabled vacío para {:?}", lang);
+        assert!(!badge.is_empty(), "badge_priority vacío para {:?}", lang);
+
+        // Encabezados de subsecciones en Ajustes
+        let sec_trig = Translations::notif_section_triggers(lang);
+        let sec_behav = Translations::notif_section_behavior(lang);
+        let sec_cont = Translations::notif_section_content(lang);
+
+        assert!(!sec_trig.is_empty(), "notif_section_triggers vacío para {:?}", lang);
+        assert!(!sec_behav.is_empty(), "notif_section_behavior vacío para {:?}", lang);
+        assert!(!sec_cont.is_empty(), "notif_section_content vacío para {:?}", lang);
+
+        // Textos del Heartbeat
+        let hb_lbl = Translations::notif_heartbeat_label(lang);
+        let hb_desc = Translations::notif_heartbeat_desc(lang);
+
+        assert!(!hb_lbl.is_empty(), "notif_heartbeat_label vacío para {:?}", lang);
+        assert!(!hb_desc.is_empty(), "notif_heartbeat_desc vacío para {:?}", lang);
+
+        // Opciones de urgencia en todos los idiomas
+        for &urgency in NotificationUrgency::ALL {
+            let lbl = urgency.label(lang);
+            assert!(!lbl.is_empty(), "Urgency label vacío para {:?} en {:?}", urgency, lang);
+        }
+
+        // Opciones de nivel de detalle en todos los idiomas
+        for &detail in NotificationDetailLevel::ALL {
+            let lbl = detail.label(lang);
+            assert!(!lbl.is_empty(), "Detail label vacío para {:?} en {:?}", detail, lang);
+        }
+    }
+}
+
+#[test]
+fn test_router_storage_share_and_directory_parsing() {
+    use netlens::router::{
+        format_file_size, RouterStorageManager, StorageFileType,
+    };
+
+    // 1. Prueba de parseo de recursos compartidos (smbclient -g y estándar)
+    let grepable_output = r#"
+Disk|usbdisk|SanDisk Ultra USB 3.0
+Disk|multimedia|Disco Duro Externo 1TB
+IPC|IPC$|IPC Service
+Printer|print$|Controladores de Impresora
+"#;
+
+    let shares = RouterStorageManager::parse_shares_output(grepable_output);
+    assert_eq!(shares.len(), 2);
+    assert_eq!(shares[0].name, "usbdisk");
+    assert_eq!(shares[0].share_type, "Disk");
+    assert_eq!(shares[0].comment, "SanDisk Ultra USB 3.0");
+    assert_eq!(shares[1].name, "multimedia");
+
+    // 2. Prueba de parseo de directorio y bloques de disco de smbclient
+    let dir_output = r#"
+  .                                   D        0  Tue Nov 17 12:00:00 2026
+  ..                                  D        0  Tue Nov 17 12:00:00 2026
+  Fotos_Vacaciones                    D        0  Sun Oct 12 14:30:10 2025
+  Documentos_Trabajo                  D        0  Fri Sep 05 09:15:00 2025
+  backup_sistema.zip                  A 104857600  Mon Nov 16 18:22:45 2026
+  pelicula_familiar.mp4               A 1572864000  Wed Nov 11 20:40:12 2026
+  reporte_anual.pdf                   A   2560000  Tue Nov 17 10:05:30 2026
+  cancion.mp3                         A   8388608  Sat Oct 18 16:20:00 2025
+  script_mantenimiento.sh             A      4096  Sun Nov 01 08:00:00 2026
+
+		48828125 blocks of size 4096. 31250000 blocks available
+"#;
+
+    let (files, disk_info) = RouterStorageManager::parse_directory_output(dir_output);
+
+    // . y .. deben haber sido omitidos
+    assert_eq!(files.len(), 7);
+
+    // Las carpetas deben aparecer primero ordenadas alfabéticamente
+    assert!(files[0].is_dir);
+    assert_eq!(files[0].name, "Documentos_Trabajo");
+    assert_eq!(files[0].file_type, StorageFileType::Folder);
+
+    assert!(files[1].is_dir);
+    assert_eq!(files[1].name, "Fotos_Vacaciones");
+    assert_eq!(files[1].file_type, StorageFileType::Folder);
+
+    // Luego los archivos clasificados por extensión
+    let zip_file = files.iter().find(|f| f.name == "backup_sistema.zip").unwrap();
+    assert_eq!(zip_file.file_type, StorageFileType::Archive);
+    assert_eq!(zip_file.size_bytes, 104857600);
+
+    let mp4_file = files.iter().find(|f| f.name == "pelicula_familiar.mp4").unwrap();
+    assert_eq!(mp4_file.file_type, StorageFileType::Video);
+    assert_eq!(mp4_file.size_bytes, 1572864000);
+
+    let pdf_file = files.iter().find(|f| f.name == "reporte_anual.pdf").unwrap();
+    assert_eq!(pdf_file.file_type, StorageFileType::Document);
+
+    let mp3_file = files.iter().find(|f| f.name == "cancion.mp3").unwrap();
+    assert_eq!(mp3_file.file_type, StorageFileType::Audio);
+
+    let sh_file = files.iter().find(|f| f.name == "script_mantenimiento.sh").unwrap();
+    assert_eq!(sh_file.file_type, StorageFileType::Executable);
+
+    // 3. Verificación de cálculo de espacio en disco
+    let disk = disk_info.expect("Información de disco no debe ser None");
+    assert_eq!(disk.total_bytes, 48828125 * 4096);
+    assert_eq!(disk.free_bytes, 31250000 * 4096);
+    assert_eq!(disk.used_bytes(), (48828125 - 31250000) * 4096);
+    assert!((disk.used_percent() - 36.0).abs() < 0.1);
+
+    // 4. Verificación de formato de tamaños
+    assert_eq!(format_file_size(500), "500 B");
+    assert_eq!(format_file_size(1024), "1.00 KB");
+    assert_eq!(format_file_size(1048576), "1.00 MB");
+    assert_eq!(format_file_size(1073741824), "1.00 GB");
+}
+
+#[test]
+fn test_router_storage_credentials_and_demo() {
+    use netlens::router::{RouterStorageManager, StorageCredentials};
+
+    // 1. Comportamiento y serialización de credenciales
+    let mut creds = StorageCredentials::default();
+    assert!(creds.is_empty());
+
+    creds.username = "admin".to_string();
+    creds.password = "secreto123".to_string();
+    creds.workgroup = "MI_RED".to_string();
+    assert!(!creds.is_empty());
+
+    let json = serde_json::to_string(&creds).expect("Serialization failed");
+    let deser: StorageCredentials = serde_json::from_str(&json).expect("Deserialization failed");
+    assert_eq!(deser.username, "admin");
+    assert_eq!(deser.password, "secreto123");
+    assert_eq!(deser.workgroup, "MI_RED");
+
+    // 2. Datos de demostración interactiva
+    let demo_shares = RouterStorageManager::get_demo_shares();
+    assert!(!demo_shares.is_empty());
+    assert_eq!(demo_shares[0].name, "usb_almacenamiento");
+
+    let (root_files, root_disk) = RouterStorageManager::get_demo_directory("");
+    assert!(!root_files.is_empty());
+    assert!(root_disk.is_some());
+
+    let (sub_files, sub_disk) = RouterStorageManager::get_demo_directory("Fotos_Vacaciones");
+    assert!(!sub_files.is_empty());
+    assert!(sub_disk.is_some());
+}
+
+#[test]
+fn test_i18n_router_storage_all_languages() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert!(!Translations::storage_btn_header(lang).is_empty());
+        assert!(!Translations::storage_modal_title(lang).is_empty());
+        assert!(!Translations::storage_modal_desc(lang).is_empty());
+        assert!(!Translations::storage_target_label(lang).is_empty());
+        assert!(!Translations::storage_share_select(lang).is_empty());
+        assert!(!Translations::storage_up_level(lang).is_empty());
+        assert!(!Translations::storage_new_folder(lang).is_empty());
+        assert!(!Translations::storage_upload_btn(lang).is_empty());
+        assert!(!Translations::storage_upload_folder_btn(lang).is_empty());
+        assert!(!Translations::storage_refresh(lang).is_empty());
+        assert!(!Translations::storage_demo_mode_btn(lang).is_empty());
+        assert!(!Translations::storage_filter_placeholder(lang).is_empty());
+        assert!(!Translations::storage_col_type(lang).is_empty());
+        assert!(!Translations::storage_col_name(lang).is_empty());
+        assert!(!Translations::storage_col_size(lang).is_empty());
+        assert!(!Translations::storage_col_modified(lang).is_empty());
+        assert!(!Translations::storage_col_actions(lang).is_empty());
+        assert!(!Translations::storage_action_download(lang).is_empty());
+        assert!(!Translations::storage_action_delete(lang).is_empty());
+        assert!(!Translations::storage_action_details(lang).is_empty());
+        assert!(!Translations::storage_action_open(lang).is_empty());
+        assert!(!Translations::storage_empty_dir(lang).is_empty());
+        assert!(!Translations::storage_confirm_delete_title(lang).is_empty());
+        assert!(!Translations::storage_confirm_delete_msg(lang).is_empty());
+        assert!(!Translations::storage_creds_title(lang).is_empty());
+        assert!(!Translations::storage_creds_desc(lang).is_empty());
+        assert!(!Translations::storage_badge_available(lang).is_empty());
+        assert!(!Translations::storage_upload_progress_title(lang).is_empty());
+        assert!(!Translations::storage_upload_progress_speed(lang).is_empty());
+        assert!(!Translations::storage_upload_progress_target(lang).is_empty());
+        assert!(!Translations::storage_upload_dismiss_btn(lang).is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_router_storage_upload_folder_traversal_and_structures() {
+    use netlens::router::{format_file_size, RouterStorageManager, StorageUploadProgress};
+    use std::fs::{create_dir_all, remove_dir_all, File};
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let now_nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let base_path = std::env::temp_dir().join(format!("netlens_upload_test_{}", now_nanos));
+    create_dir_all(&base_path).expect("temp dir creation");
+
+    // Crear estructura local para probar subida recursiva
+    let subfolder = base_path.join("temporada_1");
+    create_dir_all(&subfolder).expect("create subfolder");
+
+    let file1 = base_path.join("serie_info.txt");
+    let mut f1 = File::create(&file1).expect("create file 1");
+    writeln!(f1, "Episodios y metadatos").expect("write file 1");
+
+    let file2 = subfolder.join("capitulo_01.mkv");
+    let mut f2 = File::create(&file2).expect("create file 2");
+    writeln!(f2, "Video dummy stream").expect("write file 2");
+
+    // Probar recolección recursiva de archivos reales
+    let mut files = Vec::new();
+    let res = RouterStorageManager::collect_files_recursive(&base_path, "", &mut files);
+    assert!(res.is_ok());
+    assert_eq!(files.len(), 2);
+
+    let total_bytes: u64 = files.iter().map(|f| f.size).sum();
+    assert!(total_bytes > 0);
+
+    // Probar inicialización y cálculo de StorageUploadProgress
+    let progress = StorageUploadProgress {
+        is_folder: true,
+        title: "Subiendo carpeta: temporada_1 (2 archivos)".to_string(),
+        target_dir: "DEFIANCE (2013-2015)/Season 1".to_string(),
+        current_item: "capitulo_01.mkv".to_string(),
+        current_index: 2,
+        total_items: 2,
+        bytes_uploaded: total_bytes,
+        total_bytes,
+        speed_str: "14.5 MB/s".to_string(),
+        percent: 100.0,
+        is_finished: true,
+        error: None,
+    };
+
+    assert_eq!(progress.percent, 100.0);
+    assert!(progress.is_finished);
+    assert!(format_file_size(progress.bytes_uploaded).contains('B'));
+
+    // Limpiar directorio temporal
+    let _ = remove_dir_all(&base_path);
+}
+
+#[test]
+fn test_router_storage_immediate_delete_update() {
+    use netlens::router::{StorageDiskInfo, StorageFileEntry};
+
+    // 1. Simular lista de archivos antes de borrar
+    let mut files = vec![
+        StorageFileEntry::new(
+            "Temporada 1".to_string(),
+            true,
+            0,
+            "2026-11-17".to_string(),
+            "D".to_string(),
+        ),
+        StorageFileEntry::new(
+            "pelicula.mkv".to_string(),
+            false,
+            500_000_000,
+            "2026-11-17".to_string(),
+            "A".to_string(),
+        ),
+        StorageFileEntry::new(
+            "notas.txt".to_string(),
+            false,
+            10_000,
+            "2026-11-17".to_string(),
+            "A".to_string(),
+        ),
+    ];
+
+    let mut disk_info = Some(StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 20_000_000_000,
+    });
+
+    let mut selected_file = Some(files[1].clone());
+
+    // 2. Simular borrado inmediato del archivo "pelicula.mkv"
+    let file_to_delete = "pelicula.mkv";
+    let removed_entry = files.iter().find(|f| f.name == file_to_delete).cloned();
+
+    // Actualización inmediata de lista
+    files.retain(|f| f.name != file_to_delete);
+    assert_eq!(files.len(), 2);
+    assert!(files.iter().all(|f| f.name != "pelicula.mkv"));
+
+    // Actualización inmediata de ventana de propiedades
+    if selected_file.as_ref().map(|f| f.name == file_to_delete).unwrap_or(false) {
+        selected_file = None;
+    }
+    assert!(selected_file.is_none());
+
+    // Actualización inmediata de capacidad de disco
+    if let (Some(entry), Some(disk)) = (&removed_entry, &mut disk_info) {
+        if !entry.is_dir {
+            disk.free_bytes = (disk.free_bytes + entry.size_bytes).min(disk.total_bytes);
+        }
+    }
+
+    assert_eq!(disk_info.unwrap().free_bytes, 20_500_000_000);
+
+    // 3. Simular borrado inmediato de carpeta "Temporada 1"
+    let folder_to_delete = "Temporada 1";
+    let removed_folder_entry = files.iter().find(|f| f.name == folder_to_delete).cloned();
+    files.retain(|f| f.name != folder_to_delete);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].name, "notas.txt");
+
+    // Actualización de capacidad al borrar una carpeta
+    let freed_folder_bytes = 1_850_000_000u64;
+    if let (Some(_entry), Some(disk)) = (&removed_folder_entry, &mut disk_info) {
+        disk.free_bytes = (disk.free_bytes + freed_folder_bytes).min(disk.total_bytes);
+    }
+    assert_eq!(disk_info.unwrap().free_bytes, 22_350_000_000);
+    assert!(disk_info.unwrap().used_percent() < 83.0);
+
+    // 4. Protección contra respuestas desactualizadas / en caché del router
+    // Si el router devuelve una respuesta con free_bytes menor al valor tras el borrado,
+    // el sistema preserva el espacio libre actualizado más alto.
+    let stale_router_disk_info = StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 20_000_000_000, // Valor desactualizado antes del borrado
+    };
+
+    let mut preserved_disk = stale_router_disk_info;
+    if let Some(curr) = disk_info {
+        if preserved_disk.free_bytes < curr.free_bytes {
+            preserved_disk.free_bytes = curr.free_bytes;
+        }
+    }
+    assert_eq!(preserved_disk.free_bytes, 22_350_000_000);
+}
+
+#[test]
+fn test_gaming_console_support_and_i18n() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::model::DeviceCategory;
+
+    // Verificar variante, icono y nombre por defecto
+    let cat = DeviceCategory::GamingConsole;
+    assert_eq!(cat.icon(), "🎮");
+    assert_eq!(cat.display_name(), "Consola de Videojuegos");
+
+    // Verificar presencia en DeviceCategory::all()
+    assert!(DeviceCategory::all().contains(&DeviceCategory::GamingConsole));
+
+    // Verificar traducciones en los 10 idiomas soportados
+    let langs = [
+        Language::Spanish,
+        Language::English,
+        Language::Chinese,
+        Language::Hindi,
+        Language::Arabic,
+        Language::French,
+        Language::Bengali,
+        Language::Portuguese,
+        Language::Russian,
+        Language::Urdu,
+    ];
+
+    for &lang in &langs {
+        let short = Translations::category_short_name(cat, lang);
+        let full = Translations::category_name(cat, lang);
+        assert!(!short.is_empty(), "Short name empty for lang {:?}", lang);
+        assert!(!full.is_empty(), "Full name empty for lang {:?}", lang);
+        assert!(short.contains("🎮"), "Icon missing in short name for lang {:?}", lang);
+    }
+}
+
+#[test]
+fn test_streaming_device_support_and_i18n() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::model::DeviceCategory;
+
+    // Verificar variante, icono y nombre por defecto
+    let cat = DeviceCategory::StreamingDevice;
+    assert_eq!(cat.icon(), "🎬");
+    assert_eq!(cat.display_name(), "Dispositivo de Streaming");
+
+    // Verificar presencia en DeviceCategory::all()
+    assert!(DeviceCategory::all().contains(&DeviceCategory::StreamingDevice));
+
+    // Verificar traducciones en los 10 idiomas soportados
+    let langs = [
+        Language::Spanish,
+        Language::English,
+        Language::Chinese,
+        Language::Hindi,
+        Language::Arabic,
+        Language::French,
+        Language::Bengali,
+        Language::Portuguese,
+        Language::Russian,
+        Language::Urdu,
+    ];
+
+    for &lang in &langs {
+        let short = Translations::category_short_name(cat, lang);
+        let full = Translations::category_name(cat, lang);
+        assert!(!short.is_empty(), "Short name empty for lang {:?}", lang);
+        assert!(!full.is_empty(), "Full name empty for lang {:?}", lang);
+        assert!(short.contains("🎬"), "Icon missing in short name for lang {:?}", lang);
+    }
+}
+
+#[test]
+fn test_router_storage_upload_and_delete_accounting() {
+    use netlens::router::storage::StorageDiskInfo;
+
+    let mut disk = StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 20_000_000_000,
+    };
+
+    // Subida de un archivo de 2 GB
+    let uploaded_bytes = 2_000_000_000u64;
+    disk.free_bytes = disk.free_bytes.saturating_sub(uploaded_bytes);
+    assert_eq!(disk.free_bytes, 18_000_000_000);
+    assert_eq!(disk.used_bytes(), 102_000_000_000);
+    assert!((disk.used_percent() - 85.0).abs() < 0.1);
+
+    // Borrado de un archivo de 5 GB
+    let deleted_bytes = 5_000_000_000u64;
+    disk.free_bytes = (disk.free_bytes + deleted_bytes).min(disk.total_bytes);
+    assert_eq!(disk.free_bytes, 23_000_000_000);
+    assert_eq!(disk.used_bytes(), 97_000_000_000);
+    assert!((disk.used_percent() - 80.83).abs() < 0.1);
+}
+
+#[tokio::test]
+async fn test_view_storage_details_does_not_panic() {
+    use netlens::app::{App, Message};
+    use netlens::router::storage::StorageFileEntry;
+
+    let (mut app, _) = App::new();
+    app.is_storage_explorer_open = true;
+
+    // Probar con un archivo
+    let file_entry = StorageFileEntry::new(
+        "Notas_Router.txt".to_string(),
+        false,
+        12540,
+        "16 Nov 2026 10:12".to_string(),
+        "A".to_string(),
+    );
+    let _ = app.update(Message::StorageShowFileProperties(file_entry));
+    let win_id = iced::window::Id::unique();
+    {
+        let _element = app.view(win_id);
+    }
+
+    // Probar con un directorio
+    let dir_entry = StorageFileEntry::new(
+        "Fotos_Vacaciones".to_string(),
+        true,
+        0,
+        "12 Oct 2025 14:30".to_string(),
+        "D".to_string(),
+    );
+    let _ = app.update(Message::StorageShowFileProperties(dir_entry));
+    {
+        let _element2 = app.view(win_id);
+    }
+}
+
+#[tokio::test]
+async fn test_storage_disk_info_cache_protection_and_delete_update() {
+    use netlens::app::{App, Message};
+    use netlens::router::storage::{StorageDiskInfo, StorageFileEntry};
+
+    let (mut app, _) = App::new();
+    app.is_storage_explorer_open = true;
+    app.is_storage_demo_mode = false;
+    app.storage_active_share = Some("Samsung USB (sda1)".to_string());
+    app.storage_target_ip = "192.168.1.1".to_string();
+
+    let initial_disk = StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 20_000_000_000,
+    };
+    app.storage_disk_info = Some(initial_disk);
+
+    let file_to_del = StorageFileEntry::new(
+        "Grandes_Videos.mp4".to_string(),
+        false,
+        2_000_000_000,
+        "10 Nov 2026 12:00".to_string(),
+        "A".to_string(),
+    );
+    app.storage_files = vec![file_to_del.clone()];
+
+    // 1. Solicitar borrado y confirmar
+    let _ = app.update(Message::StorageRequestDeleteFile {
+        path: "Grandes_Videos.mp4".to_string(),
+        is_dir: false,
+        name: "Grandes_Videos.mp4".to_string(),
+    });
+    let _ = app.update(Message::StorageConfirmDeleteFile);
+
+    // 2. Comprobar actualización optimista
+    assert!(app.storage_files.is_empty(), "El archivo debe haber sido removido de la lista");
+    assert_eq!(app.storage_last_freed, Some(2_000_000_000));
+    let curr_free = app.storage_disk_info.unwrap().free_bytes;
+    assert_eq!(curr_free, 22_000_000_000, "El espacio libre debe reflejar los 2 GB liberados");
+
+    // 3. Simular que el router responde con una respuesta desactualizada (stale cache: 20 GB en lugar de 22 GB)
+    let stale_router_disk = StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 20_000_000_000, // Respuesta obsoleta del router
+    };
+    let _ = app.update(Message::StorageDirectoryLoaded(Ok((vec![], Some(stale_router_disk)))));
+    assert_eq!(
+        app.storage_disk_info.unwrap().free_bytes,
+        22_000_000_000,
+        "El espacio libre no debe retroceder ante una respuesta obsoleta del router"
+    );
+
+    // 4. Simular que el router responde con una respuesta actualizada con aún más espacio liberado (23 GB)
+    let newer_router_disk = StorageDiskInfo {
+        total_bytes: 120_000_000_000,
+        free_bytes: 23_000_000_000,
+    };
+    let _ = app.update(Message::StorageDirectoryLoaded(Ok((vec![], Some(newer_router_disk)))));
+    assert_eq!(
+        app.storage_disk_info.unwrap().free_bytes,
+        23_000_000_000,
+        "El espacio libre debe actualizarse con el valor superior reportado por el router"
+    );
+}
+
+#[test]
+fn test_all_tooltips_translated_in_all_languages() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::model::DeviceCategory;
+
+    for &lang in Language::ALL {
+        assert!(!Translations::tip_settings(lang).is_empty());
+        assert!(!Translations::tip_speed_test(lang).is_empty());
+        assert!(!Translations::tip_security_audit(lang).is_empty());
+        assert!(!Translations::tip_timeline(lang).is_empty());
+        assert!(!Translations::tip_wifi_analyzer(lang).is_empty());
+        assert!(!Translations::tip_router_storage(lang).is_empty());
+        assert!(!Translations::tip_export_csv(lang).is_empty());
+        assert!(!Translations::tip_export_json(lang).is_empty());
+        assert!(!Translations::tip_scan_network(lang).is_empty());
+        assert!(!Translations::tip_copy_ip(lang).is_empty());
+        assert!(!Translations::tip_copy_mac(lang).is_empty());
+        assert!(!Translations::tip_device_details(lang).is_empty());
+        assert!(!Translations::tip_ping(lang).is_empty());
+        assert!(!Translations::tip_traceroute(lang).is_empty());
+        assert!(!Translations::tip_wol(lang).is_empty());
+        assert!(!Translations::tip_whitelist(lang).is_empty());
+        assert!(!Translations::tip_block_router(lang).is_empty());
+        assert!(!Translations::tip_save_alias(lang).is_empty());
+        assert!(!Translations::tip_close(lang).is_empty());
+        assert!(!Translations::tip_storage_refresh(lang).is_empty());
+        assert!(!Translations::tip_storage_creds(lang).is_empty());
+        assert!(!Translations::tip_storage_demo(lang).is_empty());
+        assert!(!Translations::tip_storage_up(lang).is_empty());
+        assert!(!Translations::tip_storage_root(lang).is_empty());
+        assert!(!Translations::tip_storage_new_folder(lang).is_empty());
+        assert!(!Translations::tip_storage_upload_file(lang).is_empty());
+        assert!(!Translations::tip_storage_upload_folder(lang).is_empty());
+        assert!(!Translations::tip_storage_open_item(lang).is_empty());
+        assert!(!Translations::tip_storage_download_item(lang).is_empty());
+        assert!(!Translations::tip_storage_details_item(lang).is_empty());
+        assert!(!Translations::tip_storage_delete_item(lang).is_empty());
+        assert!(!Translations::tip_filter_all(lang).is_empty());
+        assert!(!Translations::tip_filter_whitelist(lang).is_empty());
+        assert!(!Translations::tip_filter_blocked(lang).is_empty());
+        assert!(!Translations::tip_port_scan(lang).is_empty());
+
+        for &cat in &[
+            DeviceCategory::Router,
+            DeviceCategory::Smartphone,
+            DeviceCategory::Computer,
+            DeviceCategory::SmartTv,
+            DeviceCategory::StreamingDevice,
+            DeviceCategory::GamingConsole,
+            DeviceCategory::Iot,
+        ] {
+            assert!(!Translations::tip_filter_category(cat, lang).is_empty());
+        }
+    }
+}
+
+#[test]
+fn test_export_dialog_translations() {
+    use netlens::i18n::{Language, Translations};
+
+    for &lang in Language::ALL {
+        assert!(!Translations::export_json_dialog_title(lang).is_empty());
+        assert!(!Translations::export_csv_dialog_title(lang).is_empty());
+        let json_msg = Translations::export_success_msg("test.json", lang);
+        assert!(json_msg.contains("test.json"));
+        let csv_msg = Translations::export_csv_success_msg("test.csv", lang);
+        assert!(csv_msg.contains("test.csv"));
+    }
+}
+
+#[test]
+fn test_long_file_name_truncation_logic() {
+    let long_name = "DEFIANCE (2013-2015) - Complete TV Series, Season 1,2,3 S01 S02 S03 - 1080p BluRay x264";
+    let max_len = 38;
+    let char_count = long_name.chars().count();
+    assert!(char_count > max_len);
+
+    let display_name = if char_count > max_len {
+        let truncated: String = long_name.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    } else {
+        long_name.to_string()
+    };
+
+    assert!(display_name.ends_with("..."));
+    assert_eq!(display_name.chars().count(), 38);
+    assert_eq!(&display_name[..10], "DEFIANCE (");
+
+    // Probar cadena corta
+    let short_name = "Season 1 (2013)";
+    let char_count_short = short_name.chars().count();
+    let display_short = if char_count_short > max_len {
+        let truncated: String = short_name.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    } else {
+        short_name.to_string()
+    };
+    assert_eq!(display_short, "Season 1 (2013)");
+}
+
+#[test]
+fn test_all_modals_translations_in_all_10_languages() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::history::NetworkEventType;
+    use netlens::router::storage::StorageFileType;
+    use netlens::security_audit::SecurityCheckId;
+
+    let all_languages = [
+        Language::Spanish,
+        Language::English,
+        Language::Chinese,
+        Language::Hindi,
+        Language::Arabic,
+        Language::French,
+        Language::Bengali,
+        Language::Portuguese,
+        Language::Russian,
+        Language::Urdu,
+    ];
+
+    let all_check_ids = [
+        SecurityCheckId::TelnetDetected,
+        SecurityCheckId::FtpDetected,
+        SecurityCheckId::EncryptedServices,
+        SecurityCheckId::UnwhitelistedDevices,
+        SecurityCheckId::AccessControlWhitelisted,
+        SecurityCheckId::RandomizedMacs,
+        SecurityCheckId::DangerousPortsForwarded,
+        SecurityCheckId::ControlledPortMapping,
+        SecurityCheckId::RouterPasswordMissing,
+        SecurityCheckId::RouterIntegrationActive,
+    ];
+
+    let all_event_types = [
+        NetworkEventType::DeviceConnected,
+        NetworkEventType::DeviceDisconnected,
+        NetworkEventType::NewDeviceDetected,
+        NetworkEventType::SecurityAlert,
+        NetworkEventType::InternetOutage,
+        NetworkEventType::InternetRestored,
+    ];
+
+    let all_file_types = [
+        StorageFileType::Folder,
+        StorageFileType::Image,
+        StorageFileType::Video,
+        StorageFileType::Audio,
+        StorageFileType::Document,
+        StorageFileType::Archive,
+        StorageFileType::Executable,
+        StorageFileType::Code,
+        StorageFileType::Unknown,
+    ];
+
+    for &lang in &all_languages {
+        // 1. Auditoría de Seguridad
+        assert!(!Translations::audit_title(lang).is_empty());
+        assert!(!Translations::audit_subtitle(lang).is_empty());
+        assert!(!Translations::audit_not_run(lang).is_empty());
+        assert!(!Translations::audit_score_label(lang).is_empty());
+        assert!(!Translations::audit_grade_label(95, lang).is_empty());
+        assert!(!Translations::audit_grade_label(75, lang).is_empty());
+        assert!(!Translations::audit_grade_label(45, lang).is_empty());
+        assert!(!Translations::audit_devices_audited(5, lang).is_empty());
+        assert!(!Translations::audit_observations(2, lang).is_empty());
+        assert!(!Translations::audit_critical_risks(1, lang).is_empty());
+        assert!(!Translations::audit_affected_devices(3, lang).is_empty());
+        assert!(!Translations::audit_rerun_btn(lang).is_empty());
+
+        for &cid in &all_check_ids {
+            assert!(!Translations::audit_check_title(cid, lang).is_empty());
+            assert!(!Translations::audit_check_description(cid, 2, lang).is_empty());
+            assert!(!Translations::audit_check_recommendation(cid, lang).is_empty());
+        }
+
+        // 2. Historial de Eventos
+        assert!(!Translations::timeline_modal_title(lang).is_empty());
+        assert!(!Translations::timeline_modal_desc(lang).is_empty());
+        assert!(!Translations::timeline_online(lang).is_empty());
+        assert!(!Translations::timeline_outage(lang).is_empty());
+        assert!(!Translations::timeline_total_events(10, lang).is_empty());
+        assert!(!Translations::timeline_uptime_pct(99.5, lang).is_empty());
+        assert!(!Translations::timeline_clear_btn(lang).is_empty());
+        assert!(!Translations::timeline_empty(lang).is_empty());
+        assert!(!Translations::timeline_cleared_notif(lang).is_empty());
+
+        for &evt in &all_event_types {
+            assert!(!Translations::event_type_name(evt, lang).is_empty());
+            assert!(!Translations::event_title(evt, "Sample Event", lang).is_empty());
+            assert!(!Translations::event_details(evt, "TV Sala (192.168.1.50) ya no responde en la red local.", lang).is_empty());
+        }
+
+        // Peticiones de dispositivos (Device Requests History)
+        assert!(!Translations::device_requests_title(lang).is_empty());
+        assert!(!Translations::device_requests_simulate_btn(lang).is_empty());
+        assert!(!Translations::device_requests_empty(lang).is_empty());
+        assert!(!Translations::device_requests_cleared_notif(lang).is_empty());
+
+        // 3. Analizador Wi-Fi
+        assert!(!Translations::wifi_modal_title(lang).is_empty());
+        assert!(!Translations::wifi_modal_desc(lang).is_empty());
+        assert!(!Translations::wifi_scan_btn(true, lang).is_empty());
+        assert!(!Translations::wifi_scan_btn(false, lang).is_empty());
+        assert!(!Translations::wifi_current_network(Some("HomeNet"), Some(6), lang).is_empty());
+        assert!(!Translations::wifi_current_network_none(lang).is_empty());
+        assert!(!Translations::wifi_optimal_channels_title(lang).is_empty());
+        assert!(!Translations::wifi_channel_24_label(1, lang).is_empty());
+        assert!(!Translations::wifi_channel_5_label(36, lang).is_empty());
+        assert!(!Translations::wifi_recommendation_text(Some(11), 1, 36, lang).is_empty());
+        assert!(!Translations::wifi_occupancy_24_title(lang).is_empty());
+        assert!(!Translations::wifi_channel_box_title(6, lang).is_empty());
+        assert!(!Translations::wifi_networks_count(3, lang).is_empty());
+        assert!(!Translations::wifi_max_signal(85, lang).is_empty());
+        assert!(!Translations::wifi_detected_networks_header(12, lang).is_empty());
+        assert!(!Translations::wifi_badge_current(lang).is_empty());
+        assert!(!Translations::wifi_prompt_scan(lang).is_empty());
+
+        // 4. Almacenamiento Router (USB / NAS)
+        assert!(!Translations::storage_btn_credentials(lang).is_empty());
+        assert!(!Translations::storage_creds_user_placeholder(lang).is_empty());
+        assert!(!Translations::storage_creds_pass_placeholder(lang).is_empty());
+        assert!(!Translations::storage_creds_user_label(lang).is_empty());
+        assert!(!Translations::storage_creds_pass_label(lang).is_empty());
+        assert!(!Translations::storage_creds_group_label(lang).is_empty());
+        assert!(!Translations::storage_creds_save_btn(lang).is_empty());
+        assert!(!Translations::cancel(lang).is_empty());
+        assert!(!Translations::storage_space_info("10 GB", "120 GB", 92.5, lang).is_empty());
+        assert!(!Translations::storage_btn_root(lang).is_empty());
+        assert!(!Translations::storage_root_label(lang).is_empty());
+        assert!(!Translations::storage_upload_completed(lang).is_empty());
+        assert!(!Translations::storage_upload_error(lang).is_empty());
+        assert!(!Translations::storage_upload_file_progress("document.pdf", lang).is_empty());
+        assert!(!Translations::storage_upload_folder_progress(2, 5, "pic.jpg", lang).is_empty());
+        assert!(!Translations::storage_create_folder_prompt(lang).is_empty());
+        assert!(!Translations::storage_new_folder_placeholder(lang).is_empty());
+        assert!(!Translations::storage_create_confirm(lang).is_empty());
+        assert!(!Translations::storage_props_title("file.mkv", lang).is_empty());
+        assert!(!Translations::storage_prop_type(lang).is_empty());
+        assert!(!Translations::storage_prop_full_path(lang).is_empty());
+        assert!(!Translations::storage_prop_size(lang).is_empty());
+        assert!(!Translations::storage_prop_modified(lang).is_empty());
+        assert!(!Translations::storage_prop_attributes(lang).is_empty());
+
+        for &ft in &all_file_types {
+            assert!(!Translations::storage_file_type_name(ft, lang).is_empty());
+            assert!(!ft.type_name(lang).is_empty());
+        }
+
+        assert!(!Translations::storage_loading_files(lang).is_empty());
+        assert!(!Translations::storage_no_filter_match(lang).is_empty());
+        assert!(!Translations::storage_summary_counts(15, 5, 10, lang).is_empty());
+
+        // 5. UPnP IGD
+        assert!(!Translations::upnp_modal_title(lang).is_empty());
+        assert!(!Translations::upnp_modal_desc(lang).is_empty());
+        assert!(!Translations::upnp_query_btn(true, lang).is_empty());
+        assert!(!Translations::upnp_query_btn(false, lang).is_empty());
+        assert!(!Translations::upnp_prompt(lang).is_empty());
+        assert!(!Translations::upnp_badge_wan_risk(lang).is_empty());
+        assert!(!Translations::upnp_badge_active(lang).is_empty());
+        assert!(!Translations::upnp_badge_inactive(lang).is_empty());
+        assert!(!Translations::upnp_public_ip_title(lang).is_empty());
+        assert!(!Translations::upnp_not_assigned(lang).is_empty());
+        assert!(!Translations::upnp_status_connected(lang).is_empty());
+        assert!(!Translations::upnp_status_label("Connected", lang).is_empty());
+        assert!(!Translations::upnp_uptime_title(lang).is_empty());
+        assert!(!Translations::upnp_uptime_sub(lang).is_empty());
+        assert!(!Translations::upnp_traffic_title(lang).is_empty());
+        assert!(!Translations::upnp_traffic_sub(lang).is_empty());
+        assert!(!Translations::upnp_port_mappings_header(4, lang).is_empty());
+        assert!(!Translations::upnp_no_mappings(lang).is_empty());
+        assert!(!Translations::upnp_port_label(80, "TCP", lang).is_empty());
+    }
 }

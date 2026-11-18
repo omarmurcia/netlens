@@ -1,5 +1,6 @@
 use crate::i18n::Language;
 use crate::model::{Device, DeviceCategory};
+use crate::notification::NotificationSettings;
 use crate::speedtest::SpeedTestResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,6 +17,8 @@ pub struct DeviceMetadata {
     pub is_blocked: bool,
     #[serde(default)]
     pub speed_limit_kbps: Option<u32>,
+    #[serde(default)]
+    pub request_history: Vec<crate::model::DeviceRequestEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +42,12 @@ pub struct AppState {
     pub autostart: bool,
     #[serde(default)]
     pub minimize_to_tray_on_close: bool,
+    #[serde(default)]
+    pub network_events: Vec<crate::history::NetworkEvent>,
+    #[serde(default)]
+    pub notification_settings: NotificationSettings,
+    #[serde(default)]
+    pub storage_credentials: Option<crate::router::StorageCredentials>,
 }
 
 impl Default for AppState {
@@ -56,6 +65,9 @@ impl Default for AppState {
             known_macs: Vec::new(),
             autostart: false,
             minimize_to_tray_on_close: false,
+            network_events: Vec::new(),
+            notification_settings: NotificationSettings::default(),
+            storage_credentials: None,
         }
     }
 }
@@ -136,6 +148,9 @@ impl Storage {
                 dev.is_whitelisted = meta.is_whitelisted;
                 dev.is_blocked = meta.is_blocked;
                 dev.speed_limit_kbps = meta.speed_limit_kbps;
+                if !meta.request_history.is_empty() {
+                    dev.request_history = meta.request_history.clone();
+                }
             }
         }
     }
@@ -189,5 +204,16 @@ impl Storage {
         let key = mac.trim().to_lowercase();
         let entry = metadata.entry(key).or_default();
         entry.speed_limit_kbps = limit_kbps;
+    }
+
+    /// Actualiza el historial de peticiones del dispositivo por su MAC
+    pub fn update_device_requests(
+        metadata: &mut HashMap<String, DeviceMetadata>,
+        mac: &str,
+        requests: &[crate::model::DeviceRequestEntry],
+    ) {
+        let key = mac.trim().to_lowercase();
+        let entry = metadata.entry(key).or_default();
+        entry.request_history = requests.to_vec();
     }
 }

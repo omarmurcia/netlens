@@ -181,6 +181,21 @@ impl CustomStyles {
         }
     }
 
+    // Estilo para modales avanzados (Auditoría, Historial, Wi-Fi, UPnP)
+    pub fn modal_panel(accent_color: Color) -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(20, 28, 43))),
+            border: Border {
+                color: accent_color,
+                width: 1.5,
+                radius: 12.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
     // Botón de acción primario estilizado (Escanear)
     pub fn primary_button() -> button::Style {
         button::Style {
@@ -368,6 +383,21 @@ impl CustomStyles {
                 gap: None,
                 auto_scroll: scrollable::default(theme, status).auto_scroll,
             }
+        }
+    }
+
+    /// Estilo para contenedores de Tooltips emergentes elegantes
+    pub fn tooltip_style() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
+            border: Border {
+                color: Color::from_rgb8(51, 65, 85),
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
         }
     }
 }

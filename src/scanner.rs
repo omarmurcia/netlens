@@ -210,19 +210,71 @@ impl Scanner {
             return DeviceCategory::Router;
         }
 
-        // Smart TVs / Media Streaming
-        if open_port_nums.contains(&8008)
-            || open_port_nums.contains(&8009)
-            || host_lower.contains("tv")
-            || host_lower.contains("chromecast")
+        // Dispositivos de Streaming (Roku, Chromecast, Fire TV, Apple TV, Android TV Box, Nvidia Shield)
+        if host_lower.contains("chromecast")
             || host_lower.contains("roku")
             || host_lower.contains("firetv")
+            || host_lower.contains("firestick")
             || host_lower.contains("appletv")
+            || host_lower.contains("apple-tv")
+            || host_lower.contains("shield")
+            || host_lower.contains("mibox")
+            || host_lower.contains("googletv")
+            || host_lower.contains("streamer")
+            || host_lower.contains("streaming")
+            || (vendor_lower.contains("roku"))
+            || (vendor_lower.contains("amazon") && (host_lower.contains("fire") || host_lower.contains("stick")))
+            || (vendor_lower.contains("google") && (host_lower.contains("chromecast") || host_lower.contains("cast")))
+            || (vendor_lower.contains("apple") && host_lower.contains("tv"))
+            || (vendor_lower.contains("nvidia") && host_lower.contains("shield"))
+            || open_port_nums.contains(&8008)
+            || open_port_nums.contains(&8009)
+            || open_port_nums.contains(&7000)
+        {
+            return DeviceCategory::StreamingDevice;
+        }
+
+        // Smart TVs (Televisores Inteligentes)
+        if host_lower.contains("tv")
             || host_lower.contains("bravia")
             || host_lower.contains("webos")
+            || host_lower.contains("tizen")
+            || host_lower.contains("hisense")
+            || host_lower.contains("tcl")
+            || host_lower.contains("vizio")
             || (vendor_lower.contains("samsung") && host_lower.contains("samsung") && !host_lower.contains("galaxy"))
+            || (vendor_lower.contains("lg electronics") && host_lower.contains("tv"))
+            || (vendor_lower.contains("sony") && host_lower.contains("tv"))
         {
             return DeviceCategory::SmartTv;
+        }
+
+        // Consolas de Videojuegos (PlayStation, Xbox, Nintendo, Steam Deck, etc.)
+        if host_lower.contains("playstation")
+            || host_lower.contains("ps5")
+            || host_lower.contains("ps4")
+            || host_lower.contains("ps3")
+            || host_lower.contains("ps-")
+            || host_lower.contains("xbox")
+            || host_lower.contains("xboxone")
+            || host_lower.contains("xboxseries")
+            || host_lower.contains("nintendo")
+            || host_lower.contains("switch")
+            || host_lower.contains("steamdeck")
+            || host_lower.contains("steam-deck")
+            || vendor_lower.contains("sony interactive")
+            || vendor_lower.contains("sony computer entertainment")
+            || vendor_lower.contains("nintendo")
+            || (vendor_lower.contains("microsoft") && (host_lower.contains("xbox") || host_lower.contains("console")))
+            || (vendor_lower.contains("valve") && (host_lower.contains("steam") || host_lower.contains("deck")))
+            || open_port_nums.contains(&3074)
+            || open_port_nums.contains(&9295)
+            || open_port_nums.contains(&9296)
+            || open_port_nums.contains(&9297)
+            || open_port_nums.contains(&9303)
+            || open_port_nums.contains(&9304)
+        {
+            return DeviceCategory::GamingConsole;
         }
 
         // Smartphones / Tablets
@@ -440,28 +492,149 @@ impl Scanner {
                 .ok()
                 .flatten();
 
+                // Descubrimiento avanzado de identidad local (mDNS, NetBIOS, SSDP)
+                let discovery = crate::discovery::Discovery::probe(ip).await;
+                let final_hostname = discovery.hostname.or(hostname);
+                let model_name = discovery.model_or_friendly_name;
+                let mut discovered_services = discovery.services;
+
                 // Vendor OUI
                 let is_randomized = Self::is_randomized_mac(&mac);
                 let vendor = Self::lookup_vendor(oui_ref.as_deref(), &mac);
 
                 // Puertos comunes rápidos
                 let open_ports = Self::quick_probe_ports(ip).await;
+                for p in &open_ports {
+                    if !discovered_services.iter().any(|s| s.contains(&p.service)) {
+                        discovered_services.push(p.service.clone());
+                    }
+                }
 
                 // Clasificación
                 let category = Self::categorize_device(
                     is_gateway,
                     is_current,
-                    hostname.as_deref(),
+                    final_hostname.as_deref(),
                     &vendor,
                     &open_ports,
                 );
 
                 let now = Local::now();
+                let mut initial_requests = Vec::new();
+
+                // 1. Peticiones de servicios descubiertos (mDNS / SSDP)
+                for svc in &discovered_services {
+                    let (cat, proto) = if svc.contains("AirPlay") {
+                        ("Streaming / Apple AirPlay", "mDNS")
+                    } else if svc.contains("Cast") {
+                        ("Streaming / Google Cast", "mDNS")
+                    } else if svc.contains("Samba") || svc.contains("SMB") {
+                        ("Archivos / SMB", "NetBIOS / mDNS")
+                    } else if svc.contains("Printer") || svc.contains("Impresora") {
+                        ("Servicio de Impresión", "mDNS / IPP")
+                    } else {
+                        ("Servicio Local", "mDNS / SSDP")
+                    };
+                    initial_requests.push(crate::model::DeviceRequestEntry {
+                        timestamp: now,
+                        query: format!("_{}._tcp.local", svc.to_lowercase().replace(' ', "")),
+                        category: cat.to_string(),
+                        protocol: proto.to_string(),
+                    });
+                }
+
+                // 2. Consulta DNS por nombre de host si se resolvió
+                if let Some(host) = &final_hostname {
+                    initial_requests.push(crate::model::DeviceRequestEntry {
+                        timestamp: now,
+                        query: format!("{}.lan", host),
+                        category: "Resolución DNS Local".to_string(),
+                        protocol: "DNS PTR".to_string(),
+                    });
+                }
+
+                // 3. Peticiones típicas basadas en tipo de dispositivo
+                match category {
+                    DeviceCategory::Smartphone => {
+                        let domain = if vendor.to_lowercase().contains("apple") {
+                            "gateway.icloud.com"
+                        } else {
+                            "connectivitycheck.gstatic.com"
+                        };
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: domain.to_string(),
+                            category: "Verificación de Conectividad".to_string(),
+                            protocol: "DNS A".to_string(),
+                        });
+                    }
+                    DeviceCategory::SmartTv => {
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "api-global.netflix.com".to_string(),
+                            category: "Streaming Video / Smart TV".to_string(),
+                            protocol: "DNS A".to_string(),
+                        });
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "youtubei.googleapis.com".to_string(),
+                            category: "Streaming / YouTube".to_string(),
+                            protocol: "HTTPS SNI".to_string(),
+                        });
+                    }
+                    DeviceCategory::StreamingDevice => {
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "api-global.netflix.com".to_string(),
+                            category: "Dispositivo de Streaming".to_string(),
+                            protocol: "DNS A".to_string(),
+                        });
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "manifest.googlevideo.com".to_string(),
+                            category: "Streaming Media Player".to_string(),
+                            protocol: "HTTPS SNI".to_string(),
+                        });
+                    }
+                    DeviceCategory::GamingConsole => {
+                        let query = if vendor.to_lowercase().contains("sony") {
+                            "auth.api.sonyentertainmentnetwork.com"
+                        } else if vendor.to_lowercase().contains("nintendo") {
+                            "ctest.cdn.nintendo.net"
+                        } else {
+                            "title.mgt.xboxlive.com"
+                        };
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: query.to_string(),
+                            category: "Juegos en Línea / Consola".to_string(),
+                            protocol: "DNS A".to_string(),
+                        });
+                    }
+                    DeviceCategory::Computer => {
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "www.google.com".to_string(),
+                            category: "Búsqueda Web / HTTP".to_string(),
+                            protocol: "DNS A".to_string(),
+                        });
+                    }
+                    DeviceCategory::Router => {
+                        initial_requests.push(crate::model::DeviceRequestEntry {
+                            timestamp: now,
+                            query: "router.linksys.com".to_string(),
+                            category: "Puerta de Enlace / Admin".to_string(),
+                            protocol: "DNS / Gateway".to_string(),
+                        });
+                    }
+                    _ => {}
+                }
+
                 Device {
                     ip,
                     mac,
                     vendor,
-                    hostname,
+                    hostname: final_hostname,
                     category,
                     is_randomized_mac: is_randomized,
                     is_gateway,
@@ -479,6 +652,9 @@ impl Scanner {
                     connection_type: None,
                     wifi_signal_dbm: None,
                     negotiated_mbps: None,
+                    model_name,
+                    discovered_services,
+                    request_history: initial_requests,
                 }
             }));
         }

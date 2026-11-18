@@ -1,18 +1,25 @@
 mod app;
 mod autostart;
+mod discovery;
 mod export;
+mod history;
 mod i18n;
 mod model;
+mod notification;
 mod oui;
+mod realtime_monitor;
 mod router;
 mod scanner;
+mod security_audit;
 mod speedtest;
 mod storage;
 mod telemetry;
 mod theme;
 mod traceroute;
 mod tray;
+mod uptime;
 mod widget;
+mod wifi_analyzer;
 
 use app::App;
 use iced::futures::StreamExt;

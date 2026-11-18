@@ -10,6 +10,8 @@ pub enum DeviceCategory {
     Smartphone,
     Computer,
     SmartTv,
+    StreamingDevice,
+    GamingConsole,
     Iot,
     Printer,
     Server,
@@ -23,6 +25,8 @@ impl DeviceCategory {
             DeviceCategory::Smartphone => "📱",
             DeviceCategory::Computer => "💻",
             DeviceCategory::SmartTv => "📺",
+            DeviceCategory::StreamingDevice => "🎬",
+            DeviceCategory::GamingConsole => "🎮",
             DeviceCategory::Iot => "🔌",
             DeviceCategory::Printer => "🖨️",
             DeviceCategory::Server => "🖧",
@@ -35,7 +39,9 @@ impl DeviceCategory {
             DeviceCategory::Router => "Router / Puerta de Enlace",
             DeviceCategory::Smartphone => "Smartphone / Móvil",
             DeviceCategory::Computer => "Ordenador / PC",
-            DeviceCategory::SmartTv => "Smart TV / Streaming",
+            DeviceCategory::SmartTv => "Smart TV / Pantalla",
+            DeviceCategory::StreamingDevice => "Dispositivo de Streaming",
+            DeviceCategory::GamingConsole => "Consola de Videojuegos",
             DeviceCategory::Iot => "Domótica / IoT",
             DeviceCategory::Printer => "Impresora de Red",
             DeviceCategory::Server => "Servidor / NAS",
@@ -50,6 +56,8 @@ impl DeviceCategory {
             DeviceCategory::Smartphone,
             DeviceCategory::Computer,
             DeviceCategory::SmartTv,
+            DeviceCategory::StreamingDevice,
+            DeviceCategory::GamingConsole,
             DeviceCategory::Iot,
             DeviceCategory::Printer,
             DeviceCategory::Server,
@@ -91,6 +99,15 @@ pub struct PortInfo {
     pub description: String,
 }
 
+/// Registro de petición de red, consulta DNS o búsqueda web por dispositivo
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceRequestEntry {
+    pub timestamp: DateTime<Local>,
+    pub query: String,
+    pub category: String,
+    pub protocol: String,
+}
+
 /// Representa un dispositivo descubierto en la red local
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -121,6 +138,12 @@ pub struct Device {
     pub wifi_signal_dbm: Option<i32>,
     #[serde(default)]
     pub negotiated_mbps: Option<u32>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    #[serde(default)]
+    pub discovered_services: Vec<String>,
+    #[serde(default)]
+    pub request_history: Vec<DeviceRequestEntry>,
 }
 
 impl Device {
@@ -129,6 +152,11 @@ impl Device {
         if let Some(alias) = &self.custom_alias {
             if !alias.trim().is_empty() {
                 return alias.clone();
+            }
+        }
+        if let Some(model) = &self.model_name {
+            if !model.trim().is_empty() {
+                return model.clone();
             }
         }
         if let Some(host) = &self.hostname {
@@ -167,6 +195,20 @@ impl Device {
             parts.push("Fabricante no identificado");
         }
         parts.join(" • ")
+    }
+
+    /// Registra una nueva petición o búsqueda en el historial de este dispositivo
+    pub fn add_request(&mut self, query: String, category: String, protocol: String) {
+        let entry = DeviceRequestEntry {
+            timestamp: Local::now(),
+            query,
+            category,
+            protocol,
+        };
+        self.request_history.insert(0, entry);
+        if self.request_history.len() > 60 {
+            self.request_history.truncate(60);
+        }
     }
 }
 

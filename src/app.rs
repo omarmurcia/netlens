@@ -1,27 +1,39 @@
 use crate::autostart::AutostartManager;
 use crate::export::Exporter;
+use crate::history::{HistoryManager, NetworkEvent, NetworkEventType};
 use crate::i18n::{Language, Translations};
-use crate::model::{Device, DeviceCategory, NetworkContext, PortInfo};
-use crate::router::{LinksysRouter, RouterConnection};
+use crate::model::{Device, DeviceCategory, DeviceStatus, NetworkContext, PortInfo};
+use crate::notification::{NotificationDetailLevel, NotificationSettings, NotificationUrgency};
+use crate::router::{
+    format_file_size, LinksysRouter, RouterConnection, RouterStorageManager, StorageCredentials,
+    StorageDiskInfo, StorageFileEntry, StorageShare, StorageUploadEvent, StorageUploadProgress,
+    UpnpClient, UpnpRouterStatus,
+};
 use crate::scanner::{PingStats, ScanEvent, Scanner};
+use crate::security_audit::{AuditSeverity, SecurityAuditReport, SecurityAuditor};
 use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
 use crate::storage::{AppState, DeviceMetadata, Storage};
 use crate::telemetry::Telemetry;
 use crate::theme::CustomStyles;
 use crate::traceroute::{HopInfo, Traceroute};
+use crate::realtime_monitor::{NeighborAction, RealtimeMonitor};
 use crate::tray::{spawn_tray, NetLensTray, TrayAction, TrayState};
+use crate::uptime::UptimeTracker;
 use crate::widget::Sparkline;
+use crate::wifi_analyzer::{WifiAnalyzer, WifiAnalyzerReport};
 use iced::futures::channel::mpsc;
+use iced::futures::StreamExt;
 use iced::widget::canvas::Canvas;
 use iced::widget::{
     button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
-    text_input, Column,
+    text_input, tooltip, Column,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Size, Subscription, Task, Theme};
 use crate::oui::Oui;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -293,10 +305,139 @@ pub struct App {
     // System Tray (Bandeja del Sistema)
     pub tray_state: Arc<Mutex<TrayState>>,
     pub tray_handle: Arc<Mutex<Option<ksni::Handle<NetLensTray>>>>,
+
+    // Historial y Timeline de Eventos
+    pub network_events: Vec<NetworkEvent>,
+    pub is_timeline_open: bool,
+
+    // Auditoría de Salud y Seguridad de la Red
+    pub security_audit_report: Option<SecurityAuditReport>,
+    pub is_audit_open: bool,
+
+    // UPnP Router & Mapeo de Puertos NAT
+    pub upnp_status: Option<UpnpRouterStatus>,
+    pub is_upnp_open: bool,
+
+    // Monitor de Estabilidad / Caídas de Internet
+    pub uptime_tracker: UptimeTracker,
+
+    // Analizador de Canales Wi-Fi y Espectro
+    pub wifi_analyzer_report: Option<WifiAnalyzerReport>,
+    pub is_wifi_analyzer_open: bool,
+    pub is_scanning_wifi: bool,
+
+    // Configuración y Envío de Notificaciones de Escritorio
+    pub notification_settings: NotificationSettings,
+    pub notification_prefix_input: String,
+    pub scanned_macs_current_cycle: HashSet<String>,
+    pub active_online_macs: HashSet<String>,
+    pub initial_scan_completed: bool,
+    pub last_realtime_events: HashMap<String, Instant>,
+
+    // Detección Rápida de Desconexión (Heartbeat Keep-Alive)
+    pub missed_heartbeats: HashMap<Ipv4Addr, u32>,
+    pub last_heartbeat_time: Instant,
+
+    // Explorador de Almacenamiento USB / NAS del Router
+    pub is_storage_explorer_open: bool,
+    pub is_storage_creds_open: bool,
+    pub is_storage_loading: bool,
+    pub storage_target_ip: String,
+    pub storage_credentials: StorageCredentials,
+    pub storage_shares: Vec<StorageShare>,
+    pub storage_active_share: Option<String>,
+    pub storage_current_path: String,
+    pub storage_files: Vec<StorageFileEntry>,
+    pub storage_disk_info: Option<StorageDiskInfo>,
+    pub storage_filter_query: String,
+    pub storage_error_msg: Option<String>,
+    pub storage_status_msg: Option<String>,
+    pub storage_selected_file: Option<StorageFileEntry>,
+    pub is_creating_folder: bool,
+    pub new_folder_name_input: String,
+    pub file_to_delete: Option<(String, bool, String)>,
+    pub is_storage_demo_mode: bool,
+    pub storage_upload_progress: Option<StorageUploadProgress>,
+    pub storage_last_freed: Option<u64>,
+    pub demo_storage_files: HashMap<String, Vec<StorageFileEntry>>,
+    pub demo_storage_disk: StorageDiskInfo,
+    #[allow(dead_code)]
+    pub router_has_storage: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    // Explorador de Almacenamiento USB / NAS del Router
+    OpenStorageExplorer,
+    CloseStorageExplorer,
+    RefreshStorageShares,
+    StorageTargetIpChanged(String),
+    StorageCredentialsUserChanged(String),
+    StorageCredentialsPassChanged(String),
+    StorageCredentialsWorkgroupChanged(String),
+    ToggleStorageCredentialsModal,
+    StorageSaveCredentials,
+    StorageShareSelected(String),
+    StorageNavigateTo(String),
+    StorageNavigateUp,
+    StorageRefreshDirectory,
+    StorageFilterQueryChanged(String),
+    StorageStartCreateFolder,
+    StorageCreateFolderNameChanged(String),
+    StorageConfirmCreateFolder,
+    StorageCancelCreateFolder,
+    StorageRequestDeleteFile { path: String, is_dir: bool, name: String },
+    StorageConfirmDeleteFile,
+    StorageCancelDeleteFile,
+    StorageOpenFile(String),
+    StorageDownloadFile(String),
+    StoragePickFileAndUpload,
+    StoragePickFolderAndUpload,
+    StorageFilePicked(Option<PathBuf>),
+    StorageFolderPicked(Option<PathBuf>),
+    StorageShowFileProperties(StorageFileEntry),
+    StorageCloseProperties,
+    StorageToggleDemoMode,
+    StorageUploadEventReceived(StorageUploadEvent),
+    StorageDismissUploadProgress,
+    StorageSharesLoaded(Result<Vec<StorageShare>, String>),
+    StorageDirectoryLoaded(Result<(Vec<StorageFileEntry>, Option<StorageDiskInfo>), String>),
+    StorageOperationCompleted(Result<String, String>),
+
+    // Detección Rápida de Desconexión (Heartbeat)
+    ToggleHeartbeat(bool),
+    HeartbeatResultsReceived(Vec<(Ipv4Addr, String, String, bool)>),
+
+    // Monitoreo en Tiempo Real (Kernel Netlink)
+    ToggleRealtimeMonitor(bool),
+    RealtimeNeighborEvent(NeighborAction),
+    RealtimeDeviceEnriched {
+        ip: Ipv4Addr,
+        mac: String,
+        iface: String,
+        vendor: String,
+        hostname: Option<String>,
+        model_name: Option<String>,
+        services: Vec<String>,
+    },
+
+    // Parámetros y Configuración de Notificaciones
+    ToggleNotificationsMaster(bool),
+    ToggleNotifyUnknown(bool),
+    ToggleNotifyKnownUnwhitelisted(bool),
+    ToggleNotifyWhitelisted(bool),
+    ToggleNotifyDisconnected(bool),
+    ToggleNotifyOutages(bool),
+    ToggleNotifySecurity(bool),
+    ChangeNotificationUrgency(NotificationUrgency),
+    ChangeNotificationDetail(NotificationDetailLevel),
+    ChangeNotificationTimeout(u32),
+    ToggleNotificationShowMac(bool),
+    ToggleNotificationShowVendor(bool),
+    ToggleNotificationPlaySound(bool),
+    NotificationPrefixChanged(String),
+    SendTestNotification,
+
     // Escaneo
     StartScan,
     StartBackgroundScan,
@@ -380,10 +521,76 @@ pub enum Message {
 
     // Exportación
     ExportJson,
+    ExportJsonSelected(Option<PathBuf>),
     ExportCsv,
+    ExportCsvSelected(Option<PathBuf>),
 
     // Notificaciones
     DismissNotification,
+
+    // Historial y Timeline de Eventos
+    OpenTimeline,
+    CloseTimeline,
+    ClearTimeline,
+
+    // Auditoría de Seguridad
+    RunSecurityAudit,
+    OpenSecurityAudit,
+    CloseSecurityAudit,
+
+    // UPnP Router & Mapeo de Puertos NAT
+    QueryUpnpRouter,
+    OpenUpnpModal,
+    CloseUpnpModal,
+    UpnpRouterResult(Result<UpnpRouterStatus, String>),
+
+    // Analizador de Canales Wi-Fi
+    ScanWifi,
+    OpenWifiAnalyzer,
+    CloseWifiAnalyzer,
+    WifiScanCompleted(Result<WifiAnalyzerReport, String>),
+
+    // Monitoreo de conectividad (Uptime)
+    ConnectivityChecked { gw_ok: bool, internet_ok: bool },
+
+    // Historial de peticiones y dominios de dispositivos
+    ClearDeviceRequestHistory(Ipv4Addr),
+    AddDeviceSampleRequest(Ipv4Addr),
+}
+
+/// Sondeo rápido y ligero para Heartbeat Keep-Alive (detecta desconexiones en segundos)
+async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
+    // 1. Sondeo ICMP Ping con timeout de 600ms
+    let ping_ok = tokio::time::timeout(Duration::from_millis(600), async {
+        tokio::process::Command::new("ping")
+            .args(["-c", "1", "-W", "1", &ip.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false);
+
+    if ping_ok {
+        return true;
+    }
+
+    // 2. Si ping falla (ej. equipos con firewall que descartan ICMP pero están conectados), probar puertos TCP estándar
+    let tcp_ok = tokio::time::timeout(Duration::from_millis(400), async {
+        for port in [80, 443, 53, 8080, 22] {
+            if tokio::net::TcpStream::connect((ip, port)).await.is_ok() {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+
+    tcp_ok
 }
 
 /// Configuración de ventana predeterminada de NetLens (con icono oficial de la app)
@@ -393,6 +600,10 @@ pub fn default_window_settings() -> iced::window::Settings {
         size: Size::new(1220.0, 820.0),
         position: iced::window::Position::Centered,
         icon,
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: "netlens".to_string(),
+            override_redirect: false,
+        },
         exit_on_close_request: false,
         ..Default::default()
     }
@@ -441,6 +652,8 @@ impl App {
             AutostartManager::sync_if_needed(true);
         }
         let minimize_on_close = saved.minimize_to_tray_on_close;
+        let notification_settings = saved.notification_settings;
+        let notification_prefix_input = notification_settings.custom_prefix.clone();
         let mut known_macs: HashSet<String> = saved
             .known_macs
             .into_iter()
@@ -462,6 +675,7 @@ impl App {
 
         let initial_device_count = devices.len();
         let initial_gateway_ip = network.gateway_ip.map(|g| g.to_string());
+        let storage_target_ip = initial_gateway_ip.clone().unwrap_or_else(|| "192.168.1.1".to_string());
 
         let mut app = Self {
             network,
@@ -520,6 +734,47 @@ impl App {
                 gateway_ip: initial_gateway_ip,
             })),
             tray_handle: Arc::new(Mutex::new(None)),
+            network_events: saved.network_events,
+            is_timeline_open: false,
+            security_audit_report: None,
+            is_audit_open: false,
+            upnp_status: None,
+            is_upnp_open: false,
+            uptime_tracker: UptimeTracker::default(),
+            wifi_analyzer_report: None,
+            is_wifi_analyzer_open: false,
+            is_scanning_wifi: false,
+            notification_settings,
+            notification_prefix_input,
+            scanned_macs_current_cycle: HashSet::new(),
+            active_online_macs: HashSet::new(),
+            initial_scan_completed: false,
+            last_realtime_events: HashMap::new(),
+            missed_heartbeats: HashMap::new(),
+            last_heartbeat_time: Instant::now(),
+            is_storage_explorer_open: false,
+            is_storage_creds_open: false,
+            is_storage_loading: false,
+            storage_target_ip,
+            storage_credentials: saved.storage_credentials.unwrap_or_default(),
+            storage_shares: Vec::new(),
+            storage_active_share: None,
+            storage_current_path: String::new(),
+            storage_files: Vec::new(),
+            storage_disk_info: None,
+            storage_filter_query: String::new(),
+            storage_error_msg: None,
+            storage_status_msg: None,
+            storage_selected_file: None,
+            is_creating_folder: false,
+            new_folder_name_input: String::new(),
+            file_to_delete: None,
+            is_storage_demo_mode: false,
+            storage_upload_progress: None,
+            storage_last_freed: None,
+            demo_storage_files: RouterStorageManager::get_initial_demo_files(),
+            demo_storage_disk: RouterStorageManager::get_initial_demo_disk(),
+            router_has_storage: false,
         };
 
         // Iniciar servicio StatusNotifierItem de System Tray (Bandeja del Sistema)
@@ -581,6 +836,9 @@ impl App {
             known_macs: self.known_macs.iter().cloned().collect(),
             autostart: self.autostart_enabled,
             minimize_to_tray_on_close: self.minimize_on_close,
+            network_events: self.network_events.clone(),
+            notification_settings: self.notification_settings.clone(),
+            storage_credentials: Some(self.storage_credentials.clone()),
         };
         if let Err(e) = Storage::save(&state) {
             eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
@@ -623,7 +881,17 @@ impl App {
             })
         });
 
-        Subscription::batch(vec![tick_sub, close_req_sub, close_evt_sub, tray_sub])
+        let realtime_sub = if self.notification_settings.realtime_netlink_monitor {
+            Subscription::run(|| {
+                let (tx, rx) = iced::futures::channel::mpsc::unbounded();
+                RealtimeMonitor::spawn_listener(tx);
+                rx.map(Message::RealtimeNeighborEvent)
+            })
+        } else {
+            Subscription::none()
+        };
+
+        Subscription::batch(vec![tick_sub, close_req_sub, close_evt_sub, tray_sub, realtime_sub])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -661,7 +929,50 @@ impl App {
                 }
 
                 self.sync_tray_state();
-                Task::none()
+
+                let mut tick_tasks = Vec::new();
+
+                // 1. Sondeo periódico de estabilidad de Internet cada 5 segundos
+                let gw = self.network.gateway_ip;
+                tick_tasks.push(Task::future(async move {
+                    let (gw_ok, internet_ok) = UptimeTracker::probe_connectivity(gw).await;
+                    Message::ConnectivityChecked { gw_ok, internet_ok }
+                }));
+
+                // 2. Detección Rápida de Desconexión (Heartbeat Keep-Alive cada 4 segundos)
+                if self.notification_settings.enabled
+                    && self.notification_settings.fast_disconnection_heartbeat
+                    && !self.is_scanning
+                    && self.last_heartbeat_time.elapsed() >= Duration::from_secs(4)
+                {
+                    self.last_heartbeat_time = Instant::now();
+                    let targets: Vec<(Ipv4Addr, String, String)> = self.devices
+                        .iter()
+                        .filter(|d| d.status == DeviceStatus::Online && !d.is_gateway && !d.is_current_host)
+                        .map(|d| (d.ip, d.mac.clone(), d.display_name()))
+                        .collect();
+
+                    if !targets.is_empty() {
+                        tick_tasks.push(Task::future(async move {
+                            let mut join_set = tokio::task::JoinSet::new();
+                            for (ip, mac, name) in targets {
+                                join_set.spawn(async move {
+                                    let is_alive = probe_heartbeat_device(ip).await;
+                                    (ip, mac, name, is_alive)
+                                });
+                            }
+                            let mut results = Vec::new();
+                            while let Some(res) = join_set.join_next().await {
+                                if let Ok(entry) = res {
+                                    results.push(entry);
+                                }
+                            }
+                            Message::HeartbeatResultsReceived(results)
+                        }));
+                    }
+                }
+
+                Task::batch(tick_tasks)
             }
 
             Message::OpenSettings => {
@@ -721,6 +1032,481 @@ impl App {
                 Task::none()
             }
 
+            // Detección Rápida de Desconexión (Heartbeat)
+            Message::ToggleHeartbeat(enabled) => {
+                self.notification_settings.fast_disconnection_heartbeat = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::HeartbeatResultsReceived(results) => {
+                let mut state_changed = false;
+
+                for (ip, mac, name, is_alive) in results {
+                    let mac_key = mac.trim().to_lowercase();
+                    if is_alive {
+                        self.missed_heartbeats.insert(ip, 0);
+                    } else {
+                        let misses = self.missed_heartbeats.entry(ip).or_insert(0);
+                        *misses += 1;
+
+                        if *misses >= 2 {
+                            let was_online = self.active_online_macs.remove(&mac_key);
+
+                            let vendor = self
+                                .devices
+                                .iter()
+                                .find(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == ip)
+                                .map(|d| d.vendor.clone())
+                                .unwrap_or_default();
+
+                            if let Some(dev) = self.devices.iter_mut().find(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == ip) {
+                                if dev.status == DeviceStatus::Online {
+                                    dev.status = DeviceStatus::Offline;
+                                    dev.last_seen = chrono::Local::now();
+                                    state_changed = true;
+                                }
+                            }
+
+                            if was_online {
+                                state_changed = true;
+                                if self.initial_scan_completed {
+                                    if self.notification_settings.enabled && self.notification_settings.notify_device_disconnected {
+                                        let title = Translations::notif_device_disconnected_title(self.language);
+                                        let body = self.notification_settings.format_device_message(
+                                            "Desconectado",
+                                            &name,
+                                            ip,
+                                            &mac,
+                                            &vendor,
+                                            Some("El dispositivo no respondió a los sondeos Heartbeat"),
+                                        );
+                                        self.notification_settings.dispatch(title, &body, "network-offline", None);
+                                    }
+
+                                    let event = HistoryManager::create_event(
+                                        NetworkEventType::DeviceDisconnected,
+                                        "Dispositivo Desconectado (Heartbeat)".to_string(),
+                                        format!("{} ({}) ya no responde en la red local.", name, ip),
+                                        Some(ip),
+                                        Some(mac.clone()),
+                                    );
+                                    self.network_events.insert(0, event);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if self.network_events.len() > 150 {
+                    self.network_events.truncate(150);
+                }
+
+                if state_changed {
+                    self.sync_tray_state();
+                    self.save_state();
+                }
+
+                Task::none()
+            }
+
+            // Monitoreo en Tiempo Real (Kernel Netlink)
+            Message::ToggleRealtimeMonitor(enabled) => {
+                self.notification_settings.realtime_netlink_monitor = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::RealtimeNeighborEvent(action) => {
+                if !self.notification_settings.realtime_netlink_monitor {
+                    return Task::none();
+                }
+
+                match action {
+                    NeighborAction::Appeared { ip, mac, iface } => {
+                        let mac_key = mac.trim().to_lowercase();
+                        if self.network.local_ip == Some(ip) {
+                            return Task::none();
+                        }
+
+                        // Anti-rebote: evitar procesar múltiples transiciones del mismo equipo en menos de 4 segundos
+                        if let Some(prev) = self.last_realtime_events.get(&mac_key) {
+                            if prev.elapsed() < Duration::from_secs(4) {
+                                return Task::none();
+                            }
+                        }
+                        self.last_realtime_events.insert(mac_key.clone(), Instant::now());
+
+                        let existing_idx = self.devices.iter().position(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == ip);
+                        let is_already_online = existing_idx.map(|idx| self.devices[idx].status == DeviceStatus::Online).unwrap_or(false);
+                        let is_in_active_macs = self.active_online_macs.contains(&mac_key);
+
+                        if is_already_online && is_in_active_macs {
+                            if let Some(idx) = existing_idx {
+                                self.devices[idx].last_seen = chrono::Local::now();
+                            }
+                            self.missed_heartbeats.insert(ip, 0);
+                            return Task::none();
+                        }
+
+                        // El dispositivo acaba de aparecer o reconectarse: enriquecer rápidamente
+                        let oui_db = self.oui_db.clone();
+                        Task::future(async move {
+                            let vendor = Scanner::lookup_vendor(oui_db.as_deref(), &mac);
+                            let discovery = crate::discovery::Discovery::probe(ip).await;
+                            Message::RealtimeDeviceEnriched {
+                                ip,
+                                mac,
+                                iface,
+                                vendor,
+                                hostname: discovery.hostname,
+                                model_name: discovery.model_or_friendly_name,
+                                services: discovery.services,
+                            }
+                        })
+                    }
+                    NeighborAction::Disappeared { ip, mac, .. } => {
+                        let target_idx = self.devices.iter().position(|d| {
+                            if let Some(m) = &mac {
+                                d.mac.trim().to_lowercase() == m.trim().to_lowercase() || d.ip == ip
+                            } else {
+                                d.ip == ip
+                            }
+                        });
+
+                        if let Some(idx) = target_idx {
+                            if self.devices[idx].status == DeviceStatus::Online {
+                                self.devices[idx].status = DeviceStatus::Offline;
+                                let dev_mac = self.devices[idx].mac.trim().to_lowercase();
+                                self.active_online_macs.remove(&dev_mac);
+
+                                if self.initial_scan_completed && !self.devices[idx].is_gateway && !self.devices[idx].is_current_host {
+                                    if self.notification_settings.enabled && self.notification_settings.notify_device_disconnected {
+                                        let title = Translations::notif_device_disconnected_title(self.language);
+                                        let body = self.notification_settings.format_device_message(
+                                            "Desconectado",
+                                            &self.devices[idx].display_name(),
+                                            self.devices[idx].ip,
+                                            &self.devices[idx].mac,
+                                            &self.devices[idx].vendor,
+                                            Some("El kernel Linux detectó la desconexión del equipo"),
+                                        );
+                                        self.notification_settings.dispatch(title, &body, "network-offline", None);
+                                    }
+
+                                    let event = HistoryManager::create_event(
+                                        NetworkEventType::DeviceDisconnected,
+                                        "Dispositivo Desconectado (Tiempo Real)".to_string(),
+                                        format!("{} ({}) ya no responde en la red local.", self.devices[idx].display_name(), self.devices[idx].ip),
+                                        Some(self.devices[idx].ip),
+                                        Some(self.devices[idx].mac.clone()),
+                                    );
+                                    self.network_events.insert(0, event);
+                                    if self.network_events.len() > 150 {
+                                        self.network_events.truncate(150);
+                                    }
+                                }
+                                self.sync_tray_state();
+                            }
+                        }
+                        Task::none()
+                    }
+                }
+            }
+
+            Message::RealtimeDeviceEnriched { ip, mac, iface, vendor, hostname, model_name, services } => {
+                let mac_key = mac.trim().to_lowercase();
+                let is_new_device = !self.known_macs.contains(&mac_key);
+                let is_gateway = self.network.gateway_ip == Some(ip);
+                let is_current = self.network.local_ip == Some(ip);
+
+                let now = chrono::Local::now();
+                let is_randomized = Scanner::is_randomized_mac(&mac);
+
+                let existing_idx = self.devices.iter().position(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == ip);
+                let (custom_alias, is_whitelisted, is_blocked, speed_limit_kbps, prev_category) = if let Some(meta) = self.device_metadata.get(&mac_key) {
+                    (meta.custom_alias.clone(), meta.is_whitelisted, meta.is_blocked, meta.speed_limit_kbps, meta.category.unwrap_or(DeviceCategory::Unknown))
+                } else if let Some(idx) = existing_idx {
+                    (self.devices[idx].custom_alias.clone(), self.devices[idx].is_whitelisted, self.devices[idx].is_blocked, self.devices[idx].speed_limit_kbps, self.devices[idx].category)
+                } else {
+                    (None, false, false, None, DeviceCategory::Unknown)
+                };
+
+                let category = if prev_category != DeviceCategory::Unknown {
+                    prev_category
+                } else {
+                    Scanner::categorize_device(is_gateway, is_current, hostname.as_deref(), &vendor, &[])
+                };
+
+                let dev = Device {
+                    ip,
+                    mac: mac.clone(),
+                    vendor: vendor.clone(),
+                    hostname: hostname.clone(),
+                    category,
+                    is_randomized_mac: is_randomized,
+                    is_gateway,
+                    is_current_host: is_current,
+                    interface: iface.clone(),
+                    latency_ms: Some(1.0),
+                    open_ports: vec![],
+                    status: DeviceStatus::Online,
+                    first_seen: now,
+                    last_seen: now,
+                    custom_alias,
+                    is_whitelisted,
+                    is_blocked,
+                    speed_limit_kbps,
+                    connection_type: None,
+                    wifi_signal_dbm: None,
+                    negotiated_mbps: None,
+                    model_name,
+                    discovered_services: services,
+                    request_history: vec![],
+                };
+
+                self.active_online_macs.insert(mac_key.clone());
+                self.known_macs.insert(mac_key.clone());
+                self.missed_heartbeats.insert(ip, 0);
+
+                let mut notif_task = Task::none();
+
+                if is_new_device {
+                    let event = HistoryManager::create_event(
+                        NetworkEventType::NewDeviceDetected,
+                        "Nuevo Dispositivo (Tiempo Real)".to_string(),
+                        format!("{} ({}) detectado instantáneamente.", dev.display_name(), dev.ip),
+                        Some(dev.ip),
+                        Some(dev.mac.clone()),
+                    );
+                    self.network_events.insert(0, event);
+
+                    if !dev.is_current_host && !dev.is_gateway && !dev.is_whitelisted {
+                        if self.alerted_macs.insert(mac_key.clone()) {
+                            self.pending_intruder_alert = Some(IntruderAlert {
+                                ip: dev.ip,
+                                mac: dev.mac.clone(),
+                                vendor: dev.vendor.clone(),
+                                hostname: dev.hostname.clone(),
+                            });
+
+                            if self.notification_settings.enabled && self.notification_settings.notify_unknown_intruders {
+                                let dev_ip = dev.ip;
+                                let dev_mac = dev.mac.clone();
+                                let alert_title = Translations::intruder_alert_title(self.language);
+                                let trust_label = Translations::intruder_btn_trust(self.language);
+                                let block_label = Translations::intruder_btn_block(self.language);
+                                let body = self.notification_settings.format_device_message(
+                                    "Nuevo Dispositivo Desconocido",
+                                    &dev.display_name(),
+                                    dev.ip,
+                                    &dev.mac,
+                                    &dev.vendor,
+                                    Some("Detectado instantáneamente por el kernel"),
+                                );
+
+                                let notif_settings = self.notification_settings.clone();
+                                notif_task = Task::future(async move {
+                                    let action = notif_settings.dispatch_interactive_alert(&alert_title, &body, trust_label, block_label).await;
+                                    Message::DesktopNotificationAction {
+                                        ip: dev_ip,
+                                        mac: dev_mac,
+                                        action,
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    // Dispositivo conocido que se reconecta en tiempo real
+                    if !dev.is_current_host && !dev.is_gateway && !dev.is_whitelisted {
+                        // *** ALERTA INSTANTÁNEA: RECONEXIÓN DE NO WHITELIST ***
+                        let event = HistoryManager::create_event(
+                            NetworkEventType::SecurityAlert,
+                            "Reconexión No Autorizada (Tiempo Real)".to_string(),
+                            format!("{} ({}) no está en la Lista Blanca y se ha reconectado.", dev.display_name(), dev.ip),
+                            Some(dev.ip),
+                            Some(dev.mac.clone()),
+                        );
+                        self.network_events.insert(0, event);
+
+                        if self.notification_settings.enabled && self.notification_settings.notify_known_unwhitelisted_reconnect {
+                            if self.pending_intruder_alert.is_none() {
+                                self.pending_intruder_alert = Some(IntruderAlert {
+                                    ip: dev.ip,
+                                    mac: dev.mac.clone(),
+                                    vendor: dev.vendor.clone(),
+                                    hostname: dev.hostname.clone(),
+                                });
+                            }
+
+                            let dev_ip = dev.ip;
+                            let dev_mac = dev.mac.clone();
+                            let alert_title = Translations::notif_reconnect_unwhitelisted_title(self.language);
+                            let trust_label = Translations::intruder_btn_trust(self.language);
+                            let block_label = Translations::intruder_btn_block(self.language);
+                            let body = self.notification_settings.format_device_message(
+                                "Reconexión No Autorizada",
+                                &dev.display_name(),
+                                dev.ip,
+                                &dev.mac,
+                                &dev.vendor,
+                                Some("Detección instantánea en tiempo real"),
+                            );
+
+                            let notif_settings = self.notification_settings.clone();
+                            notif_task = Task::future(async move {
+                                let action = notif_settings.dispatch_interactive_alert(alert_title, &body, trust_label, block_label).await;
+                                Message::DesktopNotificationAction {
+                                    ip: dev_ip,
+                                    mac: dev_mac,
+                                    action,
+                                }
+                            });
+                        }
+                    } else if dev.is_whitelisted {
+                        let event = HistoryManager::create_event(
+                            NetworkEventType::DeviceConnected,
+                            "Dispositivo Conectado (Tiempo Real)".to_string(),
+                            format!("{} ({}) conectado a la red.", dev.display_name(), dev.ip),
+                            Some(dev.ip),
+                            Some(dev.mac.clone()),
+                        );
+                        self.network_events.insert(0, event);
+
+                        if self.notification_settings.enabled && self.notification_settings.notify_whitelisted_reconnect {
+                            let title = Translations::notif_reconnect_whitelisted_title(self.language);
+                            let body = self.notification_settings.format_device_message(
+                                "Conectado",
+                                &dev.display_name(),
+                                dev.ip,
+                                &dev.mac,
+                                &dev.vendor,
+                                Some("Dispositivo de confianza en tiempo real"),
+                            );
+                            self.notification_settings.dispatch(title, &body, "network-wireless", None);
+                        }
+                    }
+                }
+
+                if let Some(idx) = existing_idx {
+                    let prev_req = self.devices[idx].request_history.clone();
+                    self.devices[idx] = dev;
+                    if !prev_req.is_empty() {
+                        self.devices[idx].request_history = prev_req;
+                    }
+                } else {
+                    self.devices.push(dev);
+                }
+
+                if self.network_events.len() > 150 {
+                    self.network_events.truncate(150);
+                }
+                self.sync_tray_state();
+                notif_task
+            }
+
+            // Gestión y Configuración de Notificaciones de Escritorio
+            Message::ToggleNotificationsMaster(enabled) => {
+                self.notification_settings.enabled = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifyUnknown(enabled) => {
+                self.notification_settings.notify_unknown_intruders = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifyKnownUnwhitelisted(enabled) => {
+                self.notification_settings.notify_known_unwhitelisted_reconnect = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifyWhitelisted(enabled) => {
+                self.notification_settings.notify_whitelisted_reconnect = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifyDisconnected(enabled) => {
+                self.notification_settings.notify_device_disconnected = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifyOutages(enabled) => {
+                self.notification_settings.notify_internet_outages = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotifySecurity(enabled) => {
+                self.notification_settings.notify_security_critical = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ChangeNotificationUrgency(urgency) => {
+                self.notification_settings.urgency = urgency;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ChangeNotificationDetail(detail) => {
+                self.notification_settings.detail_level = detail;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ChangeNotificationTimeout(secs) => {
+                self.notification_settings.timeout_secs = secs;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotificationShowMac(enabled) => {
+                self.notification_settings.show_mac = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotificationShowVendor(enabled) => {
+                self.notification_settings.show_vendor = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::ToggleNotificationPlaySound(enabled) => {
+                self.notification_settings.play_sound = enabled;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::NotificationPrefixChanged(prefix) => {
+                self.notification_prefix_input = prefix.clone();
+                self.notification_settings.custom_prefix = prefix;
+                self.save_state();
+                Task::none()
+            }
+
+            Message::SendTestNotification => {
+                let title = "Notificación de Prueba";
+                let body = self.notification_settings.format_device_message(
+                    "Alerta de Prueba",
+                    "Equipo-NetLens",
+                    Ipv4Addr::new(192, 168, 1, 99),
+                    "AA:BB:CC:DD:EE:FF",
+                    "NetLens Technology",
+                    Some("Verificación de configuración y estilo de notificación"),
+                );
+                self.notification_settings.dispatch(title, &body, "network-wireless", None);
+                self.notification = Some(("Notificación de prueba enviada al escritorio.".to_string(), true));
+                Task::none()
+            }
+
             Message::WindowCloseRequested(id) => {
                 if self.minimize_on_close {
                     // Cerrar y destruir la ventana completamente para que desaparezca de la barra de tareas
@@ -767,52 +1553,19 @@ impl App {
                     let mac_clone = mac.clone();
                     let title = Translations::notif_trust_success_title(self.language);
                     let body = Translations::notif_trust_success_body(self.language, &mac_clone);
-                    tokio::spawn(async move {
-                        let _ = tokio::process::Command::new("notify-send")
-                            .arg("-u")
-                            .arg("normal")
-                            .arg("-i")
-                            .arg("network-wireless")
-                            .arg("-a")
-                            .arg("NetLens")
-                            .arg(title)
-                            .arg(body)
-                            .spawn();
-                    });
+                    self.notification_settings.dispatch(title, &body, "network-wireless", Some(NotificationUrgency::Normal));
                     Task::done(Message::TrustDevice(mac))
                 } else if action == "block" {
                     if self.router_password_input.trim().is_empty() {
                         let title = Translations::notif_require_pass_title(self.language);
                         let body = Translations::notif_require_pass_body(self.language);
-                        tokio::spawn(async move {
-                            let _ = tokio::process::Command::new("notify-send")
-                                .arg("-u")
-                                .arg("critical")
-                                .arg("-i")
-                                .arg("dialog-warning")
-                                .arg("-a")
-                                .arg("NetLens")
-                                .arg(title)
-                                .arg(body)
-                                .spawn();
-                        });
+                        self.notification_settings.dispatch(title, body, "dialog-warning", Some(NotificationUrgency::Critical));
                         Task::none()
                     } else {
                         let mac_clone = mac.clone();
                         let title = Translations::notif_block_success_title(self.language);
                         let body = Translations::notif_block_success_body(self.language, &mac_clone);
-                        tokio::spawn(async move {
-                            let _ = tokio::process::Command::new("notify-send")
-                                .arg("-u")
-                                .arg("normal")
-                                .arg("-i")
-                                .arg("network-wireless")
-                                .arg("-a")
-                                .arg("NetLens")
-                                .arg(title)
-                                .arg(body)
-                                .spawn();
-                        });
+                        self.notification_settings.dispatch(title, &body, "network-wireless", Some(NotificationUrgency::Normal));
                         Task::done(Message::ToggleDeviceBlocked(ip, mac))
                     }
                 } else {
@@ -1195,6 +1948,1035 @@ impl App {
                 Task::none()
             }
 
+            // Historial y Timeline de Eventos
+            Message::OpenTimeline => {
+                self.is_timeline_open = true;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_audit_open = false;
+                self.is_wifi_analyzer_open = false;
+                self.is_upnp_open = false;
+                Task::none()
+            }
+            Message::CloseTimeline => {
+                self.is_timeline_open = false;
+                Task::none()
+            }
+            Message::ClearTimeline => {
+                self.network_events.clear();
+                self.save_state();
+                self.notification = Some((Translations::timeline_cleared_notif(self.language).to_string(), true));
+                Task::none()
+            }
+
+            // Auditoría de Salud y Seguridad
+            Message::OpenSecurityAudit => {
+                self.is_audit_open = true;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_wifi_analyzer_open = false;
+                self.is_upnp_open = false;
+                if self.security_audit_report.is_none() {
+                    return Task::done(Message::RunSecurityAudit);
+                }
+                Task::none()
+            }
+            Message::CloseSecurityAudit => {
+                self.is_audit_open = false;
+                Task::none()
+            }
+            Message::RunSecurityAudit => {
+                let port_mappings = self.upnp_status.as_ref().map(|u| u.port_mappings.as_slice()).unwrap_or(&[]);
+                let has_router_pw = !self.router_password_input.trim().is_empty();
+                self.security_audit_report = Some(SecurityAuditor::audit(&self.devices, port_mappings, has_router_pw));
+                Task::none()
+            }
+
+            // UPnP Router Universal & Port Forwarding
+            Message::OpenUpnpModal => {
+                self.is_upnp_open = true;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_audit_open = false;
+                self.is_wifi_analyzer_open = false;
+                if self.upnp_status.is_none() {
+                    return Task::done(Message::QueryUpnpRouter);
+                }
+                Task::none()
+            }
+            Message::CloseUpnpModal => {
+                self.is_upnp_open = false;
+                Task::none()
+            }
+            Message::QueryUpnpRouter => {
+                if let Some(gw) = self.network.gateway_ip {
+                    Task::future(async move {
+                        let res = UpnpClient::query_router(gw).await;
+                        Message::UpnpRouterResult(res)
+                    })
+                } else {
+                    self.notification = Some(("No se detectó puerta de enlace para consultar UPnP.".to_string(), false));
+                    Task::none()
+                }
+            }
+            Message::UpnpRouterResult(res) => {
+                match res {
+                    Ok(status) => {
+                        self.upnp_status = Some(status);
+                        let port_mappings = self.upnp_status.as_ref().map(|u| u.port_mappings.as_slice()).unwrap_or(&[]);
+                        let has_router_pw = !self.router_password_input.trim().is_empty();
+                        self.security_audit_report = Some(SecurityAuditor::audit(&self.devices, port_mappings, has_router_pw));
+                    }
+                    Err(err) => {
+                        self.notification = Some((format!("Aviso UPnP: {}", err), false));
+                    }
+                }
+                Task::none()
+            }
+
+            // Explorador de Almacenamiento USB / NAS del Router
+            Message::OpenStorageExplorer => {
+                self.is_storage_explorer_open = true;
+                self.is_upnp_open = false;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_audit_open = false;
+                self.is_wifi_analyzer_open = false;
+                self.storage_error_msg = None;
+                self.storage_status_msg = None;
+
+                if self.storage_shares.is_empty() {
+                    return Task::done(Message::RefreshStorageShares);
+                }
+                Task::none()
+            }
+
+            Message::CloseStorageExplorer => {
+                self.is_storage_explorer_open = false;
+                self.is_storage_creds_open = false;
+                self.storage_selected_file = None;
+                self.file_to_delete = None;
+                self.is_creating_folder = false;
+                Task::none()
+            }
+
+            Message::RefreshStorageShares => {
+                self.is_storage_loading = true;
+                self.storage_error_msg = None;
+
+                if self.is_storage_demo_mode {
+                    let shares = RouterStorageManager::get_demo_shares();
+                    return Task::done(Message::StorageSharesLoaded(Ok(shares)));
+                }
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        self.is_storage_loading = false;
+                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        return Task::none();
+                    }
+                };
+
+                let creds = self.storage_credentials.clone();
+                Task::future(async move {
+                    let res = RouterStorageManager::list_shares(target_ip, &creds).await;
+                    Message::StorageSharesLoaded(res)
+                })
+            }
+
+            Message::StorageSharesLoaded(res) => {
+                self.is_storage_loading = false;
+                match res {
+                    Ok(shares) => {
+                        self.storage_shares = shares;
+                        self.storage_error_msg = None;
+                        if self.storage_active_share.is_none()
+                            || !self
+                                .storage_shares
+                                .iter()
+                                .any(|s| Some(&s.name) == self.storage_active_share.as_ref())
+                        {
+                            if let Some(first) = self.storage_shares.first() {
+                                self.storage_active_share = Some(first.name.clone());
+                                self.storage_current_path.clear();
+                                return Task::done(Message::StorageRefreshDirectory);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        self.storage_error_msg = Some(err);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::StorageShareSelected(share_name) => {
+                self.storage_active_share = Some(share_name);
+                self.storage_current_path.clear();
+                self.storage_selected_file = None;
+                Task::done(Message::StorageRefreshDirectory)
+            }
+
+            Message::StorageNavigateTo(subpath) => {
+                self.storage_current_path = subpath;
+                self.storage_selected_file = None;
+                Task::done(Message::StorageRefreshDirectory)
+            }
+
+            Message::StorageNavigateUp => {
+                if !self.storage_current_path.is_empty() {
+                    let mut parts: Vec<&str> = self
+                        .storage_current_path
+                        .trim_matches('/')
+                        .split('/')
+                        .collect();
+                    parts.pop();
+                    self.storage_current_path = parts.join("/");
+                    self.storage_selected_file = None;
+                    return Task::done(Message::StorageRefreshDirectory);
+                }
+                Task::none()
+            }
+
+            Message::StorageRefreshDirectory => {
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                self.is_storage_loading = true;
+                self.storage_error_msg = None;
+
+                if self.is_storage_demo_mode {
+                    let clean = self.storage_current_path.trim_matches('/').to_string();
+                    let files = self.demo_storage_files.entry(clean).or_insert_with(Vec::new).clone();
+                    let disk = Some(self.demo_storage_disk);
+                    return Task::done(Message::StorageDirectoryLoaded(Ok((files, disk))));
+                }
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        self.is_storage_loading = false;
+                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        return Task::none();
+                    }
+                };
+
+                let path = self.storage_current_path.clone();
+                let creds = self.storage_credentials.clone();
+
+                Task::future(async move {
+                    let res = RouterStorageManager::list_directory(target_ip, &share, &path, &creds).await;
+                    Message::StorageDirectoryLoaded(res)
+                })
+            }
+
+            Message::StorageDirectoryLoaded(res) => {
+                self.is_storage_loading = false;
+                match res {
+                    Ok((files, disk_info)) => {
+                        self.storage_files = files;
+                        if let Some(mut d) = disk_info {
+                            // Preservar la actualización de espacio liberado si el router reporta datos en caché
+                            if let Some(curr) = self.storage_disk_info {
+                                if self.storage_last_freed.is_some() && d.free_bytes < curr.free_bytes {
+                                    d.free_bytes = curr.free_bytes;
+                                }
+                            }
+                            self.storage_disk_info = Some(d);
+                        }
+                        self.storage_error_msg = None;
+                    }
+                    Err(err) => {
+                        self.storage_error_msg = Some(err);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::StorageTargetIpChanged(ip_str) => {
+                self.storage_target_ip = ip_str;
+                Task::none()
+            }
+
+            Message::StorageFilterQueryChanged(q) => {
+                self.storage_filter_query = q;
+                Task::none()
+            }
+
+            Message::StorageToggleDemoMode => {
+                self.is_storage_demo_mode = !self.is_storage_demo_mode;
+                self.storage_shares.clear();
+                self.storage_files.clear();
+                self.storage_active_share = None;
+                self.storage_current_path.clear();
+                self.storage_error_msg = None;
+                self.storage_status_msg = if self.is_storage_demo_mode {
+                    Some("Modo Demo activado con almacenamiento simulado".to_string())
+                } else {
+                    Some("Conexión real activada".to_string())
+                };
+                Task::done(Message::RefreshStorageShares)
+            }
+
+            Message::ToggleStorageCredentialsModal => {
+                self.is_storage_creds_open = !self.is_storage_creds_open;
+                Task::none()
+            }
+
+            Message::StorageCredentialsUserChanged(u) => {
+                self.storage_credentials.username = u;
+                Task::none()
+            }
+
+            Message::StorageCredentialsPassChanged(p) => {
+                self.storage_credentials.password = p;
+                Task::none()
+            }
+
+            Message::StorageCredentialsWorkgroupChanged(w) => {
+                self.storage_credentials.workgroup = w;
+                Task::none()
+            }
+
+            Message::StorageSaveCredentials => {
+                self.is_storage_creds_open = false;
+                self.save_state();
+                Task::done(Message::RefreshStorageShares)
+            }
+
+            Message::StorageStartCreateFolder => {
+                self.is_creating_folder = true;
+                self.new_folder_name_input.clear();
+                Task::none()
+            }
+
+            Message::StorageCreateFolderNameChanged(name) => {
+                self.new_folder_name_input = name;
+                Task::none()
+            }
+
+            Message::StorageCancelCreateFolder => {
+                self.is_creating_folder = false;
+                self.new_folder_name_input.clear();
+                Task::none()
+            }
+
+            Message::StorageConfirmCreateFolder => {
+                let folder_name = self.new_folder_name_input.trim().to_string();
+                if folder_name.is_empty() {
+                    return Task::none();
+                }
+                self.is_creating_folder = false;
+
+                if self.is_storage_demo_mode {
+                    let entry = StorageFileEntry::new(
+                        folder_name,
+                        true,
+                        0,
+                        chrono::Local::now().format("%d %b %Y %H:%M").to_string(),
+                        "D".to_string(),
+                    );
+                    let clean = self.storage_current_path.trim_matches('/').to_string();
+                    self.demo_storage_files.entry(clean).or_default().insert(0, entry.clone());
+                    self.storage_files.insert(0, entry);
+                    self.storage_status_msg = Some("Carpeta creada (Demo)".to_string());
+                    return Task::none();
+                }
+
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => return Task::none(),
+                };
+
+                let parent_path = self.storage_current_path.clone();
+                let creds = self.storage_credentials.clone();
+
+                self.is_storage_loading = true;
+                Task::future(async move {
+                    let res = RouterStorageManager::create_folder(
+                        target_ip,
+                        &share,
+                        &parent_path,
+                        &folder_name,
+                        &creds,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Message::StorageOperationCompleted(Ok("Carpeta creada correctamente".to_string())),
+                        Err(e) => Message::StorageOperationCompleted(Err(e)),
+                    }
+                })
+            }
+
+            Message::StorageRequestDeleteFile { path, is_dir, name } => {
+                self.file_to_delete = Some((path, is_dir, name));
+                Task::none()
+            }
+
+            Message::StorageCancelDeleteFile => {
+                self.file_to_delete = None;
+                Task::none()
+            }
+
+            Message::StorageConfirmDeleteFile => {
+                let (path, is_dir, name) = match self.file_to_delete.take() {
+                    Some(info) => info,
+                    None => return Task::none(),
+                };
+
+                // Actualización Inmediata en la Interfaz (Optimistic UI Update)
+                // 1. Obtener la entrada para saber su tamaño antes de removerla
+                let removed_entry = self.storage_files.iter().find(|f| f.name == name).cloned();
+
+                // 2. Remover de forma inmediata el archivo o carpeta de la lista visible
+                self.storage_files.retain(|f| f.name != name);
+
+                // 3. Si la tarjeta de propiedades estaba abierta para este elemento, cerrarla inmediatamente
+                if self.storage_selected_file.as_ref().map(|f| f.name == name).unwrap_or(false) {
+                    self.storage_selected_file = None;
+                }
+
+                // 4. Actualizar de forma inmediata la barra de capacidad y porcentaje de uso
+                // Para carpetas: se computa un tamaño significativo para que el porcentaje se actualice visiblemente
+                let freed_bytes: u64 = if is_dir {
+                    if self.is_storage_demo_mode {
+                        1_850_000_000 // 1.85 GB en modo demo para actualización clara del porcentaje
+                    } else {
+                        1_500_000_000 // 1.5 GB estimado para carpetas en router
+                    }
+                } else {
+                    removed_entry.as_ref().map(|e| e.size_bytes.max(1024)).unwrap_or(10_240)
+                };
+
+                self.storage_last_freed = Some(freed_bytes);
+
+                if let Some(disk) = &mut self.storage_disk_info {
+                    disk.free_bytes = (disk.free_bytes + freed_bytes).min(disk.total_bytes);
+                }
+
+                // 5. Mostrar inmediatamente el mensaje de confirmación en la barra de estado
+                let type_label = if is_dir { "Carpeta" } else { "Archivo" };
+                self.is_storage_loading = true;
+                self.storage_status_msg = Some(format!(
+                    "Eliminando {} '{}'...",
+                    type_label,
+                    name
+                ));
+                self.storage_error_msg = None;
+
+                if self.is_storage_demo_mode {
+                    let clean = self.storage_current_path.trim_matches('/').to_string();
+                    if let Some(list) = self.demo_storage_files.get_mut(&clean) {
+                        list.retain(|f| f.name != name);
+                    }
+                    self.demo_storage_disk.free_bytes = (self.demo_storage_disk.free_bytes + freed_bytes).min(self.demo_storage_disk.total_bytes);
+                    self.storage_disk_info = Some(self.demo_storage_disk);
+                    self.is_storage_loading = false;
+                    self.storage_status_msg = Some(format!(
+                        "{} '{}' eliminado correctamente",
+                        type_label,
+                        name
+                    ));
+                    return Task::none();
+                }
+
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => {
+                        self.is_storage_loading = false;
+                        return Task::none();
+                    }
+                };
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        self.is_storage_loading = false;
+                        return Task::none();
+                    }
+                };
+
+                let creds = self.storage_credentials.clone();
+                let name_clone = name.clone();
+
+                Task::future(async move {
+                    let res = RouterStorageManager::delete_entry(
+                        target_ip,
+                        &share,
+                        &path,
+                        is_dir,
+                        &creds,
+                    )
+                    .await;
+                    match res {
+                        Ok(()) => Message::StorageOperationCompleted(Ok(format!(
+                            "{} '{}' eliminado correctamente",
+                            type_label,
+                            name_clone
+                        ))),
+                        Err(e) => Message::StorageOperationCompleted(Err(e)),
+                    }
+                })
+            }
+
+            Message::StorageOpenFile(file_name) => {
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                let full_rel_path = if self.storage_current_path.is_empty() {
+                    file_name.clone()
+                } else {
+                    format!("{}/{}", self.storage_current_path.trim_matches('/'), file_name)
+                };
+
+                let cache_dir = std::env::temp_dir().join("netlens_preview");
+                let _ = std::fs::create_dir_all(&cache_dir);
+                let dest_path = cache_dir.join(&file_name);
+
+                if self.is_storage_demo_mode {
+                    let dummy_text = format!(
+                        "====================================================\n\
+                         📄 VISTA PREVIA DE ARCHIVO - NETLENS\n\
+                         ====================================================\n\n\
+                         Nombre del archivo: {}\n\
+                         Recurso compartido: {}\n\
+                         Ruta en el router:  /{}/{}\n\
+                         Modo:               Demostración Interactiva\n\n\
+                         Este archivo ha sido abierto automáticamente en tu sistema operativo.\n",
+                        file_name, share, share, full_rel_path
+                    );
+                    let _ = std::fs::write(&dest_path, dummy_text);
+                    let _ = std::process::Command::new("xdg-open").arg(&dest_path).spawn();
+                    self.storage_status_msg = Some(format!("Abriendo archivo '{}'...", file_name));
+                    return Task::none();
+                }
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => return Task::none(),
+                };
+
+                let creds = self.storage_credentials.clone();
+                let file_name_clone = file_name.clone();
+                self.is_storage_loading = true;
+                self.storage_status_msg = Some(format!("Descargando para abrir: '{}'...", file_name));
+
+                Task::future(async move {
+                    let res = RouterStorageManager::download_file(
+                        target_ip,
+                        &share,
+                        &full_rel_path,
+                        &dest_path,
+                        &creds,
+                    )
+                    .await;
+                    match res {
+                        Ok(p) => {
+                            let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+                            Message::StorageOperationCompleted(Ok(format!("Archivo '{}' abierto en el sistema", file_name_clone)))
+                        }
+                        Err(e) => Message::StorageOperationCompleted(Err(format!("Error al abrir archivo: {}", e))),
+                    }
+                })
+            }
+
+            Message::StorageDownloadFile(file_name) => {
+                if self.is_storage_demo_mode {
+                    self.notification = Some((format!("Descarga simulada de '{}' completada.", file_name), true));
+                    return Task::none();
+                }
+
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => return Task::none(),
+                };
+
+                let full_rel_path = if self.storage_current_path.is_empty() {
+                    file_name.clone()
+                } else {
+                    format!("{}/{}", self.storage_current_path.trim_matches('/'), file_name)
+                };
+
+                let dest_dir = std::env::var("HOME")
+                    .map(|h| PathBuf::from(h).join("Downloads"))
+                    .unwrap_or_else(|_| PathBuf::from("/tmp"));
+                let dest_path = dest_dir.join(&file_name);
+
+                let creds = self.storage_credentials.clone();
+                self.is_storage_loading = true;
+                Task::future(async move {
+                    let res = RouterStorageManager::download_file(
+                        target_ip,
+                        &share,
+                        &full_rel_path,
+                        &dest_path,
+                        &creds,
+                    )
+                    .await;
+                    match res {
+                        Ok(p) => Message::StorageOperationCompleted(Ok(format!("Descargado con éxito en: {}", p.display()))),
+                        Err(e) => Message::StorageOperationCompleted(Err(e)),
+                    }
+                })
+            }
+
+            Message::StoragePickFileAndUpload => {
+                if self.storage_active_share.is_none() {
+                    self.storage_error_msg = Some("Selecciona un recurso o unidad compartida primero".to_string());
+                    return Task::none();
+                }
+                Task::future(async move {
+                    let picked = RouterStorageManager::pick_path_with_file_dialog(false, "Seleccionar archivo para subir al Router").await;
+                    Message::StorageFilePicked(picked)
+                })
+            }
+
+            Message::StoragePickFolderAndUpload => {
+                if self.storage_active_share.is_none() {
+                    self.storage_error_msg = Some("Selecciona un recurso o unidad compartida primero".to_string());
+                    return Task::none();
+                }
+                Task::future(async move {
+                    let picked = RouterStorageManager::pick_path_with_file_dialog(true, "Seleccionar carpeta para subir al Router").await;
+                    Message::StorageFolderPicked(picked)
+                })
+            }
+
+            Message::StorageFilePicked(picked) => {
+                let local_path = match picked {
+                    Some(p) => p,
+                    None => return Task::none(),
+                };
+
+                let file_name = match local_path.file_name().and_then(|s| s.to_str()) {
+                    Some(name) => name.to_string(),
+                    None => {
+                        self.storage_error_msg = Some("Nombre de archivo inválido".to_string());
+                        return Task::none();
+                    }
+                };
+
+                let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(1024);
+                let target_dir = if self.storage_current_path.is_empty() {
+                    "Raíz".to_string()
+                } else {
+                    self.storage_current_path.clone()
+                };
+
+                if self.is_storage_demo_mode {
+                    let (tx, rx) = mpsc::unbounded::<StorageUploadEvent>();
+                    let file_name_clone = file_name.clone();
+                    let target_dir_clone = target_dir.clone();
+
+                    tokio::spawn(async move {
+                        let _ = tx.unbounded_send(StorageUploadEvent::Started {
+                            is_folder: false,
+                            title: format!("Subiendo archivo: {}", file_name_clone),
+                            total_items: 1,
+                            total_bytes: file_size,
+                            target_dir: target_dir_clone,
+                        });
+                        for step in 1..=20 {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(75)).await;
+                            let p = (step as f32 / 20.0) * 100.0;
+                            let bytes = ((p / 100.0) * file_size as f32) as u64;
+                            let speed = 18.5 + (step as f64 * 0.4).sin() * 2.3;
+                            let _ = tx.unbounded_send(StorageUploadEvent::Progress {
+                                current_item: file_name_clone.clone(),
+                                current_index: 1,
+                                total_items: 1,
+                                bytes_uploaded: bytes,
+                                total_bytes: file_size,
+                                speed_str: format!("{:.1} MB/s", speed),
+                                percent: p,
+                            });
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                        let _ = tx.unbounded_send(StorageUploadEvent::Completed {
+                            message: format!("Archivo '{}' subido con éxito (Demo)", file_name_clone),
+                            total_items: 1,
+                            total_bytes: file_size,
+                        });
+                    });
+
+                    let entry = StorageFileEntry::new(
+                        file_name.clone(),
+                        false,
+                        file_size,
+                        "Ahora mismo".to_string(),
+                        "A".to_string(),
+                    );
+                    let clean = self.storage_current_path.trim_matches('/').to_string();
+                    self.demo_storage_files.entry(clean).or_default().push(entry.clone());
+                    self.storage_files.push(entry);
+
+                    return Task::run(rx, Message::StorageUploadEventReceived);
+                }
+
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        return Task::none();
+                    }
+                };
+
+                let remote_dest_path = if self.storage_current_path.is_empty() {
+                    file_name.clone()
+                } else {
+                    format!("{}/{}", self.storage_current_path.trim_matches('/'), file_name)
+                };
+
+                let creds = self.storage_credentials.clone();
+                let (tx, rx) = mpsc::unbounded::<StorageUploadEvent>();
+                let local_path_clone = local_path.clone();
+
+                tokio::spawn(async move {
+                    let res = RouterStorageManager::upload_file_with_progress(
+                        target_ip,
+                        &share,
+                        &local_path_clone,
+                        &remote_dest_path,
+                        &creds,
+                        Some(tx.clone()),
+                    )
+                    .await;
+                    if let Err(e) = res {
+                        let _ = tx.unbounded_send(StorageUploadEvent::Error(e));
+                    }
+                });
+
+                Task::run(rx, Message::StorageUploadEventReceived)
+            }
+
+            Message::StorageFolderPicked(picked) => {
+                let local_path = match picked {
+                    Some(p) => p,
+                    None => return Task::none(),
+                };
+
+                let folder_name = match local_path.file_name().and_then(|s| s.to_str()) {
+                    Some(name) => name.to_string(),
+                    None => {
+                        self.storage_error_msg = Some("Nombre de carpeta inválido".to_string());
+                        return Task::none();
+                    }
+                };
+
+                let target_dir = if self.storage_current_path.is_empty() {
+                    "Raíz".to_string()
+                } else {
+                    self.storage_current_path.clone()
+                };
+
+                if self.is_storage_demo_mode {
+                    let (tx, rx) = mpsc::unbounded::<StorageUploadEvent>();
+                    let folder_name_clone = folder_name.clone();
+                    let target_dir_clone = target_dir.clone();
+                    let total_files = 8;
+                    let total_bytes = 48_500_000;
+
+                    tokio::spawn(async move {
+                        let _ = tx.unbounded_send(StorageUploadEvent::Started {
+                            is_folder: true,
+                            title: format!("Subiendo carpeta: {} ({} archivos)", folder_name_clone, total_files),
+                            total_items: total_files,
+                            total_bytes,
+                            target_dir: target_dir_clone,
+                        });
+                        for i in 1..=total_files {
+                            for sub in 1..=3 {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(70)).await;
+                                let sub_ratio = ((i - 1) as f32 + (sub as f32 / 3.0)) / (total_files as f32);
+                                let p = sub_ratio * 100.0;
+                                let bytes = (sub_ratio * total_bytes as f32) as u64;
+                                let speed = 21.4 + ((i * 3 + sub) as f64 * 0.5).sin() * 1.8;
+                                let _ = tx.unbounded_send(StorageUploadEvent::Progress {
+                                    current_item: format!("archivo_{:02}.dat", i),
+                                    current_index: i,
+                                    total_items: total_files,
+                                    bytes_uploaded: bytes,
+                                    total_bytes,
+                                    speed_str: format!("{:.1} MB/s", speed),
+                                    percent: p.min(99.0),
+                                });
+                            }
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                        let _ = tx.unbounded_send(StorageUploadEvent::Completed {
+                            message: format!("Carpeta '{}' subida con éxito ({} archivos, Demo)", folder_name_clone, total_files),
+                            total_items: total_files,
+                            total_bytes,
+                        });
+                    });
+
+                    let entry = StorageFileEntry::new(
+                        folder_name.clone(),
+                        true,
+                        0,
+                        "Ahora mismo".to_string(),
+                        "D".to_string(),
+                    );
+                    let clean = self.storage_current_path.trim_matches('/').to_string();
+                    self.demo_storage_files.entry(clean).or_default().push(entry.clone());
+                    self.storage_files.push(entry);
+
+                    return Task::run(rx, Message::StorageUploadEventReceived);
+                }
+
+                let share = match &self.storage_active_share {
+                    Some(s) => s.clone(),
+                    None => return Task::none(),
+                };
+
+                let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
+                    Ok(ip) => ip,
+                    Err(_) => {
+                        self.storage_error_msg = Some(format!("IP inválida: '{}'", self.storage_target_ip));
+                        return Task::none();
+                    }
+                };
+
+                let remote_parent_dir = self.storage_current_path.clone();
+                let creds = self.storage_credentials.clone();
+                let (tx, rx) = mpsc::unbounded::<StorageUploadEvent>();
+                let local_path_clone = local_path.clone();
+
+                tokio::spawn(async move {
+                    let res = RouterStorageManager::upload_directory_with_progress(
+                        target_ip,
+                        &share,
+                        &local_path_clone,
+                        &remote_parent_dir,
+                        &creds,
+                        Some(tx.clone()),
+                    )
+                    .await;
+                    if let Err(e) = res {
+                        let _ = tx.unbounded_send(StorageUploadEvent::Error(e));
+                    }
+                });
+
+                Task::run(rx, Message::StorageUploadEventReceived)
+            }
+
+            Message::StorageUploadEventReceived(event) => match event {
+                StorageUploadEvent::Started {
+                    is_folder,
+                    title,
+                    total_items,
+                    total_bytes,
+                    target_dir,
+                } => {
+                    self.is_storage_loading = true;
+                    self.storage_upload_progress = Some(StorageUploadProgress {
+                        is_folder,
+                        title,
+                        target_dir,
+                        current_item: String::new(),
+                        current_index: 0,
+                        total_items,
+                        bytes_uploaded: 0,
+                        total_bytes,
+                        speed_str: "Iniciando...".to_string(),
+                        percent: 0.0,
+                        is_finished: false,
+                        error: None,
+                    });
+                    Task::none()
+                }
+                StorageUploadEvent::Progress {
+                    current_item,
+                    current_index,
+                    total_items,
+                    bytes_uploaded,
+                    total_bytes,
+                    speed_str,
+                    percent,
+                } => {
+                    if let Some(p) = &mut self.storage_upload_progress {
+                        p.current_item = current_item;
+                        p.current_index = current_index;
+                        p.total_items = total_items;
+                        p.bytes_uploaded = bytes_uploaded;
+                        p.total_bytes = total_bytes;
+                        p.speed_str = speed_str;
+                        p.percent = percent.clamp(0.0, 100.0);
+                    }
+                    Task::none()
+                }
+                StorageUploadEvent::Completed {
+                    message,
+                    total_items: _,
+                    total_bytes,
+                } => {
+                    self.is_storage_loading = false;
+                    if let Some(p) = &mut self.storage_upload_progress {
+                        p.percent = 100.0;
+                        p.bytes_uploaded = total_bytes;
+                        p.speed_str = "Completado".to_string();
+                        p.is_finished = true;
+                    }
+                    self.storage_status_msg = Some(message);
+
+                    // Actualizar espacio libre en disco restando el tamaño subido
+                    if self.is_storage_demo_mode {
+                        self.demo_storage_disk.free_bytes = self.demo_storage_disk.free_bytes.saturating_sub(total_bytes);
+                        self.storage_disk_info = Some(self.demo_storage_disk);
+                    } else if let Some(disk) = &mut self.storage_disk_info {
+                        disk.free_bytes = disk.free_bytes.saturating_sub(total_bytes);
+                    }
+                    self.storage_last_freed = None;
+
+                    Task::done(Message::StorageRefreshDirectory)
+                }
+                StorageUploadEvent::Error(err) => {
+                    self.is_storage_loading = false;
+                    if let Some(p) = &mut self.storage_upload_progress {
+                        p.is_finished = true;
+                        p.error = Some(err.clone());
+                    }
+                    self.storage_error_msg = Some(err);
+                    Task::none()
+                }
+            },
+
+            Message::StorageDismissUploadProgress => {
+                self.storage_upload_progress = None;
+                Task::none()
+            }
+
+            Message::StorageShowFileProperties(entry) => {
+                self.storage_selected_file = Some(entry);
+                Task::none()
+            }
+
+            Message::StorageCloseProperties => {
+                self.storage_selected_file = None;
+                Task::none()
+            }
+
+            Message::StorageOperationCompleted(res) => {
+                self.is_storage_loading = false;
+                match res {
+                    Ok(msg) => {
+                        self.storage_status_msg = Some(msg);
+                        self.storage_error_msg = None;
+                    }
+                    Err(err) => {
+                        self.storage_error_msg = Some(err);
+                    }
+                }
+                Task::done(Message::StorageRefreshDirectory)
+            }
+
+            // Analizador de Canales Wi-Fi y Espectro
+            Message::OpenWifiAnalyzer => {
+                self.is_wifi_analyzer_open = true;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_audit_open = false;
+                self.is_upnp_open = false;
+                if self.wifi_analyzer_report.is_none() && !self.is_scanning_wifi {
+                    return Task::done(Message::ScanWifi);
+                }
+                Task::none()
+            }
+            Message::CloseWifiAnalyzer => {
+                self.is_wifi_analyzer_open = false;
+                Task::none()
+            }
+            Message::ScanWifi => {
+                self.is_scanning_wifi = true;
+                Task::future(async move {
+                    let res = WifiAnalyzer::scan().await;
+                    Message::WifiScanCompleted(res)
+                })
+            }
+            Message::WifiScanCompleted(res) => {
+                self.is_scanning_wifi = false;
+                match res {
+                    Ok(report) => {
+                        self.wifi_analyzer_report = Some(report);
+                    }
+                    Err(err) => {
+                        self.notification = Some((format!("Aviso Wi-Fi: {}", err), false));
+                    }
+                }
+                Task::none()
+            }
+
+            // Monitoreo de Conectividad (Uptime)
+            Message::ConnectivityChecked { gw_ok, internet_ok } => {
+                if let Some((evt_type, title, details)) = self.uptime_tracker.record_probe(gw_ok, internet_ok) {
+                    if self.notification_settings.enabled && self.notification_settings.notify_internet_outages {
+                        let icon = if evt_type == NetworkEventType::InternetOutage { "network-error" } else { "network-transmit-receive" };
+                        let urgency = if evt_type == NetworkEventType::InternetOutage { Some(NotificationUrgency::Critical) } else { None };
+                        self.notification_settings.dispatch(&title, &details, icon, urgency);
+                    }
+                    let event = HistoryManager::create_event(evt_type, title, details, None, None);
+                    self.network_events.insert(0, event);
+                    if self.network_events.len() > 150 {
+                        self.network_events.truncate(150);
+                    }
+                    self.save_state();
+                }
+                Task::none()
+            }
+
+            Message::ClearDeviceRequestHistory(ip) => {
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                    dev.request_history.clear();
+                    Storage::update_device_requests(&mut self.device_metadata, &dev.mac, &[]);
+                }
+                self.save_state();
+                self.notification = Some((Translations::device_requests_cleared_notif(self.language).to_string(), true));
+                Task::none()
+            }
+
+            Message::AddDeviceSampleRequest(ip) => {
+                if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == ip) {
+                    let (sample_q, sample_cat, sample_proto) = match dev.category {
+                        DeviceCategory::SmartTv => ("api-global.netflix.com", "Streaming Video", "DNS A"),
+                        DeviceCategory::Smartphone => ("www.instagram.com", "Red Social", "HTTPS SNI"),
+                        DeviceCategory::Computer => ("github.com", "Desarrollo / Web", "DNS A"),
+                        DeviceCategory::StreamingDevice => ("api-global.netflix.com", "Streaming / Video Player", "DNS A"),
+                        DeviceCategory::GamingConsole => ("auth.api.sonyentertainmentnetwork.com", "Red de Consola / Gaming", "DNS A"),
+                        DeviceCategory::Router => ("dns.google", "DNS Resolver", "DNS"),
+                        _ => ("connectivitycheck.android.com", "Verificación Red", "DNS A"),
+                    };
+                    dev.add_request(sample_q.to_string(), sample_cat.to_string(), sample_proto.to_string());
+                    Storage::update_device_requests(&mut self.device_metadata, &dev.mac, &dev.request_history);
+                    self.save_state();
+                    self.notification = Some((format!("Petición registrada: {}", sample_q), true));
+                }
+                Task::none()
+            }
+
             Message::RefreshNetwork => {
                 self.network = Scanner::detect_network_context();
                 self.telemetry.update_sample(&self.network.interface);
@@ -1256,6 +3038,7 @@ impl App {
 
             Message::ScanEventReceived(event) => match event {
                 ScanEvent::Started { total_hosts, subnet } => {
+                    self.scanned_macs_current_cycle.clear();
                     if !self.is_background_scan {
                         self.status = AppStatus::ProbingHosts {
                             total: total_hosts,
@@ -1269,8 +3052,10 @@ impl App {
                     Task::none()
                 }
                 ScanEvent::HostFound(mut device) => {
-                    // Reaplicar metadatos guardados si existen para esta MAC
                     let mac_key = device.mac.trim().to_lowercase();
+                    self.scanned_macs_current_cycle.insert(mac_key.clone());
+
+                    // Reaplicar metadatos guardados si existen para esta MAC
                     if let Some(meta) = self.device_metadata.get(&mac_key) {
                         if let Some(alias) = &meta.custom_alias {
                             if !alias.trim().is_empty() {
@@ -1299,18 +3084,33 @@ impl App {
 
                     let mut intruder_task = Task::none();
 
-                    // Detección de Intrusos / Dispositivos Nuevos Desconocidos
-                    if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
-                        if !self.known_macs.contains(&mac_key) {
-                            if self.alerted_macs.insert(mac_key.clone()) {
-                                let dev_name = device.display_name();
-                                let dev_ip = device.ip;
-                                let dev_mac = device.mac.clone();
-                                let dev_vendor = device.vendor.clone();
-                                let alert_title = Translations::intruder_alert_title(self.language);
-                                let trust_label = Translations::intruder_btn_trust(self.language);
-                                let block_label = Translations::intruder_btn_block(self.language);
+                    // Buscar dispositivo previo en lista por MAC o por IP
+                    let existing_idx = self.devices.iter().position(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == device.ip);
+                    let was_offline = existing_idx.map(|idx| self.devices[idx].status == DeviceStatus::Offline).unwrap_or(true);
+                    let was_not_active = !self.active_online_macs.contains(&mac_key);
+                    let is_reconnection = (was_offline || was_not_active) && self.initial_scan_completed;
+                    let is_new_device = !self.known_macs.contains(&mac_key);
 
+                    self.active_online_macs.insert(mac_key.clone());
+                    self.known_macs.insert(mac_key.clone());
+                    self.missed_heartbeats.insert(device.ip, 0);
+
+                    // Asegurar que el estado del dispositivo detectado en este escaneo es Online
+                    device.status = DeviceStatus::Online;
+
+                    if is_new_device {
+                        let event = HistoryManager::create_event(
+                            NetworkEventType::NewDeviceDetected,
+                            "Nuevo Dispositivo Detectado".to_string(),
+                            format!("{} ({}) visto por primera vez en la red.", device.display_name(), device.ip),
+                            Some(device.ip),
+                            Some(device.mac.clone()),
+                        );
+                        self.network_events.insert(0, event);
+
+                        // Si es un dispositivo nuevo desconocido fuera de lista blanca: Alerta de Intruso
+                        if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
+                            if self.alerted_macs.insert(mac_key.clone()) {
                                 self.pending_intruder_alert = Some(IntruderAlert {
                                     ip: device.ip,
                                     mac: device.mac.clone(),
@@ -1318,30 +3118,73 @@ impl App {
                                     hostname: device.hostname.clone(),
                                 });
 
+                                if self.notification_settings.enabled && self.notification_settings.notify_unknown_intruders {
+                                    let dev_ip = device.ip;
+                                    let dev_mac = device.mac.clone();
+                                    let alert_title = Translations::intruder_alert_title(self.language);
+                                    let trust_label = Translations::intruder_btn_trust(self.language);
+                                    let block_label = Translations::intruder_btn_block(self.language);
+                                    let body = self.notification_settings.format_device_message(
+                                        "Nuevo Dispositivo Desconocido",
+                                        &device.display_name(),
+                                        device.ip,
+                                        &device.mac,
+                                        &device.vendor,
+                                        Some("Detectado por primera vez en la red local"),
+                                    );
+
+                                    let notif_settings = self.notification_settings.clone();
+                                    intruder_task = Task::future(async move {
+                                        let action = notif_settings.dispatch_interactive_alert(&alert_title, &body, trust_label, block_label).await;
+                                        Message::DesktopNotificationAction {
+                                            ip: dev_ip,
+                                            mac: dev_mac,
+                                            action,
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    } else if is_reconnection {
+                        // El dispositivo ya era conocido y se ha reconectado a la red
+                        if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
+                            // *** FIX CRÍTICO: RECONEXIÓN DE DISPOSITIVO CONOCIDO NO AUTORIZADO (FUERA DE LISTA BLANCA) ***
+                            let event = HistoryManager::create_event(
+                                NetworkEventType::SecurityAlert,
+                                "Reconexión No Autorizada".to_string(),
+                                format!("{} ({}) no está en la Lista Blanca y se ha reconectado a la red.", device.display_name(), device.ip),
+                                Some(device.ip),
+                                Some(device.mac.clone()),
+                            );
+                            self.network_events.insert(0, event);
+
+                            if self.notification_settings.enabled && self.notification_settings.notify_known_unwhitelisted_reconnect {
+                                if self.pending_intruder_alert.is_none() {
+                                    self.pending_intruder_alert = Some(IntruderAlert {
+                                        ip: device.ip,
+                                        mac: device.mac.clone(),
+                                        vendor: device.vendor.clone(),
+                                        hostname: device.hostname.clone(),
+                                    });
+                                }
+
+                                let dev_ip = device.ip;
+                                let dev_mac = device.mac.clone();
+                                let alert_title = Translations::notif_reconnect_unwhitelisted_title(self.language);
+                                let trust_label = Translations::intruder_btn_trust(self.language);
+                                let block_label = Translations::intruder_btn_block(self.language);
+                                let body = self.notification_settings.format_device_message(
+                                    "Reconexión No Autorizada",
+                                    &device.display_name(),
+                                    device.ip,
+                                    &device.mac,
+                                    &device.vendor,
+                                    Some("Dispositivo conocido fuera de la Lista Blanca"),
+                                );
+
+                                let notif_settings = self.notification_settings.clone();
                                 intruder_task = Task::future(async move {
-                                    let output = tokio::process::Command::new("notify-send")
-                                        .arg("-u")
-                                        .arg("critical")
-                                        .arg("-i")
-                                        .arg("network-wireless")
-                                        .arg("-a")
-                                        .arg("NetLens")
-                                        .arg("-t")
-                                        .arg("45000")
-                                        .arg("-A")
-                                        .arg(format!("trust={}", trust_label))
-                                        .arg("-A")
-                                        .arg(format!("block={}", block_label))
-                                        .arg(alert_title)
-                                        .arg(format!("{} ({})\nMAC: {}\nVendor: {}", dev_name, dev_ip, dev_mac, dev_vendor))
-                                        .output()
-                                        .await;
-
-                                    let action = match output {
-                                        Ok(out) => String::from_utf8_lossy(&out.stdout).trim().to_string(),
-                                        Err(_) => String::new(),
-                                    };
-
+                                    let action = notif_settings.dispatch_interactive_alert(alert_title, &body, trust_label, block_label).await;
                                     Message::DesktopNotificationAction {
                                         ip: dev_ip,
                                         mac: dev_mac,
@@ -1349,32 +3192,82 @@ impl App {
                                     }
                                 });
                             }
+                        } else if device.is_whitelisted {
+                            // Reconexión de dispositivo de confianza (en lista blanca)
+                            let event = HistoryManager::create_event(
+                                NetworkEventType::DeviceConnected,
+                                "Dispositivo Conectado".to_string(),
+                                format!("{} ({}) activo en la red local.", device.display_name(), device.ip),
+                                Some(device.ip),
+                                Some(device.mac.clone()),
+                            );
+                            self.network_events.insert(0, event);
+
+                            if self.notification_settings.enabled && self.notification_settings.notify_whitelisted_reconnect {
+                                let title = Translations::notif_reconnect_whitelisted_title(self.language);
+                                let body = self.notification_settings.format_device_message(
+                                    "Conectado",
+                                    &device.display_name(),
+                                    device.ip,
+                                    &device.mac,
+                                    &device.vendor,
+                                    Some("Dispositivo de confianza en Lista Blanca"),
+                                );
+                                self.notification_settings.dispatch(title, &body, "network-wireless", None);
+                            }
+                        } else {
+                            // Gateway o Host reconectado
+                            let event = HistoryManager::create_event(
+                                NetworkEventType::DeviceConnected,
+                                "Dispositivo Conectado".to_string(),
+                                format!("{} ({}) activo en la red local.", device.display_name(), device.ip),
+                                Some(device.ip),
+                                Some(device.mac.clone()),
+                            );
+                            self.network_events.insert(0, event);
                         }
                     }
 
-                    if let Some(existing) = self.devices.iter_mut().find(|d| d.ip == device.ip) {
-                        let prev_alias = existing.custom_alias.clone();
-                        let prev_category = existing.category;
-                        let prev_wl = existing.is_whitelisted;
-                        let prev_bl = existing.is_blocked;
-                        let prev_lim = existing.speed_limit_kbps;
-                        *existing = device;
-                        if existing.custom_alias.is_none() {
-                            existing.custom_alias = prev_alias;
+                    if self.network_events.len() > 150 {
+                        self.network_events.truncate(150);
+                    }
+
+                    if let Some(idx) = existing_idx {
+                        let prev_alias = self.devices[idx].custom_alias.clone();
+                        let prev_category = self.devices[idx].category;
+                        let prev_wl = self.devices[idx].is_whitelisted;
+                        let prev_bl = self.devices[idx].is_blocked;
+                        let prev_lim = self.devices[idx].speed_limit_kbps;
+                        let prev_requests = self.devices[idx].request_history.clone();
+
+                        self.devices[idx] = device;
+
+                        if self.devices[idx].custom_alias.is_none() {
+                            self.devices[idx].custom_alias = prev_alias;
                         }
-                        if prev_category != DeviceCategory::Unknown && existing.category == DeviceCategory::Unknown {
-                            existing.category = prev_category;
+                        if prev_category != DeviceCategory::Unknown && self.devices[idx].category == DeviceCategory::Unknown {
+                            self.devices[idx].category = prev_category;
                         }
                         if !self.device_metadata.contains_key(&mac_key) {
                             if prev_wl {
-                                existing.is_whitelisted = true;
+                                self.devices[idx].is_whitelisted = true;
                             }
                             if prev_bl {
-                                existing.is_blocked = true;
+                                self.devices[idx].is_blocked = true;
                             }
                         }
-                        if existing.speed_limit_kbps.is_none() {
-                            existing.speed_limit_kbps = prev_lim;
+                        if self.devices[idx].speed_limit_kbps.is_none() {
+                            self.devices[idx].speed_limit_kbps = prev_lim;
+                        }
+                        if !prev_requests.is_empty() {
+                            for r in prev_requests {
+                                if !self.devices[idx].request_history.iter().any(|e| e.query == r.query) {
+                                    self.devices[idx].request_history.push(r);
+                                }
+                            }
+                            if self.devices[idx].request_history.len() > 60 {
+                                self.devices[idx].request_history.truncate(60);
+                            }
                         }
                     } else {
                         self.devices.push(device);
@@ -1385,6 +3278,43 @@ impl App {
                     total_found,
                     duration_ms,
                 } => {
+                    // Detectar dispositivos que se han desconectado (estaban online y no respondieron en este ciclo)
+                    for dev in self.devices.iter_mut() {
+                        let dev_mac = dev.mac.trim().to_lowercase();
+                        if dev.status == DeviceStatus::Online && !self.scanned_macs_current_cycle.contains(&dev_mac) {
+                            dev.status = DeviceStatus::Offline;
+                            self.active_online_macs.remove(&dev_mac);
+
+                            if self.initial_scan_completed && !dev.is_gateway && !dev.is_current_host {
+                                if self.notification_settings.enabled && self.notification_settings.notify_device_disconnected {
+                                    let title = Translations::notif_device_disconnected_title(self.language);
+                                    let body = self.notification_settings.format_device_message(
+                                        "Desconectado",
+                                        &dev.display_name(),
+                                        dev.ip,
+                                        &dev.mac,
+                                        &dev.vendor,
+                                        Some("El dispositivo ya no responde en la red local"),
+                                    );
+                                    self.notification_settings.dispatch(title, &body, "network-offline", None);
+                                }
+
+                                let event = HistoryManager::create_event(
+                                    NetworkEventType::DeviceDisconnected,
+                                    "Dispositivo Desconectado".to_string(),
+                                    format!("{} ({}) ya no responde en la red local.", dev.display_name(), dev.ip),
+                                    Some(dev.ip),
+                                    Some(dev.mac.clone()),
+                                );
+                                self.network_events.insert(0, event);
+                            }
+                        }
+                    }
+                    if self.network_events.len() > 150 {
+                        self.network_events.truncate(150);
+                    }
+                    self.initial_scan_completed = true;
+
                     self.is_scanning = false;
                     self.is_background_scan = false;
                     self.scan_progress = 1.0;
@@ -1397,8 +3327,28 @@ impl App {
                     self.save_state();
                     crate::trim_memory();
 
+                    // Reevaluar auditoría de seguridad integral de red
+                    let port_mappings = self.upnp_status.as_ref().map(|u| u.port_mappings.as_slice()).unwrap_or(&[]);
+                    let has_router_pw = !self.router_password_input.trim().is_empty();
+                    let audit = SecurityAuditor::audit(&self.devices, port_mappings, has_router_pw);
+                    if self.notification_settings.enabled && self.notification_settings.notify_security_critical {
+                        if audit.critical_count > 0 {
+                            let title = Translations::notif_trigger_security(self.language);
+                            let body = format!("Se detectaron {} problemas críticos de seguridad en la red local.", audit.critical_count);
+                            self.notification_settings.dispatch(title, &body, "dialog-warning", Some(NotificationUrgency::Critical));
+                        }
+                    }
+                    self.security_audit_report = Some(audit);
+
+                    let mut tasks = Vec::new();
                     if !self.router_password_input.trim().is_empty() {
-                        Task::done(Message::FetchRouterTopology)
+                        tasks.push(Task::done(Message::FetchRouterTopology));
+                    }
+                    if self.upnp_status.is_none() && self.network.gateway_ip.is_some() {
+                        tasks.push(Task::done(Message::QueryUpnpRouter));
+                    }
+                    if !tasks.is_empty() {
+                        Task::batch(tasks)
                     } else {
                         Task::none()
                     }
@@ -1606,53 +3556,67 @@ impl App {
                 iced::clipboard::write(text_to_copy)
             }
 
-            Message::ExportJson => match Exporter::export_json(&self.devices, &self.network) {
-                Ok(path) => {
-                    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("JSON");
-                    let notif_msg = match self.language {
-                        Language::Spanish => format!("Exportado con éxito a {}", fname),
-                        Language::English => format!("Successfully exported to {}", fname),
-                        Language::Chinese => format!("已成功导出至 {}", fname),
-                        Language::Hindi => format!("सफलतापूर्वक निर्यात किया गया: {}", fname),
-                        Language::Arabic => format!("تم التصدير بنجاح إلى {}", fname),
-                        Language::French => format!("Exporté avec succès vers {}", fname),
-                        Language::Bengali => format!("সফলভাবে রপ্তানি হয়েছে: {}", fname),
-                        Language::Portuguese => format!("Exportado com sucesso para {}", fname),
-                        Language::Russian => format!("Успешно экспортировано в {}", fname),
-                        Language::Urdu => format!("کامیابی سے برآمد کر دیا گیا: {}", fname),
-                    };
-                    self.notification = Some((notif_msg, true));
-                    Task::none()
-                }
-                Err(err) => {
-                    self.notification = Some((err, false));
-                    Task::none()
-                }
-            },
+            Message::ExportJson => {
+                let default_name = Exporter::generate_json_filename();
+                let default_path = Exporter::get_export_path(&default_name);
+                let title = Translations::export_json_dialog_title(self.language);
+                Task::future(async move {
+                    let picked = tokio::task::spawn_blocking(move || {
+                        Exporter::pick_save_path_with_file_dialog(&default_path, "JSON", "json", title)
+                    })
+                    .await
+                    .unwrap_or(None);
+                    Message::ExportJsonSelected(picked)
+                })
+            }
 
-            Message::ExportCsv => match Exporter::export_csv(&self.devices) {
-                Ok(path) => {
-                    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("CSV");
-                    let notif_msg = match self.language {
-                        Language::Spanish => format!("Exportado CSV a {}", fname),
-                        Language::English => format!("CSV exported to {}", fname),
-                        Language::Chinese => format!("CSV 文件已导出至 {}", fname),
-                        Language::Hindi => format!("सीएसवी निर्यात किया गया: {}", fname),
-                        Language::Arabic => format!("تم تصدير CSV إلى {}", fname),
-                        Language::French => format!("CSV exporté vers {}", fname),
-                        Language::Bengali => format!("CSV রপ্তানি হয়েছে: {}", fname),
-                        Language::Portuguese => format!("CSV exportado para {}", fname),
-                        Language::Russian => format!("CSV экспортирован в {}", fname),
-                        Language::Urdu => format!("CSV برآمد کر دیا گیا: {}", fname),
-                    };
-                    self.notification = Some((notif_msg, true));
-                    Task::none()
+            Message::ExportJsonSelected(Some(path)) => {
+                match Exporter::save_json_to_path(&path, &self.devices, &self.network) {
+                    Ok(()) => {
+                        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("JSON");
+                        let notif_msg = Translations::export_success_msg(fname, self.language);
+                        self.notification = Some((notif_msg, true));
+                        Task::none()
+                    }
+                    Err(err) => {
+                        self.notification = Some((err, false));
+                        Task::none()
+                    }
                 }
-                Err(err) => {
-                    self.notification = Some((err, false));
-                    Task::none()
+            }
+
+            Message::ExportJsonSelected(None) => Task::none(),
+
+            Message::ExportCsv => {
+                let default_name = Exporter::generate_csv_filename();
+                let default_path = Exporter::get_export_path(&default_name);
+                let title = Translations::export_csv_dialog_title(self.language);
+                Task::future(async move {
+                    let picked = tokio::task::spawn_blocking(move || {
+                        Exporter::pick_save_path_with_file_dialog(&default_path, "CSV", "csv", title)
+                    })
+                    .await
+                    .unwrap_or(None);
+                    Message::ExportCsvSelected(picked)
+                })
+            }
+
+            Message::ExportCsvSelected(Some(path)) => {
+                match Exporter::save_csv_to_path(&path, &self.devices) {
+                    Ok(()) => {
+                        let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("CSV");
+                        let notif_msg = Translations::export_csv_success_msg(fname, self.language);
+                        self.notification = Some((notif_msg, true));
+                        Task::none()
+                    }
+                    Err(err) => {
+                        self.notification = Some((err, false));
+                        Task::none()
+                    }
                 }
-            },
+            }
+
+            Message::ExportCsvSelected(None) => Task::none(),
 
             Message::DismissNotification => {
                 self.notification = None;
@@ -1707,6 +3671,76 @@ impl App {
                 .into();
         }
 
+        // Si la auditoría de seguridad está abierta, mostrar la vista modal de auditoría
+        if self.is_audit_open {
+            content = content.push(
+                container(center(self.view_security_audit_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
+        // Si el historial de eventos está abierto, mostrar la vista modal de eventos
+        if self.is_timeline_open {
+            content = content.push(
+                container(center(self.view_timeline_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
+        // Si el analizador de Wi-Fi está abierto, mostrar la vista modal de espectro Wi-Fi
+        if self.is_wifi_analyzer_open {
+            content = content.push(
+                container(center(self.view_wifi_analyzer_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
+        // Si el panel UPnP del router está abierto, mostrar la vista modal de UPnP
+        if self.is_upnp_open {
+            content = content.push(
+                container(center(self.view_upnp_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
+        // Si el explorador de almacenamiento USB del router está abierto, mostrar la vista modal de almacenamiento
+        if self.is_storage_explorer_open {
+            content = content.push(
+                container(center(self.view_storage_explorer_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
         // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
         content = content.push(self.view_telemetry_dashboard());
 
@@ -1728,7 +3762,7 @@ impl App {
                     container(device_list).width(Length::Fill).height(Length::Fill),
                     space::horizontal().width(12),
                     container(self.view_inspector(selected_device))
-                        .width(Length::Fixed(400.0))
+                        .width(Length::Fixed(450.0))
                         .height(Length::Fill)
                         .style(|_| CustomStyles::inspector_panel())
                         .padding(Padding {
@@ -1804,103 +3838,261 @@ impl App {
             .into()
     }
 
-    /// Cabecera de la aplicación
+    /// Envuelve un elemento visual con un tooltip estilizado
+    fn tip<'a>(
+        &self,
+        content: impl Into<Element<'a, Message>>,
+        tip_text: &'a str,
+        pos: tooltip::Position,
+    ) -> Element<'a, Message> {
+        tooltip(
+            content,
+            container(text(tip_text).size(10).color(CustomStyles::text_primary()))
+                .padding(Padding::from([3, 7]))
+                .style(|_| CustomStyles::tooltip_style()),
+            pos,
+        )
+        .gap(4.0)
+        .into()
+    }
+
+    /// Cabecera de la aplicación y barra de herramientas modular rediseñada
     fn view_header(&self) -> Element<'_, Message> {
-        let title_col = column![
-            row![
-                text("⚡ NetLens").size(22).color(CustomStyles::accent_cyan()),
-                text(format!(" | {}", Translations::app_subtitle(self.language))).size(14).color(CustomStyles::text_secondary()),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8),
-            row![
-                text(self.status.render(self.language))
-                    .size(12)
-                    .color(CustomStyles::text_muted()),
-                button(text("🔄").size(11))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([1, 5]))
-                    .on_press(Message::RefreshNetwork),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(6),
+        // 1. Icono oficial de la app en la esquina superior izquierda
+        let app_icon = iced::widget::image(iced::widget::image::Handle::from_bytes(
+            include_bytes!("../assets/netlens.png").as_slice(),
+        ))
+        .width(30)
+        .height(30);
+
+        let title_row = row![
+            app_icon,
+            text("NetLens").size(22).color(CustomStyles::accent_cyan()),
+            text(format!("| {}", Translations::app_subtitle(self.language)))
+                .size(13)
+                .color(CustomStyles::text_secondary()),
         ]
-        .spacing(2);
+        .spacing(8)
+        .align_y(Alignment::Center);
 
-        let mut actions = row![].spacing(8).align_y(Alignment::Center);
-
-        // Botón de Ajustes (Settings)
-        actions = actions.push(
-            button(text(Translations::settings(self.language)).size(12))
-                .style(|_, _| {
-                    if self.is_settings_open {
-                        CustomStyles::primary_button()
-                    } else {
-                        CustomStyles::secondary_button()
-                    }
-                })
-                .padding(Padding::from([6, 12]))
-                .on_press(if self.is_settings_open {
-                    Message::CloseSettings
-                } else {
-                    Message::OpenSettings
-                }),
-        );
-
-        // Botón Test de Velocidad (Speed Test)
-        actions = actions.push(
-            button(text(Translations::speed_test_btn(self.language)).size(12))
-                .style(|_, _| {
-                    if self.is_speed_test_open {
-                        CustomStyles::primary_button()
-                    } else {
-                        CustomStyles::secondary_button()
-                    }
-                })
-                .padding(Padding::from([6, 11]))
-                .on_press(if self.is_speed_test_open {
-                    Message::CloseSpeedTest
-                } else {
-                    Message::OpenSpeedTest
-                }),
-        );
-
-        // Botón Exportar CSV
-        actions = actions.push(
-            button(text("📊 CSV").size(12))
+        let status_row = row![
+            text(self.status.render(self.language))
+                .size(11)
+                .color(CustomStyles::text_muted()),
+            button(text("🔄").size(10))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([6, 10]))
-                .on_press(Message::ExportCsv),
-        );
+                .padding(Padding::from([1, 4]))
+                .on_press(Message::RefreshNetwork),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
 
-        // Botón Exportar JSON
-        actions = actions.push(
-            button(text("📥 JSON").size(12))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([6, 10]))
-                .on_press(Message::ExportJson),
-        );
+        let title_col = column![title_row, status_row].spacing(2);
 
-        // Botón Escanear Red: Solo muestra estado de "Escaneando..." si es un escaneo manual visible
+        // Acciones primarias superiores derechas (Exportar + Escanear)
         let scan_btn = if self.is_scanning && !self.is_background_scan {
-            button(text(Translations::scanning(self.language)).size(13))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([7, 14]))
+            button(
+                row![
+                    text("⏳").size(12),
+                    text(Translations::scanning(self.language)).size(12),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center),
+            )
+            .style(|_, _| CustomStyles::secondary_button())
+            .padding(Padding::from([6, 12]))
         } else {
-            button(text(Translations::scan_network(self.language)).size(13))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([7, 14]))
-                .on_press(Message::StartScan)
+            button(
+                row![
+                    text("🔍").size(12),
+                    text(Translations::scan_network(self.language)).size(12),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center),
+            )
+            .style(|_, _| CustomStyles::primary_button())
+            .padding(Padding::from([6, 14]))
+            .on_press(Message::StartScan)
         };
 
-        actions = actions.push(scan_btn);
+        let top_right_actions = row![
+            self.tip(
+                button(text("📊 CSV").size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([5, 9]))
+                    .on_press(Message::ExportCsv),
+                Translations::tip_export_csv(self.language),
+                tooltip::Position::Bottom,
+            ),
+            self.tip(
+                button(text("📥 JSON").size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([5, 9]))
+                    .on_press(Message::ExportJson),
+                Translations::tip_export_json(self.language),
+                tooltip::Position::Bottom,
+            ),
+            self.tip(
+                scan_btn,
+                Translations::tip_scan_network(self.language),
+                tooltip::Position::Bottom,
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
 
-        row![
+        let header_top_bar = row![
             title_col,
             space::horizontal(),
-            actions,
+            top_right_actions,
         ]
         .align_y(Alignment::Center)
+        .width(Length::Fill);
+
+        // 2. Barra de herramientas de navegación modular (Tools Bar)
+        // Rediseñada en una barra dedicada para que los botones nunca se salgan de pantalla al reducir la ventana
+        let audit_label = if let Some(audit) = &self.security_audit_report {
+            format!("{} ({})", Translations::security_audit_btn(self.language), audit.score)
+        } else {
+            Translations::security_audit_btn(self.language).to_string()
+        };
+
+        let timeline_label = format!("{} ({})", Translations::timeline_btn(self.language), self.network_events.len());
+
+        let nav_tools = row![
+            // Botón de Ajustes (Settings)
+            self.tip(
+                button(text(Translations::settings(self.language)).size(11))
+                    .style(|_, _| {
+                        if self.is_settings_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_settings_open {
+                        Message::CloseSettings
+                    } else {
+                        Message::OpenSettings
+                    }),
+                Translations::tip_settings(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Botón Test de Velocidad (Speed Test)
+            self.tip(
+                button(text(Translations::speed_test_btn(self.language)).size(11))
+                    .style(|_, _| {
+                        if self.is_speed_test_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_speed_test_open {
+                        Message::CloseSpeedTest
+                    } else {
+                        Message::OpenSpeedTest
+                    }),
+                Translations::tip_speed_test(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Botón Auditoría de Seguridad
+            self.tip(
+                button(text(audit_label).size(11))
+                    .style(|_, _| {
+                        if self.is_audit_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_audit_open {
+                        Message::CloseSecurityAudit
+                    } else {
+                        Message::OpenSecurityAudit
+                    }),
+                Translations::tip_security_audit(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Botón Historial de Eventos (Timeline)
+            self.tip(
+                button(text(timeline_label).size(11))
+                    .style(|_, _| {
+                        if self.is_timeline_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_timeline_open {
+                        Message::CloseTimeline
+                    } else {
+                        Message::OpenTimeline
+                    }),
+                Translations::tip_timeline(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Botón Analizador de Espectro Wi-Fi
+            self.tip(
+                button(text(Translations::wifi_analyzer_btn(self.language)).size(11))
+                    .style(|_, _| {
+                        if self.is_wifi_analyzer_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_wifi_analyzer_open {
+                        Message::CloseWifiAnalyzer
+                    } else {
+                        Message::OpenWifiAnalyzer
+                    }),
+                Translations::tip_wifi_analyzer(self.language),
+                tooltip::Position::Bottom,
+            ),
+
+            // Botón Explorador de Almacenamiento USB del Router (NAS)
+            self.tip(
+                button(text(Translations::storage_btn_header(self.language)).size(11))
+                    .style(|_, _| {
+                        if self.is_storage_explorer_open {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([5, 10]))
+                    .on_press(if self.is_storage_explorer_open {
+                        Message::CloseStorageExplorer
+                    } else {
+                        Message::OpenStorageExplorer
+                    }),
+                Translations::tip_router_storage(self.language),
+                tooltip::Position::Bottom,
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center);
+
+        let tools_toolbar = container(nav_tools)
+            .padding(Padding::from([4, 8]))
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+        column![
+            header_top_bar,
+            tools_toolbar,
+        ]
+        .spacing(8)
         .into()
     }
 
@@ -1911,10 +4103,14 @@ impl App {
                 .size(20)
                 .color(CustomStyles::accent_cyan()),
             space::horizontal(),
-            button(text("✕").size(14))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 8]))
-                .on_press(Message::CloseSettings),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseSettings),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
         ]
         .align_y(Alignment::Center);
 
@@ -1992,7 +4188,12 @@ impl App {
 
         // Ajuste 4: Segundo Plano & Inicio Automático con el Sistema
         let autostart_btn = button(
-            text(if self.autostart_enabled { "✓ Activado" } else { "Desactivado" }).size(11)
+            text(if self.autostart_enabled {
+                Translations::btn_enabled(self.language)
+            } else {
+                Translations::btn_disabled(self.language)
+            })
+            .size(11),
         )
         .style(move |_, _| {
             if self.autostart_enabled {
@@ -2005,7 +4206,12 @@ impl App {
         .on_press(Message::ToggleAutostart(!self.autostart_enabled));
 
         let minimize_btn = button(
-            text(if self.minimize_on_close { "✓ Activado" } else { "Desactivado" }).size(11)
+            text(if self.minimize_on_close {
+                Translations::btn_enabled(self.language)
+            } else {
+                Translations::btn_disabled(self.language)
+            })
+            .size(11),
         )
         .style(move |_, _| {
             if self.minimize_on_close {
@@ -2097,6 +4303,233 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
+        // Ajuste 6: Notificaciones del Sistema y Alertas Parametrizables
+        let notif_master_btn = button(
+            text(if self.notification_settings.enabled {
+                Translations::notif_master_enabled(self.language)
+            } else {
+                Translations::notif_master_disabled(self.language)
+            })
+            .size(11),
+        )
+        .style(move |_, _| {
+            if self.notification_settings.enabled {
+                CustomStyles::primary_button()
+            } else {
+                CustomStyles::secondary_button()
+            }
+        })
+        .padding(Padding::from([4, 10]))
+        .on_press(Message::ToggleNotificationsMaster(!self.notification_settings.enabled));
+
+        let mut notif_section = column![
+            row![
+                column![
+                    text(Translations::notif_settings_title(self.language))
+                        .size(13)
+                        .color(CustomStyles::accent_cyan()),
+                    text(Translations::notif_settings_desc(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_muted()),
+                ]
+                .width(Length::Fill),
+                notif_master_btn,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(10),
+        ]
+        .spacing(10);
+
+        if self.notification_settings.enabled {
+            // Subsección A: Disparadores de Eventos
+            let trigger_btn = |active: bool, msg: Message| {
+                button(text(if active {
+                    Translations::btn_enabled(self.language)
+                } else {
+                    Translations::btn_disabled(self.language)
+                }).size(10))
+                .style(move |_, _| {
+                    if active {
+                        CustomStyles::primary_button()
+                    } else {
+                        CustomStyles::secondary_button()
+                    }
+                })
+                .padding(Padding::from([3, 8]))
+                .on_press(msg)
+            };
+
+            let triggers_col = column![
+                text(Translations::notif_section_triggers(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                row![
+                    column![
+                        text(Translations::notif_realtime_label(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                        text(Translations::notif_realtime_desc(self.language)).size(9).color(CustomStyles::text_muted()),
+                    ].width(Length::Fill),
+                    trigger_btn(self.notification_settings.realtime_netlink_monitor, Message::ToggleRealtimeMonitor(!self.notification_settings.realtime_netlink_monitor)),
+                ].align_y(Alignment::Center),
+                row![
+                    column![
+                        text(Translations::notif_heartbeat_label(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                        text(Translations::notif_heartbeat_desc(self.language)).size(9).color(CustomStyles::text_muted()),
+                    ].width(Length::Fill),
+                    trigger_btn(self.notification_settings.fast_disconnection_heartbeat, Message::ToggleHeartbeat(!self.notification_settings.fast_disconnection_heartbeat)),
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_trigger_unknown(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
+                    trigger_btn(self.notification_settings.notify_unknown_intruders, Message::ToggleNotifyUnknown(!self.notification_settings.notify_unknown_intruders)),
+                ].align_y(Alignment::Center),
+                row![
+                    row![
+                        text(Translations::notif_trigger_unwhitelisted_reconnect(self.language)).size(11).color(Color::from_rgb8(245, 158, 11)),
+                        container(text(Translations::badge_priority(self.language)).size(9).color(Color::WHITE))
+                            .padding(Padding::from([1, 6]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(180, 83, 9), Color::WHITE)),
+                    ].spacing(6).width(Length::Fill).align_y(Alignment::Center),
+                    trigger_btn(self.notification_settings.notify_known_unwhitelisted_reconnect, Message::ToggleNotifyKnownUnwhitelisted(!self.notification_settings.notify_known_unwhitelisted_reconnect)),
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_trigger_whitelisted_reconnect(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
+                    trigger_btn(self.notification_settings.notify_whitelisted_reconnect, Message::ToggleNotifyWhitelisted(!self.notification_settings.notify_whitelisted_reconnect)),
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_trigger_disconnected(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
+                    trigger_btn(self.notification_settings.notify_device_disconnected, Message::ToggleNotifyDisconnected(!self.notification_settings.notify_device_disconnected)),
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_trigger_outages(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
+                    trigger_btn(self.notification_settings.notify_internet_outages, Message::ToggleNotifyOutages(!self.notification_settings.notify_internet_outages)),
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_trigger_security(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
+                    trigger_btn(self.notification_settings.notify_security_critical, Message::ToggleNotifySecurity(!self.notification_settings.notify_security_critical)),
+                ].align_y(Alignment::Center),
+            ]
+            .spacing(6);
+
+            // Subsección B: Comportamiento (Urgencia, Duración y Sonido)
+            let urgencies = NotificationUrgency::ALL;
+            let mut urgency_buttons = row![].spacing(6).align_y(Alignment::Center);
+            for &u in urgencies {
+                let is_active = self.notification_settings.urgency == u;
+                let btn = button(text(u.label(self.language)).size(10))
+                    .style(move |_, _| {
+                        if is_active {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::ChangeNotificationUrgency(u));
+                urgency_buttons = urgency_buttons.push(btn);
+            }
+
+            let timeouts: &[(u32, &'static str)] = &[
+                (3, "3s"),
+                (5, "5s"),
+                (7, "7s"),
+                (15, "15s"),
+                (30, "30s"),
+            ];
+            let mut timeout_buttons = row![].spacing(6).align_y(Alignment::Center);
+            for &(s, label) in timeouts {
+                let is_active = self.notification_settings.timeout_secs == s;
+                let btn = button(text(label).size(10))
+                    .style(move |_, _| {
+                        if is_active {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::ChangeNotificationTimeout(s));
+                timeout_buttons = timeout_buttons.push(btn);
+            }
+
+            let sound_btn = trigger_btn(self.notification_settings.play_sound, Message::ToggleNotificationPlaySound(!self.notification_settings.play_sound));
+
+            let behavior_col = column![
+                text(Translations::notif_section_behavior(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                row![
+                    text(Translations::notif_urgency_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    urgency_buttons,
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_timeout_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    timeout_buttons,
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_sound_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    sound_btn,
+                ].align_y(Alignment::Center),
+            ]
+            .spacing(6);
+
+            // Subsección C: Contenido y Formato
+            let details = NotificationDetailLevel::ALL;
+            let mut detail_buttons = row![].spacing(6).align_y(Alignment::Center);
+            for &d in details {
+                let is_active = self.notification_settings.detail_level == d;
+                let btn = button(text(d.label(self.language)).size(10))
+                    .style(move |_, _| {
+                        if is_active {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::ChangeNotificationDetail(d));
+                detail_buttons = detail_buttons.push(btn);
+            }
+
+            let mac_btn = trigger_btn(self.notification_settings.show_mac, Message::ToggleNotificationShowMac(!self.notification_settings.show_mac));
+            let vendor_btn = trigger_btn(self.notification_settings.show_vendor, Message::ToggleNotificationShowVendor(!self.notification_settings.show_vendor));
+            let prefix_input = text_input("NetLens", &self.notification_prefix_input)
+                .on_input(Message::NotificationPrefixChanged)
+                .padding(Padding::from([3, 8]))
+                .width(160);
+
+            let test_btn = button(text(Translations::notif_test_btn(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([4, 10]))
+                .on_press(Message::SendTestNotification);
+
+            let content_col = column![
+                text(Translations::notif_section_content(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                row![
+                    text(Translations::notif_detail_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    detail_buttons,
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_show_mac_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    mac_btn,
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_show_vendor_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    vendor_btn,
+                ].align_y(Alignment::Center),
+                row![
+                    text(Translations::notif_prefix_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    prefix_input,
+                    space::horizontal(),
+                    test_btn,
+                ].align_y(Alignment::Center),
+            ]
+            .spacing(6);
+
+            notif_section = notif_section
+                .push(container(triggers_col).padding(8).style(|_| CustomStyles::card_container()))
+                .push(container(behavior_col).padding(8).style(|_| CustomStyles::card_container()))
+                .push(container(content_col).padding(8).style(|_| CustomStyles::card_container()));
+        }
+
+        let notifications_card = container(notif_section)
+            .padding(12)
+            .style(|_| CustomStyles::card_container());
+
         // Resumen técnico del sistema
         let info_col = column![
             text(Translations::sys_info_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
@@ -2120,21 +4553,39 @@ impl App {
             .padding(Padding::from([7, 20]))
             .on_press(Message::CloseSettings);
 
-        let content = column![
-            title_row,
+        let footer_row = row![space::horizontal(), close_btn].align_y(Alignment::Center);
+
+        let body_content = column![
             theme_row,
             lang_row,
             auto_scan_card,
             background_card,
             router_card,
+            notifications_card,
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
-            row![space::horizontal(), close_btn],
+        ]
+        .spacing(14)
+        .padding(Padding {
+            top: 0.0,
+            right: 16.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
+
+        let scrollable_body = scrollable(body_content)
+            .height(Length::Fill);
+
+        let panel_layout = column![
+            title_row,
+            scrollable_body,
+            footer_row,
         ]
         .spacing(14);
 
-        container(content)
-            .padding(22)
-            .width(560)
+        container(panel_layout)
+            .padding(24)
+            .width(820)
+            .max_height(720)
             .style(|_| CustomStyles::settings_panel())
             .into()
     }
@@ -2150,10 +4601,14 @@ impl App {
                 .size(20)
                 .color(CustomStyles::accent_cyan()),
             space::horizontal(),
-            button(text("✕").size(14))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 8]))
-                .on_press(Message::CloseSpeedTest),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseSpeedTest),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
         ]
         .align_y(Alignment::Center);
 
@@ -2389,8 +4844,8 @@ impl App {
         .spacing(14);
 
         container(content)
-            .padding(22)
-            .width(620)
+            .padding(24)
+            .width(850)
             .style(|_| CustomStyles::settings_panel())
             .into()
     }
@@ -2508,12 +4963,25 @@ impl App {
             .map(|d| d.display_name())
             .unwrap_or_else(|| Translations::gateway_label(self.language).to_string());
 
+        let wan_status_text = if let Some(upnp) = &self.upnp_status {
+            if let Some(ext_ip) = &upnp.external_ip {
+                format!("WAN: {}", ext_ip)
+            } else {
+                "UPnP Activo".to_string()
+            }
+        } else {
+            format!("Estabilidad: {:.0}%", self.uptime_tracker.uptime_percentage())
+        };
+
         let card_gateway = container(
             column![
                 row![
                     text(Translations::network_and_router(self.language)).size(11).color(CustomStyles::accent_cyan()),
                     space::horizontal(),
-                    text(&self.network.subnet_cidr).size(10).color(CustomStyles::text_muted()),
+                    button(text(Translations::upnp_btn(self.language)).size(9))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([1, 6]))
+                        .on_press(Message::OpenUpnpModal),
                 ]
                 .align_y(Alignment::Center),
                 row![
@@ -2522,7 +4990,12 @@ impl App {
                 ]
                 .align_y(Alignment::Center)
                 .spacing(6),
-                text(gw_name).size(11).color(CustomStyles::text_secondary()),
+                row![
+                    text(gw_name).size(11).color(CustomStyles::text_secondary()),
+                    space::horizontal(),
+                    text(wan_status_text).size(10).color(CustomStyles::accent_emerald()),
+                ]
+                .align_y(Alignment::Center),
             ]
             .spacing(3),
         )
@@ -2549,17 +5022,18 @@ impl App {
         let mut category_pills = row![].spacing(6).align_y(Alignment::Center);
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
+        let all_btn = button(text(Translations::all_filter(self.language)).size(12))
+            .style(move |_, _| {
+                if is_all_active {
+                    CustomStyles::filter_pill_active()
+                } else {
+                    CustomStyles::filter_pill_inactive()
+                }
+            })
+            .padding(Padding::from([4, 8]))
+            .on_press(Message::CategorySelected(None));
         category_pills = category_pills.push(
-            button(text(Translations::all_filter(self.language)).size(12))
-                .style(move |_, _| {
-                    if is_all_active {
-                        CustomStyles::filter_pill_active()
-                    } else {
-                        CustomStyles::filter_pill_inactive()
-                    }
-                })
-                .padding(Padding::from([4, 8]))
-                .on_press(Message::CategorySelected(None)),
+            self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
         );
 
         for &cat in &[
@@ -2567,21 +5041,24 @@ impl App {
             DeviceCategory::Smartphone,
             DeviceCategory::Computer,
             DeviceCategory::SmartTv,
+            DeviceCategory::StreamingDevice,
+            DeviceCategory::GamingConsole,
             DeviceCategory::Iot,
         ] {
             let is_active = self.selected_category == Some(cat);
             let label = Translations::category_short_name(cat, self.language);
+            let cat_btn = button(text(label).size(12))
+                .style(move |_, _| {
+                    if is_active {
+                        CustomStyles::filter_pill_active()
+                    } else {
+                        CustomStyles::filter_pill_inactive()
+                    }
+                })
+                .padding(Padding::from([4, 8]))
+                .on_press(Message::CategorySelected(Some(cat)));
             category_pills = category_pills.push(
-                button(text(label).size(12))
-                    .style(move |_, _| {
-                        if is_active {
-                            CustomStyles::filter_pill_active()
-                        } else {
-                            CustomStyles::filter_pill_inactive()
-                        }
-                    })
-                    .padding(Padding::from([4, 8]))
-                    .on_press(Message::CategorySelected(Some(cat))),
+                self.tip(cat_btn, Translations::tip_filter_category(cat, self.language), tooltip::Position::Bottom)
             );
         }
 
@@ -2593,36 +5070,38 @@ impl App {
         let is_blocked_active = self.security_filter == SecurityFilter::Blocked;
 
         if whitelist_count > 0 || is_whitelist_active {
+            let wl_btn = button(text(format!("🛡️ {} ({})", Translations::filter_whitelist(self.language), whitelist_count)).size(11))
+                .style(move |_, _| {
+                    if is_whitelist_active {
+                        CustomStyles::filter_pill_active()
+                    } else {
+                        CustomStyles::filter_pill_inactive()
+                    }
+                })
+                .padding(Padding::from([4, 8]))
+                .on_press(Message::SecurityFilterChanged(
+                    if is_whitelist_active { SecurityFilter::All } else { SecurityFilter::Whitelist }
+                ));
             category_pills = category_pills.push(
-                button(text(format!("🛡️ {} ({})", Translations::filter_whitelist(self.language), whitelist_count)).size(11))
-                    .style(move |_, _| {
-                        if is_whitelist_active {
-                            CustomStyles::filter_pill_active()
-                        } else {
-                            CustomStyles::filter_pill_inactive()
-                        }
-                    })
-                    .padding(Padding::from([4, 8]))
-                    .on_press(Message::SecurityFilterChanged(
-                        if is_whitelist_active { SecurityFilter::All } else { SecurityFilter::Whitelist }
-                    )),
+                self.tip(wl_btn, Translations::tip_filter_whitelist(self.language), tooltip::Position::Bottom)
             );
         }
 
         if blocked_count > 0 || is_blocked_active {
+            let blk_btn = button(text(format!("🚫 {} ({})", Translations::filter_blocked(self.language), blocked_count)).size(11))
+                .style(move |_, _| {
+                    if is_blocked_active {
+                        CustomStyles::filter_pill_active()
+                    } else {
+                        CustomStyles::filter_pill_inactive()
+                    }
+                })
+                .padding(Padding::from([4, 8]))
+                .on_press(Message::SecurityFilterChanged(
+                    if is_blocked_active { SecurityFilter::All } else { SecurityFilter::Blocked }
+                ));
             category_pills = category_pills.push(
-                button(text(format!("🚫 {} ({})", Translations::filter_blocked(self.language), blocked_count)).size(11))
-                    .style(move |_, _| {
-                        if is_blocked_active {
-                            CustomStyles::filter_pill_active()
-                        } else {
-                            CustomStyles::filter_pill_inactive()
-                        }
-                    })
-                    .padding(Padding::from([4, 8]))
-                    .on_press(Message::SecurityFilterChanged(
-                        if is_blocked_active { SecurityFilter::All } else { SecurityFilter::Blocked }
-                    )),
+                self.tip(blk_btn, Translations::tip_filter_blocked(self.language), tooltip::Position::Bottom)
             );
         }
 
@@ -2708,35 +5187,35 @@ impl App {
             .into()
     }
 
-    /// Tarjeta individual para cada dispositivo con jerarquía visual de 2 niveles (sin desbordamientos ni solapamientos)
+    /// Tarjeta individual para cada dispositivo con diseño responsive de 2 niveles (sin desbordamientos ni solapamientos)
     fn view_device_card<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
         let is_selected = self.selected_device_ip == Some(device.ip);
 
         // Icono de categoría
-        let icon_widget = text(device.category.icon()).size(28);
+        let icon_widget = text(device.category.icon()).size(24);
 
-        // Nombre principal del dispositivo
+        // Nombre del dispositivo
         let name_widget = text(device.display_name())
-            .size(15)
+            .size(14)
             .color(if device.is_gateway || device.is_current_host {
                 CustomStyles::accent_cyan()
             } else {
                 CustomStyles::text_primary()
             });
 
-        // Fila 1 de Badges (Roles especiales: ROUTER, ESTE EQUIPO, Privacidad, Seguridad)
-        let mut role_tags = row![].spacing(6).align_y(Alignment::Center);
+        // Badges de roles especiales
+        let mut role_tags = row![].spacing(4).align_y(Alignment::Center);
 
         if device.is_blocked {
             role_tags = role_tags.push(
                 container(text(Translations::badge_blocked(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                    .padding(Padding::from([1, 5]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE)),
             );
         } else if device.is_whitelisted {
             role_tags = role_tags.push(
                 container(text(Translations::badge_whitelisted(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                    .padding(Padding::from([1, 5]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(16, 120, 70), Color::WHITE)),
             );
         }
@@ -2744,134 +5223,26 @@ impl App {
         if device.is_gateway {
             role_tags = role_tags.push(
                 container(text(Translations::badge_router(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                    .padding(Padding::from([1, 5]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_cyan(), Color::WHITE)),
             );
         }
         if device.is_current_host {
             role_tags = role_tags.push(
                 container(text(Translations::badge_local_host(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([2, 6]))
+                    .padding(Padding::from([1, 5]))
                     .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
             );
         }
         if device.is_randomized_mac {
             role_tags = role_tags.push(
                 container(text(Translations::badge_privacy(self.language)).size(9).color(CustomStyles::accent_amber()))
-                    .padding(Padding::from([2, 6]))
+                    .padding(Padding::from([1, 5]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
             );
         }
 
-        // Fila 2 de Badges: Categoría asignada + Fabricante + Puertos abiertos
-        let mut sub_tags = row![].spacing(6).align_y(Alignment::Center);
-
-        // Badge de Tipo / Categoría asignada
-        let cat_label = Translations::category_name(device.category, self.language)
-            .split('/')
-            .next()
-            .unwrap_or("")
-            .trim();
-        sub_tags = sub_tags.push(
-            container(text(cat_label).size(10).color(CustomStyles::accent_cyan()))
-                .padding(Padding::from([2, 6]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
-        );
-
-        // Badge de Fabricante
-        let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
-            device.vendor.clone()
-        } else if device.is_randomized_mac {
-            Translations::vendor_private(self.language).to_string()
-        } else {
-            Translations::vendor_generic(self.language).to_string()
-        };
-
-        let vendor_truncated = if vendor_str.len() > 24 {
-            format!("{}...", &vendor_str[..22])
-        } else {
-            vendor_str
-        };
-
-        sub_tags = sub_tags.push(
-            container(text(vendor_truncated).size(10).color(CustomStyles::text_secondary()))
-                .padding(Padding::from([2, 6]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(40, 50, 70), CustomStyles::text_secondary())),
-        );
-
-        // Badge de Topología de Conexión Router (Mesh / Wi-Fi / Ethernet)
-        if let Some(conn_type) = &device.connection_type {
-            let (top_label, top_bg, top_color) = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
-                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
-                (format!("📶 5GHz{}", sig), Color::from_rgb8(15, 45, 40), CustomStyles::accent_emerald())
-            } else if conn_type.contains("2.4GHz") || conn_type.contains("2.4 GHz") {
-                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
-                (format!("📶 2.4GHz{}", sig), Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())
-            } else {
-                let mbps = device.negotiated_mbps.map(|m| format!(" {}M", m)).unwrap_or_default();
-                (format!("🔌 LAN{}", mbps), Color::from_rgb8(25, 30, 50), CustomStyles::accent_cyan())
-            };
-
-            sub_tags = sub_tags.push(
-                container(text(top_label).size(10).color(top_color))
-                    .padding(Padding::from([2, 6]))
-                    .style(move |_| CustomStyles::badge_pill(top_bg, top_color)),
-            );
-        }
-
-        // Servicios / Puertos detectados
-        for p in device.open_ports.iter().take(2) {
-            sub_tags = sub_tags.push(
-                container(text(format!("{}: {}", p.port, p.service)).size(9).color(CustomStyles::accent_cyan()))
-                    .padding(Padding::from([1, 4]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
-            );
-        }
-        if device.open_ports.len() > 2 {
-            sub_tags = sub_tags.push(
-                text(format!("+{}", device.open_ports.len() - 2))
-                    .size(9)
-                    .color(CustomStyles::text_muted()),
-            );
-        }
-
-        // Columna de identidad del dispositivo (ocupa todo el espacio disponible en la izquierda)
-        let identity_col = column![
-            row![icon_widget, space::horizontal().width(4), name_widget, role_tags]
-                .spacing(6)
-                .align_y(Alignment::Center),
-            sub_tags,
-        ]
-        .spacing(4)
-        .width(Length::Fill);
-
-        // Columna de red (IP + MAC con ancho fijo de 190 px para que nunca se solape)
-        let network_col = column![
-            row![
-                text("IP: ").size(11).color(CustomStyles::text_muted()),
-                text(device.ip.to_string()).size(12).color(CustomStyles::text_primary()),
-                button(text("📋").size(10))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([1, 3]))
-                    .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(4),
-            row![
-                text("MAC: ").size(11).color(CustomStyles::text_muted()),
-                text(&device.mac).size(11).color(CustomStyles::text_secondary()),
-                button(text("📋").size(10))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([1, 3]))
-                    .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(4),
-        ]
-        .spacing(2)
-        .width(Length::Fixed(190.0));
-
-        // Estimación de Calidad de Conexión y Latencia (ancho fijo de 125 px)
+        // Latencia y Calidad de Conexión
         let (quality_label, quality_color, lat_str) = if let Some(lat) = device.latency_ms {
             if lat < 1.0 {
                 (Translations::latency_cable(self.language), CustomStyles::accent_cyan(), format!("{:.1} ms", lat))
@@ -2888,20 +5259,23 @@ impl App {
             (Translations::latency_no_response(self.language), CustomStyles::text_muted(), "-".to_string())
         };
 
-        let latency_col = column![
+        let latency_widget = container(
             row![
-                text("🟢").size(9),
-                text(lat_str).size(12).color(quality_color),
+                text("🟢").size(8),
+                text(lat_str).size(11).color(quality_color),
+                text(format!("({})", quality_label)).size(10).color(CustomStyles::text_muted()),
             ]
             .spacing(4)
             .align_y(Alignment::Center),
-            text(quality_label).size(10).color(CustomStyles::text_muted()),
-        ]
-        .spacing(2)
-        .width(Length::Fixed(125.0));
+        )
+        .padding(Padding::from([2, 6]))
+        .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(18, 25, 38), quality_color));
 
         // Botón Detalles
-        let btn_details = button(text(Translations::details_btn(self.language)).size(12))
+        let btn_details = self.tip(
+            button(
+                text(Translations::details_btn(self.language)).size(11),
+            )
             .style(move |_, _| {
                 if is_selected {
                     CustomStyles::primary_button()
@@ -2909,17 +5283,137 @@ impl App {
                     CustomStyles::secondary_button()
                 }
             })
-            .padding(Padding::from([6, 12]))
-            .on_press(Message::SelectDevice(device.ip));
+            .padding(Padding::from([4, 10]))
+            .on_press(Message::SelectDevice(device.ip)),
+            Translations::tip_device_details(self.language),
+            tooltip::Position::Top,
+        );
 
-        let card_content = row![
-            identity_col,
-            network_col,
-            latency_col,
+        // Fila 1 (Superior): Icono + Nombre + Badges de rol + Espacio + Latencia + Botón Detalles
+        let top_row = row![
+            icon_widget,
+            name_widget,
+            role_tags,
+            space::horizontal(),
+            latency_widget,
             btn_details,
         ]
-        .spacing(12)
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
+
+        // Fila 2 (Inferior): Metadatos organizados en píldoras con espaciado limpio
+        // 1. IP con botón de copiar
+        let ip_pill = container(
+            row![
+                text("IP: ").size(10).color(CustomStyles::text_muted()),
+                text(device.ip.to_string()).size(11).color(CustomStyles::text_primary()),
+                self.tip(
+                    button(text("📋").size(9))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([1, 3]))
+                        .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
+                    Translations::tip_copy_ip(self.language),
+                    tooltip::Position::Top,
+                ),
+            ]
+            .spacing(2)
+            .align_y(Alignment::Center),
+        )
+        .padding(Padding::from([2, 6]))
+        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_primary()));
+
+        // 2. MAC con botón de copiar
+        let mac_pill = container(
+            row![
+                text("MAC: ").size(10).color(CustomStyles::text_muted()),
+                text(&device.mac).size(10).color(CustomStyles::text_secondary()),
+                self.tip(
+                    button(text("📋").size(9))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([1, 3]))
+                        .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
+                    Translations::tip_copy_mac(self.language),
+                    tooltip::Position::Top,
+                ),
+            ]
+            .spacing(2)
+            .align_y(Alignment::Center),
+        )
+        .padding(Padding::from([2, 6]))
+        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_secondary()));
+
+        // 3. Categoría
+        let cat_label = Translations::category_name(device.category, self.language)
+            .split('/')
+            .next()
+            .unwrap_or("")
+            .trim();
+        let cat_pill = container(text(cat_label).size(10).color(CustomStyles::accent_cyan()))
+            .padding(Padding::from([2, 6]))
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan()));
+
+        // 4. Fabricante
+        let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
+            device.vendor.clone()
+        } else if device.is_randomized_mac {
+            Translations::vendor_private(self.language).to_string()
+        } else {
+            Translations::vendor_generic(self.language).to_string()
+        };
+        let vendor_truncated = if vendor_str.len() > 20 {
+            format!("{}...", &vendor_str[..18])
+        } else {
+            vendor_str
+        };
+        let vendor_pill = container(text(vendor_truncated).size(10).color(CustomStyles::text_secondary()))
+            .padding(Padding::from([2, 6]))
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_secondary()));
+
+        let mut bottom_row = row![
+            ip_pill,
+            mac_pill,
+            cat_pill,
+            vendor_pill,
+        ]
+        .spacing(6)
         .align_y(Alignment::Center);
+
+        // 5. Topología Router (si está disponible)
+        if let Some(conn_type) = &device.connection_type {
+            let (top_label, top_bg, top_color) = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                (format!("📶 5GHz{}", sig), Color::from_rgb8(15, 45, 40), CustomStyles::accent_emerald())
+            } else if conn_type.contains("2.4GHz") || conn_type.contains("2.4 GHz") {
+                let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
+                (format!("📶 2.4GHz{}", sig), Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())
+            } else {
+                let mbps = device.negotiated_mbps.map(|m| format!(" {}M", m)).unwrap_or_default();
+                (format!("🔌 LAN{}", mbps), Color::from_rgb8(25, 30, 50), CustomStyles::accent_cyan())
+            };
+
+            bottom_row = bottom_row.push(
+                container(text(top_label).size(10).color(top_color))
+                    .padding(Padding::from([2, 6]))
+                    .style(move |_| CustomStyles::badge_pill(top_bg, top_color)),
+            );
+        }
+
+        // Servicios / Puertos detectados (máximo 2 en la tarjeta para no sobrecargar)
+        for p in device.open_ports.iter().take(2) {
+            bottom_row = bottom_row.push(
+                container(text(format!("{}: {}", p.port, p.service)).size(9).color(CustomStyles::accent_cyan()))
+                    .padding(Padding::from([1, 4]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
+            );
+        }
+
+        let card_content = column![
+            top_row,
+            bottom_row,
+        ]
+        .spacing(8)
+        .width(Length::Fill);
 
         container(card_content)
             .padding(10)
@@ -2938,15 +5432,21 @@ impl App {
     fn view_inspector<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
         // Barra superior fija del inspector (Título + Cerrar)
         // Se mantiene fija en la parte superior para que nunca se oculte al hacer scroll
+        let close_btn = self.tip(
+            button(text("✕").size(13))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 6]))
+                .on_press(Message::CloseInspector),
+            Translations::tip_close(self.language),
+            tooltip::Position::Bottom,
+        );
+
         let top_bar = row![
             text(format!("{} {}", device.category.icon(), Translations::device_details(self.language)))
                 .size(15)
                 .color(CustomStyles::accent_cyan()),
             space::horizontal(),
-            button(text("✕").size(13))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 6]))
-                .on_press(Message::CloseInspector),
+            close_btn,
         ]
         .align_y(Alignment::Center);
 
@@ -2997,15 +5497,21 @@ impl App {
         insp_body = insp_body.push(category_selector);
 
         // Editor de alias personalizado
+        let save_alias_btn = self.tip(
+            button(text(Translations::save(self.language)).size(11))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([5, 8]))
+                .on_press(Message::SaveAlias(device.ip)),
+            Translations::tip_save_alias(self.language),
+            tooltip::Position::Top,
+        );
+
         let alias_row = row![
             text_input(Translations::alias_placeholder(self.language), &self.alias_input)
                 .on_input(Message::AliasInputChanged)
                 .padding(Padding::from([5, 8]))
                 .width(Length::Fill),
-            button(text(Translations::save(self.language)).size(11))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([5, 8]))
-                .on_press(Message::SaveAlias(device.ip)),
+            save_alias_btn,
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -3022,6 +5528,13 @@ impl App {
             Translations::spec_hostname(self.language),
             device.hostname.as_deref().unwrap_or(Translations::spec_not_assigned(self.language)),
         ));
+        if let Some(model) = &device.model_name {
+            specs_col = specs_col.push(Self::spec_line("Modelo / Dispositivo", model));
+        }
+        if !device.discovered_services.is_empty() {
+            let services_str = device.discovered_services.join(", ");
+            specs_col = specs_col.push(Self::spec_line("Servicios mDNS/SSDP", &services_str));
+        }
         specs_col = specs_col.push(Self::spec_line(
             Translations::spec_mac_type(self.language),
             if device.is_randomized_mac {
@@ -3072,17 +5585,25 @@ impl App {
         let mut quick_actions = row![].spacing(6).align_y(Alignment::Center);
 
         quick_actions = quick_actions.push(
-            button(text("📋 IP").size(11))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([4, 7]))
-                .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
+            self.tip(
+                button(text("📋 IP").size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([4, 7]))
+                    .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
+                Translations::tip_copy_ip(self.language),
+                tooltip::Position::Top,
+            ),
         );
 
         quick_actions = quick_actions.push(
-            button(text("📋 MAC").size(11))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([4, 7]))
-                .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
+            self.tip(
+                button(text("📋 MAC").size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([4, 7]))
+                    .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
+                Translations::tip_copy_mac(self.language),
+                tooltip::Position::Top,
+            ),
         );
 
         let has_web = device.open_ports.iter().any(|p| p.port == 80 || p.port == 443 || p.port == 8080);
@@ -3095,12 +5616,29 @@ impl App {
             );
         }
 
+        if device.is_gateway || device.open_ports.iter().any(|p| p.port == 445 || p.port == 139) {
+            quick_actions = quick_actions.push(
+                self.tip(
+                    button(text(Translations::storage_badge_available(self.language)).size(11))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([4, 7]))
+                        .on_press(Message::OpenStorageExplorer),
+                    Translations::tip_router_storage(self.language),
+                    tooltip::Position::Top,
+                ),
+            );
+        }
+
         if !device.is_current_host {
             quick_actions = quick_actions.push(
-                button(text("⏰ WoL").size(11))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([4, 7]))
-                    .on_press(Message::SendWol(device.mac.clone())),
+                self.tip(
+                    button(text("⏰ WoL").size(11))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([4, 7]))
+                        .on_press(Message::SendWol(device.mac.clone())),
+                    Translations::tip_wol(self.language),
+                    tooltip::Position::Top,
+                ),
             );
         }
 
@@ -3115,10 +5653,14 @@ impl App {
             (Translations::btn_add_whitelist(self.language), CustomStyles::primary_button())
         };
         security_actions = security_actions.push(
-            button(text(wl_label).size(11))
-                .style(move |_, _| wl_style.clone())
-                .padding(Padding::from([4, 7]))
-                .on_press(Message::ToggleDeviceWhitelist(device.ip, device.mac.clone())),
+            self.tip(
+                button(text(wl_label).size(11))
+                    .style(move |_, _| wl_style.clone())
+                    .padding(Padding::from([4, 7]))
+                    .on_press(Message::ToggleDeviceWhitelist(device.ip, device.mac.clone())),
+                Translations::tip_whitelist(self.language),
+                tooltip::Position::Top,
+            ),
         );
 
         if !device.is_current_host && !device.is_gateway {
@@ -3138,7 +5680,9 @@ impl App {
                 block_btn = block_btn.on_press(Message::ToggleDeviceBlocked(device.ip, device.mac.clone()));
             }
 
-            security_actions = security_actions.push(block_btn);
+            security_actions = security_actions.push(
+                self.tip(block_btn, Translations::tip_block_router(self.language), tooltip::Position::Top),
+            );
         }
 
         insp_body = insp_body.push(security_actions);
@@ -3150,10 +5694,14 @@ impl App {
             Translations::btn_ping_test(self.language)
         };
 
-        let ping_btn = button(text(ping_btn_text).size(11))
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([5, 8]))
-            .on_press(Message::StartPingTest(device.ip));
+        let ping_btn = self.tip(
+            button(text(ping_btn_text).size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([5, 8]))
+                .on_press(Message::StartPingTest(device.ip)),
+            Translations::tip_ping(self.language),
+            tooltip::Position::Top,
+        );
 
         let mut ping_section = column![
             row![
@@ -3206,10 +5754,14 @@ impl App {
             Translations::btn_scan_ports(self.language)
         };
 
-        let port_btn = button(text(port_btn_text).size(11))
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([5, 8]))
-            .on_press(Message::StartDeepScan(device.ip));
+        let port_btn = self.tip(
+            button(text(port_btn_text).size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([5, 8]))
+                .on_press(Message::StartDeepScan(device.ip)),
+            Translations::tip_port_scan(self.language),
+            tooltip::Position::Top,
+        );
 
         let mut ports_section = column![
             row![
@@ -3278,10 +5830,14 @@ impl App {
             Translations::traceroute_btn_start(self.language)
         };
 
-        let trace_btn = button(text(trace_btn_text).size(11))
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([5, 8]))
-            .on_press(Message::StartTraceroute(device.ip));
+        let trace_btn = self.tip(
+            button(text(trace_btn_text).size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([5, 8]))
+                .on_press(Message::StartTraceroute(device.ip)),
+            Translations::tip_traceroute(self.language),
+            tooltip::Position::Top,
+        );
 
         let mut trace_section = column![
             row![
@@ -3355,6 +5911,103 @@ impl App {
 
         insp_body = insp_body.push(
             container(trace_section)
+                .padding(8)
+                .style(|_| CustomStyles::card_container()),
+        );
+
+        // Herramienta 4: Historial de Peticiones y Búsquedas del Dispositivo
+        let req_count = device.request_history.len();
+        let mut req_header = row![
+            text(Translations::device_requests_title(self.language)).size(12).color(CustomStyles::accent_cyan()),
+            container(text(format!("{}", req_count)).size(9).color(CustomStyles::accent_cyan()))
+                .padding(Padding::from([1, 5]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
+            space::horizontal(),
+            button(text(Translations::device_requests_simulate_btn(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 6]))
+                .on_press(Message::AddDeviceSampleRequest(device.ip)),
+        ]
+        .align_y(Alignment::Center)
+        .spacing(6);
+
+        if req_count > 0 {
+            req_header = req_header.push(
+                button(text("🗑️").size(10))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 5]))
+                    .on_press(Message::ClearDeviceRequestHistory(device.ip)),
+            );
+        }
+
+        let mut req_section = column![req_header].spacing(6);
+
+        if device.request_history.is_empty() {
+            req_section = req_section.push(
+                text(Translations::device_requests_empty(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            );
+        } else {
+            let mut req_list = Column::new().spacing(5).padding(Padding {
+                top: 0.0,
+                right: 4.0,
+                bottom: 2.0,
+                left: 0.0,
+            });
+
+            for entry in &device.request_history {
+                let time_str = entry.timestamp.format("%H:%M:%S").to_string();
+                let cat_badge_color = if entry.category.contains("Streaming") {
+                    CustomStyles::accent_purple()
+                } else if entry.category.contains("Búsqueda") {
+                    CustomStyles::accent_emerald()
+                } else if entry.category.contains("Red") || entry.category.contains("DNS") {
+                    CustomStyles::accent_cyan()
+                } else {
+                    CustomStyles::accent_amber()
+                };
+
+                let item = container(
+                    column![
+                        row![
+                            text(time_str).size(9).color(CustomStyles::text_muted()),
+                            container(text(&entry.protocol).size(8).color(CustomStyles::accent_cyan()))
+                                .padding(Padding::from([1, 4]))
+                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::accent_cyan())),
+                            container(text(&entry.category).size(8).color(cat_badge_color))
+                                .padding(Padding::from([1, 4]))
+                                .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(20, 30, 45), cat_badge_color)),
+                        ]
+                        .spacing(5)
+                        .align_y(Alignment::Center),
+                        text(&entry.query).size(11).color(CustomStyles::text_primary()),
+                    ]
+                    .spacing(2),
+                )
+                .padding(6)
+                .width(Length::Fill)
+                .style(|_| CustomStyles::card_container());
+
+                req_list = req_list.push(item);
+            }
+
+            req_section = req_section.push(
+                scrollable(req_list)
+                    .direction(scrollable::Direction::Vertical(
+                        scrollable::Scrollbar::new()
+                            .width(5.0)
+                            .scroller_width(5.0)
+                            .margin(1.0)
+                            .spacing(6.0),
+                    ))
+                    .style(CustomStyles::scrollbar_style())
+                    .height(160),
+            );
+        }
+
+        insp_body = insp_body.push(
+            container(req_section)
                 .padding(8)
                 .style(|_| CustomStyles::card_container()),
         );
@@ -3492,5 +6145,1478 @@ impl App {
         }
 
         list
+    }
+
+    /// Modal: Auditoría Integral de Seguridad de la Red
+    fn view_security_audit_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::audit_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseSecurityAudit),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::audit_subtitle(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        let (score_val, grade_str, issues_cnt, crit_cnt) = if let Some(audit) = &self.security_audit_report {
+            (audit.score, Translations::audit_grade_label(audit.score, self.language), audit.issues_count, audit.critical_count)
+        } else {
+            (100, Translations::audit_not_run(self.language), 0, 0)
+        };
+        let checks_list = self.security_audit_report.as_ref().map(|a| a.checks.as_slice()).unwrap_or(&[]);
+
+        let score_color = if score_val >= 85 {
+            CustomStyles::accent_emerald()
+        } else if score_val >= 60 {
+            CustomStyles::accent_amber()
+        } else {
+            Color::from_rgb8(239, 68, 68)
+        };
+
+        // Score Card
+        let score_card = container(
+            row![
+                column![
+                    text(format!("{}/100", score_val)).size(32).color(score_color),
+                    text(format!("{}: {}", Translations::audit_score_label(self.language), grade_str)).size(12).color(score_color),
+                ]
+                .spacing(2),
+                space::horizontal(),
+                column![
+                    text(Translations::audit_devices_audited(self.devices.len(), self.language)).size(11).color(CustomStyles::text_secondary()),
+                    text(Translations::audit_observations(issues_cnt, self.language)).size(11).color(if issues_cnt > 0 { CustomStyles::accent_amber() } else { CustomStyles::accent_emerald() }),
+                    text(Translations::audit_critical_risks(crit_cnt, self.language)).size(11).color(if crit_cnt > 0 { Color::from_rgb8(239, 68, 68) } else { CustomStyles::accent_emerald() }),
+                ]
+                .spacing(3),
+            ]
+            .align_y(Alignment::Center)
+            .padding(14),
+        )
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
+
+        let mut checks_col = Column::new().spacing(10).padding(Padding {
+            top: 4.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 4.0,
+        });
+
+        for check in checks_list {
+            let (icon, icon_color, border_bg) = match check.severity {
+                AuditSeverity::Pass => ("✅", CustomStyles::accent_emerald(), Color::from_rgb8(15, 35, 25)),
+                AuditSeverity::Info => ("ℹ️", CustomStyles::accent_cyan(), Color::from_rgb8(15, 30, 45)),
+                AuditSeverity::Warning => ("⚠️", CustomStyles::accent_amber(), Color::from_rgb8(45, 35, 15)),
+                AuditSeverity::Critical => ("🚨", Color::from_rgb8(239, 68, 68), Color::from_rgb8(50, 15, 15)),
+            };
+
+            let mut check_body = column![
+                row![
+                    text(icon).size(14),
+                    text(check.title_localized(self.language)).size(13).color(icon_color),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+                text(check.description_localized(self.language)).size(11).color(CustomStyles::text_secondary()),
+            ]
+            .spacing(4);
+
+            if !check.affected_devices.is_empty() {
+                let mut dev_col = Column::new().spacing(5);
+                let count_label = Translations::audit_affected_devices(check.affected_devices.len(), self.language);
+                dev_col = dev_col.push(
+                    text(count_label).size(11).color(CustomStyles::text_muted())
+                );
+
+                for chunk in check.affected_devices.chunks(3) {
+                    let mut chunk_row = row![].spacing(6).align_y(Alignment::Center);
+                    for d in chunk {
+                        chunk_row = chunk_row.push(
+                            container(text(d).size(10).color(CustomStyles::accent_amber()))
+                                .padding(Padding::from([3, 8]))
+                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())),
+                        );
+                    }
+                    dev_col = dev_col.push(chunk_row);
+                }
+                check_body = check_body.push(dev_col);
+            }
+
+            check_body = check_body.push(
+                row![
+                    text("💡").size(11),
+                    text(check.recommendation_localized(self.language)).size(10).color(CustomStyles::accent_cyan()),
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center),
+            );
+
+            let check_card = container(check_body)
+                .padding(14)
+                .width(Length::Fill)
+                .style(move |_| CustomStyles::badge_pill(border_bg, CustomStyles::text_primary()));
+
+            checks_col = checks_col.push(check_card);
+        }
+
+        let checks_scrollable = scrollable(checks_col)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fixed(480.0));
+
+        let actions_row = row![
+            button(text(Translations::audit_rerun_btn(self.language)).size(12))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([6, 14]))
+                .on_press(Message::RunSecurityAudit),
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 18]))
+                .on_press(Message::CloseSecurityAudit),
+        ]
+        .align_y(Alignment::Center);
+
+        let content = column![
+            title_row,
+            subtitle,
+            score_card,
+            checks_scrollable,
+            actions_row,
+        ]
+        .spacing(14);
+
+        container(content)
+            .padding(24)
+            .width(960)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
+            .into()
+    }
+
+    /// Modal: Historial y Cronología de Eventos de Red
+    fn view_timeline_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::timeline_modal_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_purple()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseTimeline),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::timeline_modal_desc(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        let uptime_pct = self.uptime_tracker.uptime_percentage();
+        let online_status = if self.uptime_tracker.is_online {
+            (Translations::timeline_online(self.language), CustomStyles::accent_emerald())
+        } else {
+            (Translations::timeline_outage(self.language), Color::from_rgb8(239, 68, 68))
+        };
+
+        let summary_row = container(
+            row![
+                text(Translations::timeline_total_events(self.network_events.len(), self.language)).size(12).color(CustomStyles::text_primary()),
+                text("•").size(10).color(CustomStyles::text_muted()),
+                text(online_status.0).size(12).color(online_status.1),
+                text("•").size(10).color(CustomStyles::text_muted()),
+                text(Translations::timeline_uptime_pct(uptime_pct as f64, self.language)).size(12).color(CustomStyles::accent_cyan()),
+                space::horizontal(),
+                button(text(Translations::timeline_clear_btn(self.language)).size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::ClearTimeline),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .padding(10),
+        )
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
+
+        let mut events_col = Column::new().spacing(8).padding(Padding {
+            top: 4.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 4.0,
+        });
+
+        if self.network_events.is_empty() {
+            events_col = events_col.push(
+                container(
+                    text(Translations::timeline_empty(self.language))
+                        .size(12)
+                        .color(CustomStyles::text_muted()),
+                )
+                .padding(20)
+                .align_x(Alignment::Center)
+                .width(Length::Fill),
+            );
+        } else {
+            for evt in &self.network_events {
+                let time_str = evt.timestamp.format("%H:%M:%S (%d/%m)").to_string();
+                let icon = evt.event_type.icon();
+                let type_label = evt.event_type.label_localized(self.language);
+
+                let mut meta_row = row![
+                    text(icon).size(12),
+                    text(type_label).size(11).color(CustomStyles::accent_purple()),
+                    space::horizontal(),
+                    text(time_str).size(10).color(CustomStyles::text_muted()),
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6);
+
+                if let Some(ip) = evt.ip {
+                    meta_row = meta_row.push(
+                        container(text(ip.to_string()).size(9).color(CustomStyles::accent_cyan()))
+                            .padding(Padding::from([1, 4]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
+                    );
+                }
+
+                let evt_card = container(
+                    column![
+                        meta_row,
+                        text(evt.title_localized(self.language)).size(12).color(CustomStyles::text_primary()),
+                        text(evt.details_localized(self.language)).size(11).color(CustomStyles::text_secondary()),
+                    ]
+                    .spacing(3),
+                )
+                .padding(10)
+                .width(Length::Fill)
+                .style(|_| CustomStyles::card_container());
+
+                events_col = events_col.push(evt_card);
+            }
+        }
+
+        let events_scrollable = scrollable(events_col)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fixed(480.0));
+
+        let close_row = row![
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 18]))
+                .on_press(Message::CloseTimeline),
+        ]
+        .align_y(Alignment::Center);
+
+        let content = column![
+            title_row,
+            subtitle,
+            summary_row,
+            events_scrollable,
+            close_row,
+        ]
+        .spacing(14);
+
+        container(content)
+            .padding(24)
+            .width(960)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_purple()))
+            .into()
+    }
+
+    /// Modal: Analizador de Canales Wi-Fi y Espectro Radioeléctrico
+    fn view_wifi_analyzer_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::wifi_modal_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_amber()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseWifiAnalyzer),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::wifi_modal_desc(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        let scan_btn_label = Translations::wifi_scan_btn(self.is_scanning_wifi, self.language);
+
+        let current_conn_info = if let Some(report) = &self.wifi_analyzer_report {
+            Translations::wifi_current_network(report.current_ssid.as_deref(), report.current_channel, self.language)
+        } else {
+            Translations::wifi_current_network_none(self.language)
+        };
+
+        let action_row = row![
+            text(current_conn_info).size(12).color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            button(text(scan_btn_label).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 14]))
+                .on_press(Message::ScanWifi),
+        ]
+        .align_y(Alignment::Center);
+
+        let mut modal_body = Column::new().spacing(10).padding(Padding {
+            top: 4.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 4.0,
+        });
+
+        if let Some(report) = &self.wifi_analyzer_report {
+            // Recommendation Card
+            let reco_card = container(
+                column![
+                    row![
+                        text(Translations::wifi_optimal_channels_title(self.language)).size(13).color(CustomStyles::accent_emerald()),
+                        space::horizontal(),
+                        text(Translations::wifi_channel_24_label(report.recommended_channel_24, self.language)).size(12).color(CustomStyles::accent_emerald()),
+                        text(" | ").size(10).color(CustomStyles::text_muted()),
+                        text(Translations::wifi_channel_5_label(report.recommended_channel_5, self.language)).size(12).color(CustomStyles::accent_cyan()),
+                    ]
+                    .align_y(Alignment::Center),
+                    text(Translations::wifi_recommendation_text(report.current_channel, report.recommended_channel_24, report.recommended_channel_5, self.language)).size(11).color(CustomStyles::text_secondary()),
+                ]
+                .spacing(5),
+            )
+            .padding(12)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_download());
+
+            modal_body = modal_body.push(reco_card);
+
+            // Resumen de Canales 2.4 GHz
+            modal_body = modal_body.push(
+                text(Translations::wifi_occupancy_24_title(self.language))
+                    .size(12)
+                    .color(CustomStyles::accent_amber()),
+            );
+
+            let mut ch24_row = row![].spacing(8);
+            for ch in &report.channels_24 {
+                let ch_card = container(
+                    column![
+                        text(Translations::wifi_channel_box_title(ch.channel, self.language)).size(12).color(CustomStyles::accent_amber()),
+                        text(Translations::wifi_networks_count(ch.networks_count, self.language)).size(14).color(CustomStyles::text_primary()),
+                        text(Translations::wifi_max_signal(ch.max_signal, self.language)).size(10).color(CustomStyles::text_muted()),
+                    ]
+                    .spacing(2),
+                )
+                .padding(8)
+                .width(Length::FillPortion(1))
+                .style(|_| CustomStyles::card_container());
+
+                ch24_row = ch24_row.push(ch_card);
+            }
+            modal_body = modal_body.push(ch24_row);
+
+            // Redes Wi-Fi Detectadas
+            modal_body = modal_body.push(
+                text(Translations::wifi_detected_networks_header(report.networks.len(), self.language))
+                    .size(12)
+                    .color(CustomStyles::text_primary()),
+            );
+
+            for net in &report.networks {
+                let freq_label = if net.frequency_mhz >= 5000 { "5 GHz" } else { "2.4 GHz" };
+                let is_curr = net.is_current;
+
+                let mut row_items = row![
+                    column![
+                        row![
+                            text(&net.ssid).size(13).color(if is_curr { CustomStyles::accent_emerald() } else { CustomStyles::text_primary() }),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                        text(format!("BSSID: {} | Seg: {}", net.bssid, net.security)).size(10).color(CustomStyles::text_muted()),
+                    ]
+                    .spacing(2)
+                    .width(Length::Fill),
+                ].align_y(Alignment::Center).spacing(8);
+
+                if is_curr {
+                    row_items = row_items.push(
+                        container(text(Translations::wifi_badge_current(self.language)).size(9).color(CustomStyles::accent_emerald()))
+                            .padding(Padding::from([1, 4]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
+                    );
+                }
+
+                row_items = row_items.push(
+                    container(text(format!("Ch {} ({})", net.channel, freq_label)).size(10).color(CustomStyles::accent_cyan()))
+                        .padding(Padding::from([2, 6]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
+                );
+
+                row_items = row_items.push(
+                    text(format!("{}%", net.signal_percent)).size(12).color(CustomStyles::accent_amber()),
+                );
+
+                let row_item = container(row_items)
+                    .padding(8)
+                    .width(Length::Fill)
+                    .style(|_| CustomStyles::card_container());
+
+                modal_body = modal_body.push(row_item);
+            }
+        } else {
+            modal_body = modal_body.push(
+                container(
+                    text(Translations::wifi_prompt_scan(self.language))
+                        .size(12)
+                        .color(CustomStyles::text_muted()),
+                )
+                .padding(20)
+                .align_x(Alignment::Center)
+                .width(Length::Fill),
+            );
+        }
+
+        let scrollable_area = scrollable(modal_body)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fixed(480.0));
+
+        let close_row = row![
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 18]))
+                .on_press(Message::CloseWifiAnalyzer),
+        ]
+        .align_y(Alignment::Center);
+
+        let content = column![
+            title_row,
+            subtitle,
+            action_row,
+            scrollable_area,
+            close_row,
+        ]
+        .spacing(14);
+
+        container(content)
+            .padding(24)
+            .width(980)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_amber()))
+            .into()
+    }
+
+    /// Modal: Router Universal UPnP / IGD y Reenvío de Puertos
+    fn view_upnp_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::upnp_modal_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseUpnpModal),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::upnp_modal_desc(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        let gw_ip_str = self
+            .network
+            .gateway_ip
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| Translations::not_detected(self.language).to_string());
+
+        let refresh_btn = button(text(Translations::upnp_query_btn(false, self.language)).size(12))
+            .style(|_, _| CustomStyles::secondary_button())
+            .padding(Padding::from([5, 12]))
+            .on_press(Message::QueryUpnpRouter);
+
+        let action_row = row![
+            text(format!("{}: {}", Translations::gateway_label(self.language), gw_ip_str)).size(12).color(CustomStyles::text_secondary()),
+            space::horizontal(),
+            refresh_btn,
+        ]
+        .align_y(Alignment::Center);
+
+        let mut modal_body = Column::new().spacing(10).padding(Padding {
+            top: 4.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 4.0,
+        });
+
+        if let Some(upnp) = &self.upnp_status {
+            let wan_ip = upnp.external_ip.as_deref().unwrap_or(Translations::upnp_not_assigned(self.language));
+            let conn_status = upnp.connection_status.as_deref().unwrap_or(Translations::upnp_status_connected(self.language));
+            let uptime_str = upnp
+                .uptime_secs
+                .map(|s| format!("{}h {}m", s / 3600, (s % 3600) / 60))
+                .unwrap_or_else(|| "-".to_string());
+            let rx_bytes = upnp.total_bytes_received.map(Telemetry::format_bytes).unwrap_or_else(|| "-".to_string());
+            let tx_bytes = upnp.total_bytes_sent.map(Telemetry::format_bytes).unwrap_or_else(|| "-".to_string());
+
+            let stat_card_ip = container(
+                column![
+                    text(Translations::upnp_public_ip_title(self.language)).size(10).color(CustomStyles::accent_cyan()),
+                    text(wan_ip).size(16).color(CustomStyles::accent_cyan()),
+                    text(Translations::upnp_status_label(conn_status, self.language)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .spacing(3),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::card_container());
+
+            let stat_card_uptime = container(
+                column![
+                    text(Translations::upnp_uptime_title(self.language)).size(10).color(CustomStyles::accent_emerald()),
+                    text(uptime_str).size(16).color(CustomStyles::accent_emerald()),
+                    text(Translations::upnp_uptime_sub(self.language)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .spacing(3),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::card_container());
+
+            let stat_card_traffic = container(
+                column![
+                    text(Translations::upnp_traffic_title(self.language)).size(10).color(CustomStyles::accent_purple()),
+                    text(format!("↓ {} | ↑ {}", rx_bytes, tx_bytes)).size(13).color(CustomStyles::text_primary()),
+                    text(Translations::upnp_traffic_sub(self.language)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .spacing(3),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::card_container());
+
+            let stats_grid = row![stat_card_ip, stat_card_uptime, stat_card_traffic].spacing(8);
+            modal_body = modal_body.push(stats_grid);
+
+            // Reenvío de Puertos (Port Forwarding)
+            modal_body = modal_body.push(
+                text(Translations::upnp_port_mappings_header(upnp.port_mappings.len(), self.language))
+                    .size(13)
+                    .color(CustomStyles::accent_cyan()),
+            );
+
+            if upnp.port_mappings.is_empty() {
+                modal_body = modal_body.push(
+                    container(
+                        text(Translations::upnp_no_mappings(self.language))
+                            .size(11)
+                            .color(CustomStyles::text_muted()),
+                    )
+                    .padding(14)
+                    .align_x(Alignment::Center)
+                    .width(Length::Fill),
+                );
+            } else {
+                for m in &upnp.port_mappings {
+                    let is_critical = [22, 23, 80, 445, 3389, 5900].contains(&m.external_port);
+
+                    let port_rule_card = container(
+                        row![
+                            column![
+                                row![
+                                    text(Translations::upnp_port_label(m.external_port, &m.protocol, self.language))
+                                        .size(13)
+                                        .color(if is_critical { Color::from_rgb8(239, 68, 68) } else { CustomStyles::accent_cyan() }),
+                                    text("➜").size(11).color(CustomStyles::text_muted()),
+                                    text(format!("{}:{}", m.internal_client, m.internal_port))
+                                        .size(12)
+                                        .color(CustomStyles::text_primary()),
+                                ]
+                                .spacing(6)
+                                .align_y(Alignment::Center),
+                                text(if m.description.is_empty() { "UPnP Mapped Port" } else { &m.description })
+                                    .size(10)
+                                    .color(CustomStyles::text_muted()),
+                            ]
+                            .spacing(2)
+                            .width(Length::Fill),
+                            if is_critical {
+                                container(text(Translations::upnp_badge_wan_risk(self.language)).size(9).color(Color::WHITE))
+                                    .padding(Padding::from([2, 6]))
+                                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE))
+                            } else {
+                                container(text(if m.enabled { Translations::upnp_badge_active(self.language) } else { Translations::upnp_badge_inactive(self.language) }).size(9).color(CustomStyles::accent_emerald()))
+                                    .padding(Padding::from([2, 6]))
+                                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
+                            },
+                        ]
+                        .align_y(Alignment::Center)
+                        .padding(8),
+                    )
+                    .width(Length::Fill)
+                    .style(move |_| {
+                        if is_critical {
+                            CustomStyles::card_danger()
+                        } else {
+                            CustomStyles::card_container()
+                        }
+                    });
+
+                    modal_body = modal_body.push(port_rule_card);
+                }
+            }
+        } else {
+            modal_body = modal_body.push(
+                container(
+                    text(Translations::upnp_prompt(self.language))
+                        .size(12)
+                        .color(CustomStyles::text_muted()),
+                )
+                .padding(20)
+                .align_x(Alignment::Center)
+                .width(Length::Fill),
+            );
+        }
+
+        let scrollable_area = scrollable(modal_body)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fixed(480.0));
+
+        let close_row = row![
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([6, 18]))
+                .on_press(Message::CloseUpnpModal),
+        ]
+        .align_y(Alignment::Center);
+
+        let content = column![
+            title_row,
+            subtitle,
+            action_row,
+            scrollable_area,
+            close_row,
+        ]
+        .spacing(14);
+
+        container(content)
+            .padding(24)
+            .width(980)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
+            .into()
+    }
+
+    /// Explorador de Almacenamiento USB / NAS del Router
+    fn view_storage_explorer_modal(&self) -> Element<'_, Message> {
+        let title_row = row![
+            text(Translations::storage_modal_title(self.language))
+                .size(18)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseStorageExplorer),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let subtitle = text(Translations::storage_modal_desc(self.language))
+            .size(11)
+            .color(CustomStyles::text_muted());
+
+        // Fila 1: Control de Conexión, IP de Destino, Credenciales y Modo Demo
+        let ip_input = text_input("192.168.1.1", &self.storage_target_ip)
+            .on_input(Message::StorageTargetIpChanged)
+            .padding(Padding::from([4, 8]))
+            .width(130);
+
+        let refresh_btn = self.tip(
+            button(text(Translations::storage_refresh(self.language)).size(11))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([4, 10]))
+                .on_press(Message::RefreshStorageShares),
+            Translations::tip_storage_refresh(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let creds_btn = self.tip(
+            button(text(Translations::storage_btn_credentials(self.language)).size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([4, 10]))
+                .on_press(Message::ToggleStorageCredentialsModal),
+            Translations::tip_storage_creds(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let is_demo = self.is_storage_demo_mode;
+        let demo_btn = self.tip(
+            button(text(Translations::storage_demo_mode_btn(self.language)).size(11))
+                .style(move |_, _| {
+                    if is_demo {
+                        CustomStyles::primary_button()
+                    } else {
+                        CustomStyles::secondary_button()
+                    }
+                })
+                .padding(Padding::from([4, 10]))
+                .on_press(Message::StorageToggleDemoMode),
+            Translations::tip_storage_demo(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let connection_bar = row![
+            text(Translations::storage_target_label(self.language)).size(11).color(CustomStyles::text_secondary()),
+            ip_input,
+            refresh_btn,
+            creds_btn,
+            space::horizontal(),
+            demo_btn,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        let mut modal_body = column![connection_bar].spacing(10);
+
+        // Diálogo de Credenciales SMB / NAS si está abierto
+        if self.is_storage_creds_open {
+            let user_in = text_input(Translations::storage_creds_user_placeholder(self.language), &self.storage_credentials.username)
+                .on_input(Message::StorageCredentialsUserChanged)
+                .padding(Padding::from([4, 8]))
+                .width(180);
+
+            let pass_in = text_input(Translations::storage_creds_pass_placeholder(self.language), &self.storage_credentials.password)
+                .on_input(Message::StorageCredentialsPassChanged)
+                .secure(true)
+                .padding(Padding::from([4, 8]))
+                .width(180);
+
+            let wg_in = text_input("WORKGROUP", &self.storage_credentials.workgroup)
+                .on_input(Message::StorageCredentialsWorkgroupChanged)
+                .padding(Padding::from([4, 8]))
+                .width(140);
+
+            let creds_card = container(
+                column![
+                    text(Translations::storage_creds_title(self.language)).size(12).color(CustomStyles::accent_cyan()),
+                    text(Translations::storage_creds_desc(self.language)).size(10).color(CustomStyles::text_muted()),
+                    row![
+                        text(Translations::storage_creds_user_label(self.language)).size(11).color(CustomStyles::text_secondary()),
+                        user_in,
+                        text(Translations::storage_creds_pass_label(self.language)).size(11).color(CustomStyles::text_secondary()),
+                        pass_in,
+                        text(Translations::storage_creds_group_label(self.language)).size(11).color(CustomStyles::text_secondary()),
+                        wg_in,
+                        button(text(Translations::storage_creds_save_btn(self.language)).size(11))
+                            .style(|_, _| CustomStyles::primary_button())
+                            .padding(Padding::from([4, 10]))
+                            .on_press(Message::StorageSaveCredentials),
+                        button(text(Translations::cancel(self.language)).size(11))
+                            .style(|_, _| CustomStyles::secondary_button())
+                            .padding(Padding::from([4, 10]))
+                            .on_press(Message::ToggleStorageCredentialsModal),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(6),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+            modal_body = modal_body.push(creds_card);
+        }
+
+        // Barra de Capacidad y Espacio en Disco (actualización limpia sin badges redundantes)
+        if let Some(disk) = self.storage_disk_info {
+            let used_str = format_file_size(disk.used_bytes());
+            let total_str = format_file_size(disk.total_bytes);
+            let free_str = format_file_size(disk.free_bytes);
+            let percent = disk.used_percent();
+
+            let info_row = row![
+                text(Translations::storage_space_info(&free_str, &total_str, percent as f64, self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_cyan()),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+
+            let capacity_card = container(
+                row![
+                    info_row,
+                    container(progress_bar(0.0..=100.0, percent))
+                        .width(Length::Fill),
+                    text(format!("{}/{}", used_str, total_str)).size(10).color(CustomStyles::text_muted()),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center),
+            )
+            .padding(Padding::from([6, 12]))
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+            modal_body = modal_body.push(capacity_card);
+        }
+
+        // Selector de Recurso / Share
+        if !self.storage_shares.is_empty() {
+            let mut share_chips = row![
+                text(Translations::storage_share_select(self.language)).size(11).color(CustomStyles::text_muted()),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center);
+
+            for share in &self.storage_shares {
+                let is_active = self.storage_active_share.as_deref() == Some(&share.name);
+                let share_name = share.name.clone();
+                let label = if share.comment.is_empty() {
+                    format!("📁 {}", share.name)
+                } else {
+                    format!("📁 {} ({})", share.name, share.comment)
+                };
+
+                let btn = button(text(label).size(10))
+                    .style(move |_, _| {
+                        if is_active {
+                            CustomStyles::primary_button()
+                        } else {
+                            CustomStyles::secondary_button()
+                        }
+                    })
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::StorageShareSelected(share_name));
+
+                share_chips = share_chips.push(btn);
+            }
+
+            modal_body = modal_body.push(share_chips);
+        }
+
+        // Barra de Herramientas y Navegación (Breadcrumbs, Subir, Nueva Carpeta, Subir Archivo, Filtro)
+        let is_root = self.storage_current_path.trim_matches('/').is_empty();
+        let up_btn = self.tip(
+            button(text(Translations::storage_up_level(self.language)).size(10))
+                .style(move |_, _| {
+                    if is_root {
+                        CustomStyles::secondary_button()
+                    } else {
+                        CustomStyles::primary_button()
+                    }
+                })
+                .padding(Padding::from([3, 8]))
+                .on_press(if is_root {
+                    Message::CloseStorageExplorer // No op cuando es raíz
+                } else {
+                    Message::StorageNavigateUp
+                }),
+            Translations::tip_storage_up(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        // Generar Breadcrumbs
+        let root_btn = self.tip(
+            button(text(Translations::storage_btn_root(self.language)).size(11))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 6]))
+                .on_press(Message::StorageNavigateTo(String::new())),
+            Translations::tip_storage_root(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let mut breadcrumbs = row![
+            up_btn,
+            root_btn,
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center);
+
+        if !is_root {
+            let parts: Vec<&str> = self.storage_current_path.trim_matches('/').split('/').collect();
+            let mut accum = String::new();
+            for part in parts {
+                if !accum.is_empty() {
+                    accum.push('/');
+                }
+                accum.push_str(part);
+                let path_target = accum.clone();
+
+                breadcrumbs = breadcrumbs
+                    .push(text("/").size(11).color(CustomStyles::text_muted()))
+                    .push(
+                        button(text(part).size(11))
+                            .style(|_, _| CustomStyles::secondary_button())
+                            .padding(Padding::from([2, 6]))
+                            .on_press(Message::StorageNavigateTo(path_target)),
+                    );
+            }
+        }
+
+        let new_folder_btn = self.tip(
+            button(text(Translations::storage_new_folder(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::StorageStartCreateFolder),
+            Translations::tip_storage_new_folder(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let upload_file_btn = self.tip(
+            button(text(Translations::storage_upload_btn(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::StoragePickFileAndUpload),
+            Translations::tip_storage_upload_file(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let upload_folder_btn = self.tip(
+            button(text(Translations::storage_upload_folder_btn(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::StoragePickFolderAndUpload),
+            Translations::tip_storage_upload_folder(self.language),
+            tooltip::Position::Bottom,
+        );
+
+        let filter_in = text_input(Translations::storage_filter_placeholder(self.language), &self.storage_filter_query)
+            .on_input(Message::StorageFilterQueryChanged)
+            .padding(Padding::from([3, 8]))
+            .width(180);
+
+        let toolbar = row![
+            breadcrumbs,
+            space::horizontal(),
+            new_folder_btn,
+            upload_file_btn,
+            upload_folder_btn,
+            filter_in,
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        modal_body = modal_body.push(toolbar);
+
+        // Barra y Tarjeta de Progreso de Subida (Archivo o Carpeta)
+        if let Some(upload) = &self.storage_upload_progress {
+            let percent = upload.percent.clamp(0.0, 100.0);
+            let percent_str = format!("{:.1}%", percent);
+            let icon = if upload.is_folder { "📁" } else { "📄" };
+
+            let title_color = if upload.is_finished {
+                if upload.error.is_some() {
+                    Color::from_rgb8(239, 68, 68)
+                } else {
+                    CustomStyles::accent_emerald()
+                }
+            } else {
+                CustomStyles::accent_cyan()
+            };
+
+            let title_row = row![
+                text(format!("{} {} | {}", icon, Translations::storage_upload_progress_title(self.language), upload.title))
+                    .size(12)
+                    .color(title_color)
+                    .width(Length::Fill),
+                if !upload.is_finished {
+                    text(format!("⚡ {}: {}", Translations::storage_upload_progress_speed(self.language), upload.speed_str))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald())
+                } else if upload.error.is_some() {
+                    text(Translations::storage_upload_error(self.language))
+                        .size(11)
+                        .color(Color::from_rgb8(239, 68, 68))
+                } else {
+                    text(Translations::storage_upload_completed(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald())
+                },
+                button(text(Translations::storage_upload_dismiss_btn(self.language)).size(10))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 6]))
+                    .on_press(Message::StorageDismissUploadProgress),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center);
+
+            let pbar = progress_bar(0.0..=100.0, percent);
+
+            let uploaded_str = format_file_size(upload.bytes_uploaded);
+            let total_str = format_file_size(upload.total_bytes);
+
+            let metrics_row = if upload.is_folder {
+                row![
+                    text(Translations::storage_upload_folder_progress(
+                        upload.current_index, upload.total_items, &upload.current_item, self.language
+                    ))
+                    .size(10)
+                    .color(CustomStyles::text_primary())
+                    .width(Length::Fill),
+                    text(format!("{} / {} ({})", uploaded_str, total_str, percent_str))
+                        .size(10)
+                        .color(CustomStyles::accent_cyan()),
+                ]
+                .align_y(Alignment::Center)
+            } else {
+                row![
+                    text(Translations::storage_upload_file_progress(&upload.current_item, self.language))
+                        .size(10)
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    text(format!("{} / {} ({})", uploaded_str, total_str, percent_str))
+                        .size(10)
+                        .color(CustomStyles::accent_cyan()),
+                ]
+                .align_y(Alignment::Center)
+            };
+
+            let dest_share = self.storage_active_share.as_deref().unwrap_or("");
+            let dest_dir = if upload.target_dir.is_empty() { Translations::storage_root_label(self.language) } else { &upload.target_dir };
+            let dest_row = row![
+                text(format!("{} /{}/{}", Translations::storage_upload_progress_target(self.language), dest_share, dest_dir))
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            ];
+
+            let card = container(
+                column![
+                    title_row,
+                    container(pbar).width(Length::Fill),
+                    metrics_row,
+                    dest_row,
+                ]
+                .spacing(6),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_upload());
+
+            modal_body = modal_body.push(card);
+        }
+
+        // Formulario inline para crear nueva carpeta
+        if self.is_creating_folder {
+            let folder_input = text_input(Translations::storage_new_folder_placeholder(self.language), &self.new_folder_name_input)
+                .on_input(Message::StorageCreateFolderNameChanged)
+                .padding(Padding::from([3, 8]))
+                .width(220);
+
+            let confirm_btn = button(text(Translations::storage_create_confirm(self.language)).size(10))
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::StorageConfirmCreateFolder);
+
+            let cancel_btn = button(text(Translations::cancel(self.language)).size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::StorageCancelCreateFolder);
+
+            let create_row = row![
+                text(Translations::storage_create_folder_prompt(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                folder_input,
+                confirm_btn,
+                cancel_btn,
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+
+            modal_body = modal_body.push(container(create_row).padding(8).style(|_| CustomStyles::card_container()));
+        }
+
+        // Diálogo de Confirmación de Eliminación
+        if let Some((_, _is_dir, name)) = &self.file_to_delete {
+            let msg = format!("{}: '{}'?", Translations::storage_confirm_delete_msg(self.language), name);
+            let confirm_del_card = container(
+                row![
+                    text("⚠️").size(16),
+                    column![
+                        text(Translations::storage_confirm_delete_title(self.language)).size(12).color(Color::from_rgb8(239, 68, 68)),
+                        text(msg).size(11).color(CustomStyles::text_primary()),
+                    ].width(Length::Fill),
+                    button(text(Translations::cancel(self.language)).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([4, 10]))
+                        .on_press(Message::StorageCancelDeleteFile),
+                    button(text(Translations::storage_action_delete(self.language)).size(10))
+                        .style(|_, _| CustomStyles::danger_button())
+                        .padding(Padding::from([4, 10]))
+                        .on_press(Message::StorageConfirmDeleteFile),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_danger());
+
+            modal_body = modal_body.push(confirm_del_card);
+        }
+
+        // Modal / Tarjeta de Propiedades y Metadatos de Archivo
+        if let Some(f) = &self.storage_selected_file {
+            let full_path = if self.storage_current_path.is_empty() {
+                f.name.clone()
+            } else {
+                format!("{}/{}", self.storage_current_path.trim_matches('/'), f.name)
+            };
+
+            let mut actions_row = row![].spacing(8).align_y(Alignment::Center);
+            if !f.is_dir {
+                actions_row = actions_row.push(
+                    button(text(format!("👁 {}", Translations::storage_action_open(self.language))).size(10))
+                        .style(|_, _| CustomStyles::primary_button())
+                        .padding(Padding::from([3, 10]))
+                        .on_press(Message::StorageOpenFile(f.name.clone())),
+                );
+                actions_row = actions_row.push(
+                    button(text(format!("💾 {}", Translations::storage_action_download(self.language))).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([3, 10]))
+                        .on_press(Message::StorageDownloadFile(f.name.clone())),
+                );
+            } else {
+                actions_row = actions_row.push(
+                    button(text(format!("📁 {}", Translations::storage_action_open(self.language))).size(10))
+                        .style(|_, _| CustomStyles::primary_button())
+                        .padding(Padding::from([3, 10]))
+                        .on_press(Message::StorageNavigateTo(full_path.clone())),
+                );
+            }
+
+            let props_card = container(
+                column![
+                    row![
+                        text(format!("{} {}", f.file_type.icon(), Translations::storage_props_title(&f.name, self.language))).size(12).color(CustomStyles::accent_cyan()),
+                        space::horizontal(),
+                        self.tip(
+                            button(text("✕").size(10))
+                                .style(|_, _| CustomStyles::secondary_button())
+                                .padding(Padding::from([2, 6]))
+                                .on_press(Message::StorageCloseProperties),
+                            Translations::tip_close(self.language),
+                            tooltip::Position::Left,
+                        ),
+                    ].align_y(Alignment::Center),
+                    row![
+                        text(Translations::storage_prop_type(self.language)).size(11).color(CustomStyles::text_muted()).width(100),
+                        text(f.file_type.type_name(self.language)).size(11).color(CustomStyles::text_primary()),
+                    ],
+                    row![
+                        text(Translations::storage_prop_full_path(self.language)).size(11).color(CustomStyles::text_muted()).width(100),
+                        text(full_path.clone()).size(11).color(CustomStyles::accent_cyan()),
+                    ],
+                    row![
+                        text(Translations::storage_prop_size(self.language)).size(11).color(CustomStyles::text_muted()).width(100),
+                        text(format!("{} ({} bytes)", f.formatted_size(), f.size_bytes)).size(11).color(CustomStyles::text_primary()),
+                    ],
+                    row![
+                        text(Translations::storage_prop_modified(self.language)).size(11).color(CustomStyles::text_muted()).width(100),
+                        text(&f.modified_str).size(11).color(CustomStyles::text_primary()),
+                    ],
+                    row![
+                        text(Translations::storage_prop_attributes(self.language)).size(11).color(CustomStyles::text_muted()).width(100),
+                        text(&f.attributes).size(11).color(CustomStyles::text_primary()),
+                    ],
+                    actions_row,
+                ]
+                .spacing(4),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+            modal_body = modal_body.push(props_card);
+        }
+
+        // Mensaje de estado o error
+        if let Some(err) = &self.storage_error_msg {
+            let err_card = container(
+                row![
+                    text("⚠️").size(14),
+                    text(err).size(11).color(Color::from_rgb8(239, 68, 68)).width(Length::Fill),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            )
+            .padding(8)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_danger());
+
+            modal_body = modal_body.push(err_card);
+        }
+
+        if let Some(status) = &self.storage_status_msg {
+            let status_card = container(
+                row![
+                    text("✓").size(14).color(CustomStyles::accent_emerald()),
+                    text(status).size(11).color(CustomStyles::accent_emerald()).width(Length::Fill),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            )
+            .padding(8)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+            modal_body = modal_body.push(status_card);
+        }
+
+        // Encabezado de la tabla de archivos con anchos estrictamente alineados
+        let table_header = container(
+            row![
+                container(text(Translations::storage_col_type(self.language)).size(11).color(CustomStyles::text_muted())).width(45).align_x(Alignment::Center),
+                container(text(Translations::storage_col_name(self.language)).size(11).color(CustomStyles::text_muted())).width(Length::Fill).align_x(Alignment::Start),
+                container(text(Translations::storage_col_size(self.language)).size(11).color(CustomStyles::text_muted())).width(100).align_x(Alignment::Center),
+                container(text(Translations::storage_col_modified(self.language)).size(11).color(CustomStyles::text_muted())).width(160).align_x(Alignment::Center),
+                container(text(Translations::storage_col_actions(self.language)).size(11).color(CustomStyles::text_muted())).width(230).align_x(Alignment::Center),
+            ]
+            .align_y(Alignment::Center)
+            .padding(Padding::from([4, 8])),
+        )
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
+
+        modal_body = modal_body.push(table_header);
+
+        // Contenido de archivos / carpetas
+        let query = self.storage_filter_query.trim().to_lowercase();
+        let filtered_files: Vec<&StorageFileEntry> = self
+            .storage_files
+            .iter()
+            .filter(|f| query.is_empty() || f.name.to_lowercase().contains(&query))
+            .collect();
+
+        let mut files_column = column![].spacing(3);
+
+        if filtered_files.is_empty() {
+            let empty_text = if self.is_storage_loading {
+                Translations::storage_loading_files(self.language)
+            } else if !query.is_empty() {
+                Translations::storage_no_filter_match(self.language)
+            } else {
+                Translations::storage_empty_dir(self.language)
+            };
+
+            files_column = files_column.push(
+                container(
+                    text(empty_text)
+                        .size(12)
+                        .color(CustomStyles::text_muted()),
+                )
+                .padding(24)
+                .align_x(Alignment::Center)
+                .width(Length::Fill),
+            );
+        } else {
+            for file in filtered_files {
+                let name_clone = file.name.clone();
+                let is_dir = file.is_dir;
+                let target_subpath = if self.storage_current_path.is_empty() {
+                    name_clone.clone()
+                } else {
+                    format!("{}/{}", self.storage_current_path.trim_matches('/'), name_clone)
+                };
+
+                let max_name_len = 38;
+                let char_count = file.name.chars().count();
+                let display_name = if char_count > max_name_len {
+                    let truncated: String = file.name.chars().take(max_name_len.saturating_sub(3)).collect();
+                    format!("{}...", truncated)
+                } else {
+                    file.name.clone()
+                };
+
+                let name_button = if is_dir {
+                    button(text(display_name).size(12).color(CustomStyles::accent_cyan()))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([2, 6]))
+                        .on_press(Message::StorageNavigateTo(target_subpath.clone()))
+                } else {
+                    button(text(display_name).size(12).color(CustomStyles::text_primary()))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([2, 6]))
+                        .on_press(Message::StorageOpenFile(name_clone.clone()))
+                };
+
+                let name_element: Element<'_, Message> = self.tip(
+                    name_button,
+                    &file.name,
+                    tooltip::Position::Top,
+                );
+
+                // Acciones de cada fila centradas
+                let mut row_actions = row![].spacing(4).align_y(Alignment::Center);
+
+                if is_dir {
+                    let open_btn = button(text(Translations::storage_action_open(self.language)).size(10))
+                        .style(|_, _| CustomStyles::primary_button())
+                        .padding(Padding::from([2, 6]))
+                        .on_press(Message::StorageNavigateTo(target_subpath.clone()));
+                    row_actions = row_actions.push(
+                        self.tip(open_btn, Translations::tip_storage_open_item(self.language), tooltip::Position::Top)
+                    );
+                } else {
+                    let open_name = file.name.clone();
+                    let dl_name = file.name.clone();
+                    let open_btn = button(text(Translations::storage_action_open(self.language)).size(10))
+                        .style(|_, _| CustomStyles::primary_button())
+                        .padding(Padding::from([2, 6]))
+                        .on_press(Message::StorageOpenFile(open_name));
+                    row_actions = row_actions.push(
+                        self.tip(open_btn, Translations::tip_storage_open_item(self.language), tooltip::Position::Top)
+                    );
+
+                    let dl_btn = button(text(Translations::storage_action_download(self.language)).size(10))
+                        .style(|_, _| CustomStyles::secondary_button())
+                        .padding(Padding::from([2, 6]))
+                        .on_press(Message::StorageDownloadFile(dl_name));
+                    row_actions = row_actions.push(
+                        self.tip(dl_btn, Translations::tip_storage_download_item(self.language), tooltip::Position::Top)
+                    );
+                }
+
+                let props_entry = file.clone();
+                let details_btn = button(text(Translations::storage_action_details(self.language)).size(10))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 6]))
+                    .on_press(Message::StorageShowFileProperties(props_entry));
+                row_actions = row_actions.push(
+                    self.tip(details_btn, Translations::tip_storage_details_item(self.language), tooltip::Position::Top)
+                );
+
+                let del_name = file.name.clone();
+                let del_path = target_subpath.clone();
+                let del_btn = button(text("🗑").size(10))
+                    .style(|_, _| CustomStyles::danger_button())
+                    .padding(Padding::from([2, 6]))
+                    .on_press(Message::StorageRequestDeleteFile {
+                        path: del_path,
+                        is_dir,
+                        name: del_name,
+                    });
+                row_actions = row_actions.push(
+                    self.tip(del_btn, Translations::tip_storage_delete_item(self.language), tooltip::Position::Top)
+                );
+
+                let file_row = container(
+                    row![
+                        container(text(file.file_type.icon()).size(14)).width(45).align_x(Alignment::Center),
+                        container(name_element).width(Length::Fill).align_x(Alignment::Start),
+                        container(text(file.formatted_size()).size(11).color(CustomStyles::text_muted())).width(100).align_x(Alignment::Center),
+                        container(text(&file.modified_str).size(10).color(CustomStyles::text_muted())).width(160).align_x(Alignment::Center),
+                        container(row_actions).width(230).align_x(Alignment::Center),
+                    ]
+                    .align_y(Alignment::Center)
+                    .padding(Padding::from([4, 8])),
+                )
+                .width(Length::Fill)
+                .style(|_| CustomStyles::card_container());
+
+                files_column = files_column.push(file_row);
+            }
+        }
+
+        let scrollable_files = scrollable(files_column)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fixed(360.0));
+
+        modal_body = modal_body.push(scrollable_files);
+
+        // Barra inferior: resumen de elementos y botón de cierre
+        let total_count = self.storage_files.len();
+        let dirs_count = self.storage_files.iter().filter(|f| f.is_dir).count();
+        let regular_count = total_count - dirs_count;
+        let summary_text = Translations::storage_summary_counts(total_count, dirs_count, regular_count, self.language);
+
+        let footer = row![
+            text(summary_text).size(11).color(CustomStyles::text_muted()),
+            space::horizontal(),
+            self.tip(
+                button(text(Translations::close(self.language)).size(12))
+                    .style(|_, _| CustomStyles::primary_button())
+                    .padding(Padding::from([6, 18]))
+                    .on_press(Message::CloseStorageExplorer),
+                Translations::tip_close(self.language),
+                tooltip::Position::Top,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        modal_body = modal_body.push(footer);
+
+        let content = column![
+            title_row,
+            subtitle,
+            modal_body,
+        ]
+        .spacing(12);
+
+        container(content)
+            .padding(20)
+            .width(1080)
+            .max_height(780)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
+            .into()
     }
 }
