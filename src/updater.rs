@@ -222,6 +222,7 @@ impl UpdateChecker {
         {
             use std::os::unix::process::CommandExt;
             let mut cmd = std::process::Command::new(&exe_path);
+            cmd.arg("--from-restart");
             cmd.stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
@@ -244,8 +245,13 @@ impl UpdateChecker {
 
         #[cfg(not(unix))]
         {
-            let _ = std::process::Command::new(&exe_path).spawn();
+            let mut cmd = std::process::Command::new(&exe_path);
+            cmd.arg("--from-restart");
+            let _ = cmd.spawn();
         }
+
+        // Clean up single instance socket so the newly spawned instance can bind cleanly
+        let _ = std::fs::remove_file(crate::single_instance::get_socket_path());
 
         std::thread::sleep(std::time::Duration::from_millis(150));
         std::process::exit(0);

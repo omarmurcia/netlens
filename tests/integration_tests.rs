@@ -2514,3 +2514,60 @@ fn test_in_app_update_progress_states() {
     assert_ne!(p2, p3);
     assert_eq!(p4, InAppUpdateProgress::Failed("Auth error".to_string()));
 }
+
+#[tokio::test]
+async fn test_single_instance_lifecycle_and_secondary_detection() {
+    use netlens::single_instance::{acquire_single_instance, InstanceStatus};
+
+    let temp_dir = std::env::temp_dir().join(format!("netlens_test_si_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    let orig_xdg = std::env::var("XDG_RUNTIME_DIR").ok();
+    unsafe {
+        std::env::set_var("XDG_RUNTIME_DIR", &temp_dir);
+    }
+
+    // 1. Primary instance acquires the lock
+    let status1 = acquire_single_instance(false, false).await;
+    let guard = match status1 {
+        InstanceStatus::Primary(g) => g,
+        InstanceStatus::SecondaryNotified => panic!("First instance must be Primary"),
+    };
+
+    assert!(guard.socket_path.exists(), "Socket path should exist for primary instance");
+
+    // 2. Secondary instance attempts acquisition -> should be SecondaryNotified
+    let status2 = acquire_single_instance(false, false).await;
+    match status2 {
+        InstanceStatus::SecondaryNotified => {} // Expected
+        InstanceStatus::Primary(_) => panic!("Second instance must not become Primary while first is running"),
+    }
+
+    // 3. Drop guard -> socket should be cleaned up
+    drop(guard);
+    assert!(!temp_dir.join("netlens.sock").exists(), "Socket file must be removed when guard is dropped");
+
+    // 4. Stale socket recovery: create empty file to simulate ungraceful crash
+    let stale_socket = temp_dir.join("netlens.sock");
+    std::fs::write(&stale_socket, b"stale").expect("Failed to write dummy stale socket file");
+    assert!(stale_socket.exists());
+
+    let status3 = acquire_single_instance(false, false).await;
+    match status3 {
+        InstanceStatus::Primary(g3) => {
+            assert!(g3.socket_path.exists());
+            drop(g3);
+        }
+        InstanceStatus::SecondaryNotified => panic!("Should recover from stale socket without listener"),
+    }
+
+    // Cleanup environment
+    unsafe {
+        if let Some(orig) = orig_xdg {
+            std::env::set_var("XDG_RUNTIME_DIR", orig);
+        } else {
+            std::env::remove_var("XDG_RUNTIME_DIR");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

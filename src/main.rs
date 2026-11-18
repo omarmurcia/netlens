@@ -21,6 +21,7 @@ mod uptime;
 mod widget;
 mod wifi_analyzer;
 mod updater;
+mod single_instance;
 
 use app::App;
 use iced::futures::StreamExt;
@@ -60,6 +61,18 @@ fn main() -> iced::Result {
         rt.block_on(run_cli_scan());
         return Ok(());
     }
+
+    // Single-instance enforcement:
+    // If NetLens is already running, notify it to restore/focus its window and exit immediately
+    let is_minimized = args.iter().any(|a| a == "--minimized" || a == "--background");
+    let is_restart = args.iter().any(|a| a == "--from-restart");
+    let _instance_guard = match rt.block_on(single_instance::acquire_single_instance(is_minimized, is_restart)) {
+        single_instance::InstanceStatus::Primary(guard) => guard,
+        single_instance::InstanceStatus::SecondaryNotified => {
+            // Already running; notified primary instance to focus window. Exit cleanly.
+            return Ok(());
+        }
+    };
 
     // GUI Daemon mode with Iced (runs in background with System Tray without remaining pinned to taskbar)
     iced::daemon(App::boot, App::update, App::view)
