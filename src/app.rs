@@ -257,6 +257,7 @@ pub struct App {
     pub alias_input: String,
     pub current_theme: Theme,
     pub language: Language,
+    pub logo_handle: iced::widget::image::Handle,
     pub is_settings_open: bool,
     pub is_about_open: bool,
     pub is_speed_test_open: bool,
@@ -683,6 +684,10 @@ impl App {
         let initial_gateway_ip = network.gateway_ip.map(|g| g.to_string());
         let storage_target_ip = initial_gateway_ip.clone().unwrap_or_else(|| "192.168.1.1".to_string());
 
+        let logo_handle = iced::widget::image::Handle::from_bytes(
+            include_bytes!("../assets/netlens.png").as_slice(),
+        );
+
         let mut app = Self {
             network,
             devices,
@@ -704,6 +709,7 @@ impl App {
             alias_input: String::new(),
             current_theme,
             language,
+            logo_handle,
             is_settings_open: false,
             is_about_open: false,
             is_speed_test_open: false,
@@ -3922,11 +3928,9 @@ impl App {
     /// Application header and redesigned modular toolbar
     fn view_header(&self) -> Element<'_, Message> {
         // 1. Official app icon in top-left corner
-        let app_icon = iced::widget::image(iced::widget::image::Handle::from_bytes(
-            include_bytes!("../assets/netlens.png").as_slice(),
-        ))
-        .width(30)
-        .height(30);
+        let app_icon = iced::widget::image(self.logo_handle.clone())
+            .width(30)
+            .height(30);
 
         let title_row = row![
             app_icon,
@@ -4711,21 +4715,19 @@ impl App {
         .align_y(Alignment::Center);
 
         // 1. App Header Card with official Logo
-        let app_icon = iced::widget::image(iced::widget::image::Handle::from_bytes(
-            include_bytes!("../assets/netlens.png").as_slice(),
-        ))
-        .width(68)
-        .height(68);
+        let app_icon = iced::widget::image(self.logo_handle.clone())
+            .width(68)
+            .height(68);
 
         let app_info = column![
             row![
                 text("NetLens").size(24).color(CustomStyles::accent_cyan()),
-                container(text("v0.1.0").size(11).color(CustomStyles::accent_emerald()))
-                    .padding(Padding::from([2, 8]))
-                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_emerald(), Color::BLACK)),
+                container(text("v0.1.0-2").size(11).color(CustomStyles::accent_emerald()))
+                    .padding(Padding::from([3, 9]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
                 container(text("CachyOS / Arch Linux").size(10).color(CustomStyles::accent_purple()))
-                    .padding(Padding::from([2, 7]))
-                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
+                    .padding(Padding::from([3, 9]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(35, 20, 50), CustomStyles::accent_purple())),
             ]
             .spacing(10)
             .align_y(Alignment::Center),
@@ -4863,7 +4865,7 @@ impl App {
 
         // 5. Footer with Language Switcher and Close Button
         let footer_row = row![
-            text(format!("🌐 {}:", Translations::language_label(self.language)))
+            text(format!("🌐 {}", Translations::language_label(self.language)))
                 .size(12)
                 .color(CustomStyles::text_muted()),
             pick_list(
