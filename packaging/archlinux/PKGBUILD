@@ -1,0 +1,37 @@
+# Maintainer: Omar Murcia <ing.omarmurcia@gmail.com>
+pkgname=netlens
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Modern visual local network explorer and monitor with Wi-Fi analysis and router storage management"
+arch=('x86_64')
+url="https://github.com/omarmurcia/netlens"
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'hicolor-icon-theme')
+optdepends=(
+    'zenity: native file picker dialog for GNOME/GTK'
+    'kdialog: native file picker dialog for KDE Plasma'
+    'iproute2: network utilities and real-time netlink kernel monitoring'
+    'ethtool: advanced Ethernet link and full duplex telemetry'
+)
+provides=('netlens')
+conflicts=('netlens-bin' 'netlens-git')
+
+source=(
+    "netlens"
+    "netlens.desktop"
+    "netlens.png"
+    "netlens.svg"
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+    # 1. Install compiled binary
+    install -Dm755 "${srcdir}/netlens" "${pkgdir}/usr/bin/netlens"
+
+    # 2. Install desktop entry (.desktop)
+    install -Dm644 "${srcdir}/netlens.desktop" "${pkgdir}/usr/share/applications/netlens.desktop"
+
+    # 3. Install high-resolution icons
+    install -Dm644 "${srcdir}/netlens.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/netlens.png"
+    install -Dm644 "${srcdir}/netlens.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/netlens.svg"
+}

@@ -6,7 +6,7 @@ use std::process::Stdio;
 use std::time::Instant;
 use tokio::process::Command;
 
-/// Información de un archivo local a transferir
+/// Information about a local file to transfer
 #[derive(Debug, Clone)]
 pub struct LocalFileInfo {
     pub abs_path: PathBuf,
@@ -14,7 +14,7 @@ pub struct LocalFileInfo {
     pub size: u64,
 }
 
-/// Estado actual del progreso de subida de archivos o carpetas
+/// Current upload progress state for files or folders
 #[derive(Debug, Clone)]
 pub struct StorageUploadProgress {
     pub is_folder: bool,
@@ -31,7 +31,7 @@ pub struct StorageUploadProgress {
     pub error: Option<String>,
 }
 
-/// Eventos transmitidos durante la subida de archivos o carpetas
+/// Events emitted during file or folder upload
 #[derive(Debug, Clone)]
 pub enum StorageUploadEvent {
     Started {
@@ -59,7 +59,7 @@ pub enum StorageUploadEvent {
     Error(String),
 }
 
-/// Helper para leer los bytes leídos por un proceso desde /proc/<pid>/io en Linux
+/// Helper to read bytes read by a process from /proc/<pid>/io on Linux
 fn get_process_read_bytes(pid: u32) -> Option<u64> {
     let path = format!("/proc/{}/io", pid);
     let content = std::fs::read_to_string(path).ok()?;
@@ -73,7 +73,7 @@ fn get_process_read_bytes(pid: u32) -> Option<u64> {
     None
 }
 
-/// Tipos de archivos reconocidos en el almacenamiento del router
+/// Recognized file types in router storage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageFileType {
     Folder,
@@ -137,7 +137,7 @@ impl StorageFileType {
     }
 }
 
-/// Entrada de archivo o directorio en el almacenamiento del router
+/// File or directory entry in router storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageFileEntry {
     pub name: String,
@@ -170,7 +170,7 @@ impl StorageFileEntry {
     }
 }
 
-/// Formatea tamaños en formato legible para humanos
+/// Formats sizes into human-readable representation
 pub fn format_file_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -190,7 +190,7 @@ pub fn format_file_size(bytes: u64) -> String {
     }
 }
 
-/// Recurso compartido (Share) expuesto por el router (ej. usbdisk, public)
+/// Shared resource (Share) exposed by router (e.g. usbdisk, public)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageShare {
     pub name: String,
@@ -198,7 +198,7 @@ pub struct StorageShare {
     pub comment: String,
 }
 
-/// Información de espacio y capacidad del disco conectado al router
+/// Disk capacity and space info connected to router
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct StorageDiskInfo {
     pub total_bytes: u64,
@@ -224,7 +224,7 @@ impl StorageDiskInfo {
     }
 }
 
-/// Credenciales opcionales para acceder al recurso compartido del router
+/// Optional credentials to access router shared resource
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StorageCredentials {
     pub username: String,
@@ -238,11 +238,11 @@ impl StorageCredentials {
     }
 }
 
-/// Administrador y cliente de operaciones para almacenamiento USB / NAS del router
+/// Operations manager and client for router USB / NAS storage
 pub struct RouterStorageManager;
 
 impl RouterStorageManager {
-    /// Comprueba rápidamente si el router tiene servicio de almacenamiento (SMB/CIFS) activo en puerto 445 o 139
+    /// Quickly checks if router has active storage service (SMB/CIFS) on port 445 or 139
     #[allow(dead_code)]
     pub async fn probe_storage_service(ip: Ipv4Addr) -> bool {
         let probe_445 = tokio::time::timeout(
@@ -266,7 +266,7 @@ impl RouterStorageManager {
         .unwrap_or(false)
     }
 
-    /// Construye los argumentos de autenticación para smbclient
+    /// Constructs authentication arguments for smbclient
     fn build_auth_args(creds: &StorageCredentials) -> Vec<String> {
         let mut args = Vec::new();
         if creds.is_empty() {
@@ -290,7 +290,7 @@ impl RouterStorageManager {
         args
     }
 
-    /// Parsea la salida de `smbclient -L <ip> -g` o `-L <ip>` para obtener los nombres de los discos compartidos
+    /// Parses output from `smbclient -L <ip> -g` or `-L <ip>` to extract shared disk names
     pub fn parse_shares_output(output: &str) -> Vec<StorageShare> {
         let mut shares = Vec::new();
 
@@ -300,7 +300,7 @@ impl RouterStorageManager {
                 continue;
             }
 
-            // Formato grepable de smbclient: Disk|share_name|comment
+            // smbclient grepable format: Disk|share_name|comment
             if line.contains('|') {
                 let parts: Vec<&str> = line.split('|').collect();
                 if parts.len() >= 2 {
@@ -319,9 +319,9 @@ impl RouterStorageManager {
                 continue;
             }
 
-            // Formato estándar tabulado de smbclient:
+            // Standard tabulated format of smbclient:
             // Sharename Type Comment
-            // usbdisk Disk Almacenamiento USB
+            // usbdisk Disk USB Storage
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
                 let name = parts[0].trim();
@@ -346,19 +346,19 @@ impl RouterStorageManager {
             }
         }
 
-        // Si no se detectó ningún share pero se sabe que es un disco, proveer fallback predeterminado
+        // If no share detected but output references a disk, provide default fallback
         if shares.is_empty() && output.to_lowercase().contains("disk") {
             shares.push(StorageShare {
                 name: "usbdisk".to_string(),
                 share_type: "Disk".to_string(),
-                comment: "Almacenamiento USB del Router".to_string(),
+                comment: "Router USB Storage".to_string(),
             });
         }
 
         shares
     }
 
-    /// Parsea la salida de `smbclient ... -c "ls"` devolviendo la lista de archivos/carpetas y el espacio en disco
+    /// Parses output from `smbclient ... -c "ls"`, returning list of files/folders and disk space
     pub fn parse_directory_output(output: &str) -> (Vec<StorageFileEntry>, Option<StorageDiskInfo>) {
         let mut files = Vec::new();
         let mut disk_info = None;
@@ -369,8 +369,8 @@ impl RouterStorageManager {
                 continue;
             }
 
-            // Detección de la línea de resumen de bloques de disco:
-            // ej. "48828125 blocks of size 4096. 31250000 blocks available"
+            // Detection of disk block summary line:
+            // e.g. "48828125 blocks of size 4096. 31250000 blocks available"
             if trimmed.contains("blocks of size") && trimmed.contains("available") {
                 if let Some(info) = Self::parse_disk_blocks_line(trimmed) {
                     disk_info = Some(info);
@@ -378,21 +378,21 @@ impl RouterStorageManager {
                 continue;
             }
 
-            // Saltear directorios relativos "." y ".."
+            // Skip relative directories "." and ".."
             if trimmed.starts_with(". ") || trimmed.starts_with(".. ") || trimmed == "." || trimmed == ".." {
                 continue;
             }
 
-            // Parsear línea de archivo / carpeta:
-            // Formato de smbclient: "  Filename   ATTR   SIZE   DATE"
-            // Ej: "Fotos           D        0  Sun Oct 12 14:30:10 2025"
-            // Ej: "backup.zip      A 104857600  Mon Nov 16 18:22:45 2026"
+            // Parse file / folder line:
+            // smbclient format: "  Filename   ATTR   SIZE   DATE"
+            // e.g.: "Photos          D        0  Sun Oct 12 14:30:10 2025"
+            // e.g.: "backup.zip      A 104857600  Mon Nov 16 18:22:45 2026"
             if let Some(entry) = Self::parse_single_file_line(line) {
                 files.push(entry);
             }
         }
 
-        // Ordenar: primero carpetas alfabéticamente, luego archivos alfabéticamente
+        // Sort: folders first alphabetically, then files alphabetically
         files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -402,7 +402,7 @@ impl RouterStorageManager {
         (files, disk_info)
     }
 
-    /// Parsea la línea de resumen de bloques de disco
+    /// Parses disk block summary line
     fn parse_disk_blocks_line(line: &str) -> Option<StorageDiskInfo> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         // [total_blocks, "blocks", "of", "size", block_size_with_dot, free_blocks, "blocks", "available"]
@@ -423,21 +423,21 @@ impl RouterStorageManager {
         None
     }
 
-    /// Parsea una línea de archivo individual devuelta por `smbclient`
+    /// Parses an individual file line returned by `smbclient`
     fn parse_single_file_line(line: &str) -> Option<StorageFileEntry> {
         let tokens: Vec<&str> = line.split_whitespace().collect();
-        // Se requieren al menos: nombre, atributos, tamaño y fecha
+        // At least requires: name, attributes, size and date
         if tokens.len() < 4 {
             return None;
         }
 
-        // En smbclient, los últimos tokens corresponden a la fecha:
-        // ej. "Sun Oct 12 14:30:10 2025" (5 tokens) o "2026-11-17 12:00:00" (2 tokens)
-        // Buscamos hacia atrás el primer número que corresponde al tamaño (size_bytes)
+        // In smbclient, the last tokens correspond to date:
+        // e.g. "Sun Oct 12 14:30:10 2025" (5 tokens) or "2026-11-17 12:00:00" (2 tokens)
+        // Search backwards for first number representing size (size_bytes)
         let mut size_idx = None;
         for i in (1..tokens.len()).rev() {
             if tokens[i].parse::<u64>().is_ok() {
-                // Verificar que el token anterior o dos anteriores sea una cadena de atributos (D, A, R, H, S, etc.)
+                // Verify previous token is an attribute string (D, A, R, H, S, etc.)
                 if i > 0 && tokens[i - 1].chars().all(|c| "DARHSN".contains(c)) {
                     size_idx = Some(i);
                     break;
@@ -467,7 +467,7 @@ impl RouterStorageManager {
         ))
     }
 
-    /// Consulta los recursos compartidos disponibles en el router
+    /// Queries available shares on the router
     pub async fn list_shares(
         ip: Ipv4Addr,
         creds: &StorageCredentials,
@@ -488,22 +488,22 @@ impl RouterStorageManager {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Error ejecutando smbclient: {}", e))?;
+            .map_err(|e| format!("Error executing smbclient: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !output.status.success() && stdout.trim().is_empty() {
             return Err(format!(
-                "No se pudo consultar recursos compartidos en {}: {}",
+                "Failed to query shares on {}: {}",
                 ip,
-                if stderr.trim().is_empty() { "Conexión rechazada o timeout" } else { stderr.trim() }
+                if stderr.trim().is_empty() { "Connection refused or timeout" } else { stderr.trim() }
             ));
         }
 
         let shares = Self::parse_shares_output(&stdout);
         if shares.is_empty() {
-            // Intentar sin -g por compatibilidad con servidores samba muy antiguos
+            // Try without -g for compatibility with legacy samba servers
             let mut fallback_cmd = Command::new("smbclient");
             fallback_cmd
                 .arg("-L")
@@ -520,13 +520,13 @@ impl RouterStorageManager {
                     return Ok(fb_shares);
                 }
             }
-            return Err(format!("El router en {} no tiene ningún disco o carpeta compartida visible.", ip));
+            return Err(format!("Router at {} does not have any visible disk or shared folder.", ip));
         }
 
         Ok(shares)
     }
 
-    /// Lista los archivos y subdirectorios de una ruta dentro de un recurso compartido
+    /// Lists files and subdirectories of a path within a shared resource
     pub async fn list_directory(
         ip: Ipv4Addr,
         share: &str,
@@ -539,7 +539,7 @@ impl RouterStorageManager {
         let smb_command = if clean_subpath.is_empty() {
             "ls".to_string()
         } else {
-            // Convertir / a \ para smbclient
+            // Convert / to \ for smbclient
             let win_path = clean_subpath.replace('/', "\\");
             format!("cd \"{}\"; ls", win_path)
         };
@@ -560,17 +560,17 @@ impl RouterStorageManager {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Error consultando directorio vía smbclient: {}", e))?;
+            .map_err(|e| format!("Error querying directory via smbclient: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         if !output.status.success() && stdout.trim().is_empty() {
             return Err(format!(
-                "Error al listar contenido de '{}/{}': {}",
+                "Error listing content of '{}/{}': {}",
                 share,
                 clean_subpath,
-                if stderr.trim().is_empty() { "Error de acceso" } else { stderr.trim() }
+                if stderr.trim().is_empty() { "Access error" } else { stderr.trim() }
             ));
         }
 
@@ -578,7 +578,7 @@ impl RouterStorageManager {
         Ok((files, disk_info))
     }
 
-    /// Crea un nuevo directorio en el almacenamiento del router
+    /// Creates a new directory in router storage
     pub async fn create_folder(
         ip: Ipv4Addr,
         share: &str,
@@ -611,17 +611,17 @@ impl RouterStorageManager {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Error creando carpeta: {}", e))?;
+            .map_err(|e| format!("Error creating folder: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("No se pudo crear la carpeta: {}", stderr.trim()));
+            return Err(format!("Could not create folder: {}", stderr.trim()));
         }
 
         Ok(())
     }
 
-    /// Elimina un archivo o directorio en el almacenamiento del router
+    /// Deletes a file or directory in router storage
     pub async fn delete_entry(
         ip: Ipv4Addr,
         share: &str,
@@ -643,8 +643,8 @@ impl RouterStorageManager {
         let service = format!("//{}/{}", ip, share);
         let win_parent = parent_dir.replace('/', "\\");
 
-        // Para directorios: primero intentar con deltree (borrado recursivo nativo en Samba 4.7+)
-        // Para archivos: del <archivo>.
+        // For directories: first attempt deltree (native recursive deletion in Samba 4.7+)
+        // For files: del <file>.
         let smb_command = if is_dir {
             if win_parent.is_empty() {
                 format!("deltree \"{}\"", entry_name)
@@ -673,25 +673,25 @@ impl RouterStorageManager {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Error eliminando elemento: {}", e))?;
+            .map_err(|e| format!("Error deleting entry: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        // Si ya no existe (NT_STATUS_OBJECT_NAME_NOT_FOUND o NO_SUCH_FILE), la eliminación fue exitosa
+        // If no longer exists (NT_STATUS_OBJECT_NAME_NOT_FOUND or NO_SUCH_FILE), deletion was successful
         let already_gone = stdout.contains("NT_STATUS_OBJECT_NAME_NOT_FOUND")
             || stderr.contains("NT_STATUS_OBJECT_NAME_NOT_FOUND")
             || stdout.contains("NT_STATUS_NO_SUCH_FILE")
             || stderr.contains("NT_STATUS_NO_SUCH_FILE");
 
         if output.status.success() || already_gone {
-            // Dar tiempo al sistema de archivos del router para sincronizar y actualizar el espacio libre
+            // Allow router file system time to synchronize and update free space
             tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
             return Ok(());
         }
 
-        // Si es directorio y deltree falló (ej. servidor Samba antiguo sin soporte deltree),
-        // intentar con fallback recursivo mdel y rmdir
+        // If directory and deltree failed (e.g. legacy Samba server without deltree),
+        // try with recursive fallback mdel and rmdir
         if is_dir {
             let fallback_clean = if win_parent.is_empty() {
                 format!("cd \"{}\"; recurse ON; prompt OFF; mdel *; cd ..; rmdir \"{}\"", entry_name, entry_name)
@@ -724,7 +724,7 @@ impl RouterStorageManager {
                 }
             }
 
-            // Fallback simple a rmdir si el directorio ya estaba vacío
+            // Simple fallback to rmdir if directory was already empty
             let fallback_cmd = if win_parent.is_empty() {
                 format!("rmdir \"{}\"", entry_name)
             } else {
@@ -762,12 +762,12 @@ impl RouterStorageManager {
         } else if !stdout.trim().is_empty() {
             stdout.trim()
         } else {
-            "Error en comando de eliminación smbclient"
+            "Error executing smbclient deletion"
         };
-        Err(format!("No se pudo eliminar: {}", err_msg))
+        Err(format!("Could not delete: {}", err_msg))
     }
 
-    /// Descarga un archivo desde el router a una ruta local
+    /// Downloads a file from the router to a local path
     pub async fn download_file(
         ip: Ipv4Addr,
         share: &str,
@@ -795,19 +795,19 @@ impl RouterStorageManager {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Error descargando archivo: {}", e))?;
+            .map_err(|e| format!("Error downloading file: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Fallo en la descarga: {}", stderr.trim()));
+            return Err(format!("Download failed: {}", stderr.trim()));
         }
 
         Ok(local_dest.to_path_buf())
     }
 
-    /// Muestra el selector nativo del sistema operativo (zenity / kdialog) para elegir un archivo o carpeta local
+    /// Displays native OS picker (zenity / kdialog) to select a local file or folder
     pub async fn pick_path_with_file_dialog(is_directory: bool, title: &str) -> Option<PathBuf> {
-        // 1. Probar con zenity (entornos GTK / GNOME / Cinnamon / XFCE / MATE)
+        // 1. Try with zenity (GTK / GNOME / Cinnamon / XFCE / MATE environments)
         let mut cmd = Command::new("zenity");
         cmd.arg("--file-selection");
         cmd.arg(format!("--title={}", title));
@@ -827,7 +827,7 @@ impl RouterStorageManager {
             }
         }
 
-        // 2. Probar con kdialog (entornos KDE Plasma / Qt)
+        // 2. Try with kdialog (KDE Plasma / Qt environments)
         let mut kcmd = Command::new("kdialog");
         kcmd.arg(format!("--title={}", title));
         if is_directory {
@@ -853,14 +853,14 @@ impl RouterStorageManager {
         None
     }
 
-    /// Recolecta recursivamente todos los archivos locales dentro de un directorio
+    /// Recursively collects all local files within a directory
     pub fn collect_files_recursive(
         dir: &Path,
         prefix: &str,
         out: &mut Vec<LocalFileInfo>,
     ) -> Result<(), String> {
         let entries = std::fs::read_dir(dir)
-            .map_err(|e| format!("Error leyendo carpeta '{}': {}", dir.display(), e))?;
+            .map_err(|e| format!("Error reading directory '{}': {}", dir.display(), e))?;
 
         for entry in entries.flatten() {
             let path = entry.path();
@@ -890,7 +890,7 @@ impl RouterStorageManager {
         Ok(())
     }
 
-    /// Sube un archivo local hacia el almacenamiento del router con emisión de progreso
+    /// Uploads a local file to router storage with progress reporting
     pub async fn upload_file_with_progress(
         ip: Ipv4Addr,
         share: &str,
@@ -923,10 +923,10 @@ impl RouterStorageManager {
         if let Some(ref tx) = progress_tx {
             let _ = tx.unbounded_send(StorageUploadEvent::Started {
                 is_folder: false,
-                title: format!("Subiendo archivo: {}", file_name),
+                title: format!("Uploading file: {}", file_name),
                 total_items: 1,
                 total_bytes: file_size,
-                target_dir: if parent_dir.is_empty() { "Raíz".to_string() } else { parent_dir.to_string() },
+                target_dir: if parent_dir.is_empty() { "Root".to_string() } else { parent_dir.to_string() },
             });
             let _ = tx.unbounded_send(StorageUploadEvent::Progress {
                 current_item: file_name.to_string(),
@@ -934,7 +934,7 @@ impl RouterStorageManager {
                 total_items: 1,
                 bytes_uploaded: 0,
                 total_bytes: file_size,
-                speed_str: "Iniciando transferencia...".to_string(),
+                speed_str: "Starting transfer...".to_string(),
                 percent: 0.0,
             });
         }
@@ -953,11 +953,11 @@ impl RouterStorageManager {
         }
 
         let start_time = Instant::now();
-        let mut child = cmd.spawn().map_err(|e| format!("Error iniciando smbclient: {}", e))?;
+        let mut child = cmd.spawn().map_err(|e| format!("Error starting smbclient: {}", e))?;
         let pid = child.id();
         let initial_rchar = pid.and_then(get_process_read_bytes).unwrap_or(0);
 
-        // Monitorear progreso mientras smbclient se ejecuta en tiempo real
+        // Monitor progress while smbclient runs in real time
         let mut loop_counter: u64 = 0;
         loop {
             match child.try_wait() {
@@ -967,13 +967,13 @@ impl RouterStorageManager {
                     if let Some(tx) = progress_tx.as_ref() {
                         let elapsed = start_time.elapsed().as_secs_f64().max(0.05);
 
-                        // 1. Lectura real de disco vía /proc/<pid>/io si el kernel lo expone
+                        // 1. Actual disk read via /proc/<pid>/io if supported
                         let read_diff = pid
                             .and_then(get_process_read_bytes)
                             .unwrap_or(initial_rchar)
                             .saturating_sub(initial_rchar);
 
-                        // 2. Modelo dinámico de transferencia LAN/Wi-Fi progresiva (aprox 18 MB/s con variación natural)
+                        // 2. Dynamic model for LAN/Wi-Fi transfer (~18 MB/s with natural variations)
                         let estimated_rate = 18_000_000.0 + (elapsed * 2.0).sin() * 2_000_000.0;
                         let estimated_bytes = (elapsed * estimated_rate) as u64;
 
@@ -983,7 +983,7 @@ impl RouterStorageManager {
                             estimated_bytes
                         };
 
-                        // Limitar al 96% durante la transferencia activa para que el 100% solo se envíe tras confirmación de smbclient
+                        // Limit to 96% during active transfer so 100% only triggers on smbclient completion
                         let active_max = ((file_size as f64) * 0.96) as u64;
                         let bytes_done = effective_bytes.min(active_max).min(file_size);
 
@@ -1009,7 +1009,7 @@ impl RouterStorageManager {
                     tokio::time::sleep(tokio::time::Duration::from_millis(80)).await;
                 }
                 Err(e) => {
-                    return Err(format!("Error esperando a smbclient: {}", e));
+                    return Err(format!("Error waiting for smbclient: {}", e));
                 }
             }
         }
@@ -1017,7 +1017,7 @@ impl RouterStorageManager {
         let output = child
             .wait_with_output()
             .await
-            .map_err(|e| format!("Error obteniendo salida de smbclient: {}", e))?;
+            .map_err(|e| format!("Error obtaining smbclient output: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1027,9 +1027,9 @@ impl RouterStorageManager {
             } else if !stdout.trim().is_empty() {
                 stdout.trim()
             } else {
-                "Error de transferencia en smbclient"
+                "Transfer error in smbclient"
             };
-            return Err(format!("Fallo en la subida: {}", err_msg));
+            return Err(format!("Upload failed: {}", err_msg));
         }
 
         let elapsed = start_time.elapsed().as_secs_f64().max(0.05);
@@ -1046,7 +1046,7 @@ impl RouterStorageManager {
                 percent: 100.0,
             });
             let _ = tx.unbounded_send(StorageUploadEvent::Completed {
-                message: format!("Archivo '{}' ({}) subido correctamente en {:.1}s", file_name, format_file_size(file_size), elapsed),
+                message: format!("File '{}' ({}) successfully uploaded in {:.1}s", file_name, format_file_size(file_size), elapsed),
                 total_items: 1,
                 total_bytes: file_size,
             });
@@ -1055,7 +1055,7 @@ impl RouterStorageManager {
         Ok(())
     }
 
-    /// Sube un archivo local hacia el almacenamiento del router
+    /// Uploads a local file to router storage
     #[allow(dead_code)]
     pub async fn upload_file(
         ip: Ipv4Addr,
@@ -1067,7 +1067,7 @@ impl RouterStorageManager {
         Self::upload_file_with_progress(ip, share, local_src, remote_dest_path, creds, None).await
     }
 
-    /// Sube una carpeta local hacia el almacenamiento del router con emisión de progreso
+    /// Uploads a local folder to router storage with progress reporting
     pub async fn upload_directory_with_progress(
         ip: Ipv4Addr,
         share: &str,
@@ -1079,9 +1079,9 @@ impl RouterStorageManager {
         let folder_name = local_dir
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("carpeta");
+            .unwrap_or("folder");
 
-        // 1. Recolectar todos los archivos recursivamente
+        // 1. Collect all files recursively
         let mut local_files = Vec::new();
         Self::collect_files_recursive(local_dir, "", &mut local_files)?;
 
@@ -1098,20 +1098,20 @@ impl RouterStorageManager {
         if let Some(ref tx) = progress_tx {
             let _ = tx.unbounded_send(StorageUploadEvent::Started {
                 is_folder: true,
-                title: format!("Subiendo carpeta: {} ({} archivos)", folder_name, total_items),
+                title: format!("Uploading folder: {} ({} files)", folder_name, total_items),
                 total_items,
                 total_bytes,
                 target_dir: new_remote_parent.clone(),
             });
         }
 
-        // 2. Crear la carpeta raíz en el router
+        // 2. Create root directory on router
         let _ = Self::create_folder(ip, share, remote_parent_dir, folder_name, creds).await;
 
         if total_items == 0 {
             if let Some(ref tx) = progress_tx {
                 let _ = tx.unbounded_send(StorageUploadEvent::Completed {
-                    message: format!("Carpeta '{}' creada con éxito (vacía)", folder_name),
+                    message: format!("Folder '{}' created successfully (empty)", folder_name),
                     total_items: 0,
                     total_bytes: 0,
                 });
@@ -1119,7 +1119,7 @@ impl RouterStorageManager {
             return Ok(0);
         }
 
-        // 3. Iterar y transferir cada archivo
+        // 3. Iterate and transfer each file
         let mut uploaded_count = 0;
         let mut accumulated_bytes: u64 = 0;
         let start_time = Instant::now();
@@ -1128,7 +1128,7 @@ impl RouterStorageManager {
         created_dirs.insert(String::new());
 
         for (idx, item) in local_files.iter().enumerate() {
-            // Asegurar que los directorios intermedios existen en el router
+            // Ensure intermediate directories exist on router
             if let Some(parent) = Path::new(&item.rel_path).parent() {
                 let parent_str = parent.to_str().unwrap_or("").trim_matches('/');
                 if !parent_str.is_empty() && !created_dirs.contains(parent_str) {
@@ -1172,7 +1172,7 @@ impl RouterStorageManager {
                 .await
             });
 
-            // Reenviar eventos de progreso del archivo actual hacia el progreso global de la carpeta
+            // Forward current file progress events to global folder progress
             use iced::futures::StreamExt;
             while let Some(evt) = file_rx.next().await {
                 if let StorageUploadEvent::Progress {
@@ -1204,7 +1204,7 @@ impl RouterStorageManager {
 
             let file_res = upload_task
                 .await
-                .map_err(|e| format!("Fallo en tarea asíncrona de subida: {}", e))??;
+                .map_err(|e| format!("Upload async task failed: {}", e))??;
             let _ = file_res;
 
             uploaded_count += 1;
@@ -1236,7 +1236,7 @@ impl RouterStorageManager {
         if let Some(ref tx) = progress_tx {
             let _ = tx.unbounded_send(StorageUploadEvent::Completed {
                 message: format!(
-                    "Carpeta '{}' subida con éxito: {} archivos ({}) en {:.1}s",
+                    "Folder '{}' uploaded successfully: {} files ({}) in {:.1}s",
                     folder_name,
                     uploaded_count,
                     format_file_size(total_bytes),
@@ -1250,7 +1250,7 @@ impl RouterStorageManager {
         Ok(uploaded_count)
     }
 
-    /// Sube una carpeta local completa recursivamente hacia el almacenamiento del router
+    /// Uploads an entire local folder recursively to router storage
     #[allow(dead_code)]
     pub async fn upload_directory_recursive(
         ip: Ipv4Addr,
@@ -1262,68 +1262,68 @@ impl RouterStorageManager {
         Self::upload_directory_with_progress(ip, share, local_dir, remote_parent_dir, creds, None).await
     }
 
-    /// Genera datos de demostración interactivos (Demo Mode) para pruebas inmediatas
+    /// Generates interactive demo shares for testing
     pub fn get_demo_shares() -> Vec<StorageShare> {
         vec![
             StorageShare {
-                name: "usb_almacenamiento".to_string(),
+                name: "usb_storage".to_string(),
                 share_type: "Disk".to_string(),
-                comment: "Memoria USB SanDisk 3.0 (NTFS)".to_string(),
+                comment: "SanDisk USB 3.0 Flash Drive (NTFS)".to_string(),
             },
             StorageShare {
                 name: "multimedia".to_string(),
                 share_type: "Disk".to_string(),
-                comment: "Disco Duro Externo 1TB (Ext4)".to_string(),
+                comment: "External Hard Drive 1TB (Ext4)".to_string(),
             },
         ]
     }
 
-    /// Obtiene la estructura inicial de archivos del modo de demostración
+    /// Returns initial file structure for demo mode
     pub fn get_initial_demo_files() -> std::collections::HashMap<String, Vec<StorageFileEntry>> {
         let mut map = std::collections::HashMap::new();
         map.insert(
             "".to_string(),
             vec![
-                StorageFileEntry::new("Fotos_Vacaciones".to_string(), true, 0, "12 Oct 2025 14:30".to_string(), "D".to_string()),
-                StorageFileEntry::new("Documentos_Trabajo".to_string(), true, 0, "05 Sep 2025 09:15".to_string(), "D".to_string()),
-                StorageFileEntry::new("Musica_Lossless".to_string(), true, 0, "20 Ago 2025 18:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Peliculas_4K".to_string(), true, 0, "01 Nov 2026 21:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Respaldos_Sistema".to_string(), true, 0, "15 Nov 2026 03:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Notas_Router.txt".to_string(), false, 12540, "16 Nov 2026 10:12".to_string(), "A".to_string()),
-                StorageFileEntry::new("Reporte_Red_NetLens.pdf".to_string(), false, 1450200, "17 Nov 2026 11:45".to_string(), "A".to_string()),
-                StorageFileEntry::new("Backup_Config_Linksys.bin".to_string(), false, 524288, "14 Nov 2026 19:22".to_string(), "A".to_string()),
+                StorageFileEntry::new("Vacation_Photos".to_string(), true, 0, "12 Oct 2025 14:30".to_string(), "D".to_string()),
+                StorageFileEntry::new("Work_Documents".to_string(), true, 0, "05 Sep 2025 09:15".to_string(), "D".to_string()),
+                StorageFileEntry::new("Lossless_Music".to_string(), true, 0, "20 Aug 2025 18:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("4K_Movies".to_string(), true, 0, "01 Nov 2026 21:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("System_Backups".to_string(), true, 0, "15 Nov 2026 03:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("Router_Notes.txt".to_string(), false, 12540, "16 Nov 2026 10:12".to_string(), "A".to_string()),
+                StorageFileEntry::new("NetLens_Network_Report.pdf".to_string(), false, 1450200, "17 Nov 2026 11:45".to_string(), "A".to_string()),
+                StorageFileEntry::new("Linksys_Config_Backup.bin".to_string(), false, 524288, "14 Nov 2026 19:22".to_string(), "A".to_string()),
             ],
         );
         map.insert(
-            "Fotos_Vacaciones".to_string(),
+            "Vacation_Photos".to_string(),
             vec![
-                StorageFileEntry::new("Playa_Atardecer.jpg".to_string(), false, 4850000, "12 Oct 2025 15:10".to_string(), "A".to_string()),
-                StorageFileEntry::new("Familia_Cena.png".to_string(), false, 6200100, "12 Oct 2025 20:30".to_string(), "A".to_string()),
-                StorageFileEntry::new("Video_Excursion.mp4".to_string(), false, 185000000, "13 Oct 2025 11:00".to_string(), "A".to_string()),
-                StorageFileEntry::new("Panoramica_Montana.webp".to_string(), false, 3100500, "14 Oct 2025 17:40".to_string(), "A".to_string()),
+                StorageFileEntry::new("Sunset_Beach.jpg".to_string(), false, 4850000, "12 Oct 2025 15:10".to_string(), "A".to_string()),
+                StorageFileEntry::new("Family_Dinner.png".to_string(), false, 6200100, "12 Oct 2025 20:30".to_string(), "A".to_string()),
+                StorageFileEntry::new("Trip_Video.mp4".to_string(), false, 185000000, "13 Oct 2025 11:00".to_string(), "A".to_string()),
+                StorageFileEntry::new("Mountain_Panorama.webp".to_string(), false, 3100500, "14 Oct 2025 17:40".to_string(), "A".to_string()),
             ],
         );
         map.insert(
-            "Documentos_Trabajo".to_string(),
+            "Work_Documents".to_string(),
             vec![
-                StorageFileEntry::new("Presupuesto_2027.xlsx".to_string(), false, 842000, "10 Nov 2026 09:00".to_string(), "A".to_string()),
-                StorageFileEntry::new("Contrato_Servicios.docx".to_string(), false, 320000, "08 Nov 2026 16:30".to_string(), "A".to_string()),
-                StorageFileEntry::new("Presentacion_Arquitectura.pptx".to_string(), false, 12500000, "15 Nov 2026 14:10".to_string(), "A".to_string()),
-                StorageFileEntry::new("Facturas_Noviembre.zip".to_string(), false, 4800000, "16 Nov 2026 18:50".to_string(), "A".to_string()),
+                StorageFileEntry::new("Budget_2027.xlsx".to_string(), false, 842000, "10 Nov 2026 09:00".to_string(), "A".to_string()),
+                StorageFileEntry::new("Service_Contract.docx".to_string(), false, 320000, "08 Nov 2026 16:30".to_string(), "A".to_string()),
+                StorageFileEntry::new("Architecture_Presentation.pptx".to_string(), false, 12500000, "15 Nov 2026 14:10".to_string(), "A".to_string()),
+                StorageFileEntry::new("November_Invoices.zip".to_string(), false, 4800000, "16 Nov 2026 18:50".to_string(), "A".to_string()),
             ],
         );
         map
     }
 
-    /// Obtiene el estado inicial de capacidad para el modo de demostración
+    /// Returns initial disk capacity state for demo mode
     pub fn get_initial_demo_disk() -> StorageDiskInfo {
         StorageDiskInfo {
             total_bytes: 128 * 1024 * 1024 * 1024,      // 128 GB
-            free_bytes: 78 * 1024 * 1024 * 1024 + 500,  // 78.5 GB libres
+            free_bytes: 78 * 1024 * 1024 * 1024 + 500,  // 78.5 GB free
         }
     }
 
-    /// Genera contenido de demostración para una ruta dada
+    /// Generates demo directory contents for a given path
     #[allow(dead_code)]
     pub fn get_demo_directory(subpath: &str) -> (Vec<StorageFileEntry>, Option<StorageDiskInfo>) {
         let clean = subpath.trim_matches('/');
@@ -1332,29 +1332,29 @@ impl RouterStorageManager {
 
         let files = match clean {
             "" => vec![
-                StorageFileEntry::new("Fotos_Vacaciones".to_string(), true, 0, "12 Oct 2025 14:30".to_string(), "D".to_string()),
-                StorageFileEntry::new("Documentos_Trabajo".to_string(), true, 0, "05 Sep 2025 09:15".to_string(), "D".to_string()),
-                StorageFileEntry::new("Musica_Lossless".to_string(), true, 0, "20 Ago 2025 18:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Peliculas_4K".to_string(), true, 0, "01 Nov 2026 21:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Respaldos_Sistema".to_string(), true, 0, "15 Nov 2026 03:00".to_string(), "D".to_string()),
-                StorageFileEntry::new("Notas_Router.txt".to_string(), false, 12540, "16 Nov 2026 10:12".to_string(), "A".to_string()),
-                StorageFileEntry::new("Reporte_Red_NetLens.pdf".to_string(), false, 1450200, "17 Nov 2026 11:45".to_string(), "A".to_string()),
-                StorageFileEntry::new("Backup_Config_Linksys.bin".to_string(), false, 524288, "14 Nov 2026 19:22".to_string(), "A".to_string()),
+                StorageFileEntry::new("Vacation_Photos".to_string(), true, 0, "12 Oct 2025 14:30".to_string(), "D".to_string()),
+                StorageFileEntry::new("Work_Documents".to_string(), true, 0, "05 Sep 2025 09:15".to_string(), "D".to_string()),
+                StorageFileEntry::new("Lossless_Music".to_string(), true, 0, "20 Aug 2025 18:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("4K_Movies".to_string(), true, 0, "01 Nov 2026 21:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("System_Backups".to_string(), true, 0, "15 Nov 2026 03:00".to_string(), "D".to_string()),
+                StorageFileEntry::new("Router_Notes.txt".to_string(), false, 12540, "16 Nov 2026 10:12".to_string(), "A".to_string()),
+                StorageFileEntry::new("NetLens_Network_Report.pdf".to_string(), false, 1450200, "17 Nov 2026 11:45".to_string(), "A".to_string()),
+                StorageFileEntry::new("Linksys_Config_Backup.bin".to_string(), false, 524288, "14 Nov 2026 19:22".to_string(), "A".to_string()),
             ],
-            "Fotos_Vacaciones" => vec![
-                StorageFileEntry::new("Playa_Atardecer.jpg".to_string(), false, 4850000, "12 Oct 2025 15:10".to_string(), "A".to_string()),
-                StorageFileEntry::new("Familia_Cena.png".to_string(), false, 6200100, "12 Oct 2025 20:30".to_string(), "A".to_string()),
-                StorageFileEntry::new("Video_Excursion.mp4".to_string(), false, 185000000, "13 Oct 2025 11:00".to_string(), "A".to_string()),
-                StorageFileEntry::new("Panoramica_Montana.webp".to_string(), false, 3100500, "14 Oct 2025 17:40".to_string(), "A".to_string()),
+            "Vacation_Photos" => vec![
+                StorageFileEntry::new("Sunset_Beach.jpg".to_string(), false, 4850000, "12 Oct 2025 15:10".to_string(), "A".to_string()),
+                StorageFileEntry::new("Family_Dinner.png".to_string(), false, 6200100, "12 Oct 2025 20:30".to_string(), "A".to_string()),
+                StorageFileEntry::new("Trip_Video.mp4".to_string(), false, 185000000, "13 Oct 2025 11:00".to_string(), "A".to_string()),
+                StorageFileEntry::new("Mountain_Panorama.webp".to_string(), false, 3100500, "14 Oct 2025 17:40".to_string(), "A".to_string()),
             ],
-            "Documentos_Trabajo" => vec![
-                StorageFileEntry::new("Presupuesto_2027.xlsx".to_string(), false, 842000, "10 Nov 2026 09:00".to_string(), "A".to_string()),
-                StorageFileEntry::new("Contrato_Servicios.docx".to_string(), false, 320000, "08 Nov 2026 16:30".to_string(), "A".to_string()),
-                StorageFileEntry::new("Presentacion_Arquitectura.pptx".to_string(), false, 12500000, "15 Nov 2026 14:10".to_string(), "A".to_string()),
-                StorageFileEntry::new("Facturas_Noviembre.zip".to_string(), false, 4800000, "16 Nov 2026 18:50".to_string(), "A".to_string()),
+            "Work_Documents" => vec![
+                StorageFileEntry::new("Budget_2027.xlsx".to_string(), false, 842000, "10 Nov 2026 09:00".to_string(), "A".to_string()),
+                StorageFileEntry::new("Service_Contract.docx".to_string(), false, 320000, "08 Nov 2026 16:30".to_string(), "A".to_string()),
+                StorageFileEntry::new("Architecture_Presentation.pptx".to_string(), false, 12500000, "15 Nov 2026 14:10".to_string(), "A".to_string()),
+                StorageFileEntry::new("November_Invoices.zip".to_string(), false, 4800000, "16 Nov 2026 18:50".to_string(), "A".to_string()),
             ],
             _ => vec![
-                StorageFileEntry::new("archivo_muestra.txt".to_string(), false, 1024, "17 Nov 2026 12:00".to_string(), "A".to_string()),
+                StorageFileEntry::new("sample_file.txt".to_string(), false, 1024, "17 Nov 2026 12:00".to_string(), "A".to_string()),
             ],
         };
 

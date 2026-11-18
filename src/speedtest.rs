@@ -70,7 +70,7 @@ pub struct SpeedTest;
 impl SpeedTest {
     pub async fn execute(sender: UnboundedSender<SpeedTestEvent>) {
         // ----------------------------------------------------
-        // 1. Etapa de Ping / Latencia (ICMP ping a 1.1.1.1 o HTTP connect time)
+        // 1. Ping / Latency Stage (ICMP ping to 1.1.1.1 or HTTP connect time)
         // ----------------------------------------------------
         let _ = sender.unbounded_send(SpeedTestEvent::PingStarted);
 
@@ -99,7 +99,7 @@ impl SpeedTest {
             }
         }
 
-        // Si falló el ping ICMP, usar connect time a 1.1.1.1 o Cloudflare
+        // If ICMP ping failed, use connect time to 1.1.1.1 or Cloudflare
         if ping_ms <= 0.0 {
             let res = Command::new("curl")
                 .arg("-s")
@@ -130,7 +130,7 @@ impl SpeedTest {
         let _ = sender.unbounded_send(SpeedTestEvent::PingDone(ping_ms));
 
         // ----------------------------------------------------
-        // 2. Etapa de Descarga Sostenida (Multi-stream con servidores OCA/CDN)
+        // 2. Sustained Download Stage (Multi-stream with OCA/CDN servers)
         // ----------------------------------------------------
         let _ = sender.unbounded_send(SpeedTestEvent::DownloadStarted);
         let _ = sender.unbounded_send(SpeedTestEvent::DownloadProgress {
@@ -141,7 +141,7 @@ impl SpeedTest {
         let mut server_label = "Netflix Open Connect CDN".to_string();
         let mut download_mbps = 0.0f64;
 
-        // Intentar Fast.com API para servidores locales en el ISP del usuario
+        // Try Fast.com API for local servers in the user's ISP
         let fast_api_out = Command::new("curl")
             .arg("-s")
             .arg("--max-time")
@@ -209,7 +209,7 @@ impl SpeedTest {
             }
         }
 
-        // Respaldo de descarga si Fast.com no respondió
+        // Fallback download if Fast.com did not respond
         if download_mbps <= 0.0 {
             server_label = "Cloudflare Global Anycast CDN".to_string();
             let start = Instant::now();
@@ -238,7 +238,7 @@ impl SpeedTest {
         let _ = sender.unbounded_send(SpeedTestEvent::DownloadDone(download_mbps));
 
         // ----------------------------------------------------
-        // 3. Etapa de Subida Sostenida (10 MB payload)
+        // 3. Sustained Upload Stage (10 MB payload)
         // ----------------------------------------------------
         let _ = sender.unbounded_send(SpeedTestEvent::UploadStarted);
         let _ = sender.unbounded_send(SpeedTestEvent::UploadProgress {
@@ -265,7 +265,7 @@ impl SpeedTest {
         {
             Ok(c) => c,
             Err(e) => {
-                let _ = sender.unbounded_send(SpeedTestEvent::Error(format!("Error iniciando subida: {}", e)));
+                let _ = sender.unbounded_send(SpeedTestEvent::Error(format!("Error starting upload: {}", e)));
                 return;
             }
         };
@@ -304,7 +304,7 @@ impl SpeedTest {
                 }
             }
             Err(e) => {
-                let _ = sender.unbounded_send(SpeedTestEvent::Error(format!("Error en subida: {}", e)));
+                let _ = sender.unbounded_send(SpeedTestEvent::Error(format!("Error during upload: {}", e)));
                 return;
             }
         };
@@ -312,7 +312,7 @@ impl SpeedTest {
         let _ = sender.unbounded_send(SpeedTestEvent::UploadDone(upload_mbps));
 
         // ----------------------------------------------------
-        // 4. Finalizado con éxito
+        // 4. Finished successfully
         // ----------------------------------------------------
         let result = SpeedTestResult {
             ping_ms,

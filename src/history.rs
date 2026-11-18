@@ -27,7 +27,7 @@ impl NetworkEventType {
 
     #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
-        self.label_localized(crate::i18n::Language::Spanish)
+        self.label_localized(crate::i18n::Language::English)
     }
 
     pub fn label_localized(&self, lang: crate::i18n::Language) -> &'static str {
@@ -59,7 +59,7 @@ impl NetworkEvent {
 pub struct HistoryManager;
 
 impl HistoryManager {
-    /// Crea un nuevo evento de red
+    /// Creates a new network timeline event
     pub fn create_event(
         event_type: NetworkEventType,
         title: String,
@@ -81,7 +81,7 @@ impl HistoryManager {
         }
     }
 
-    /// Envía una notificación nativa de escritorio en Linux (vía notify-send)
+    /// Dispatches a native desktop notification on Linux (via notify-send)
     #[allow(dead_code)]
     pub fn send_desktop_notification(title: &str, body: &str) {
         let _ = Command::new("notify-send")

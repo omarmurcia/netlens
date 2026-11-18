@@ -13,7 +13,7 @@ pub struct HopInfo {
 pub struct Traceroute;
 
 impl Traceroute {
-    /// Ejecuta un trazado de ruta asíncrono utilizando tracepath sin requerir privilegios de superusuario (root)
+    /// Executes an asynchronous traceroute using tracepath without requiring root privileges
     pub async fn trace(target: &str) -> Result<Vec<HopInfo>, String> {
         let output = Command::new("tracepath")
             .arg("-n")
@@ -22,23 +22,23 @@ impl Traceroute {
             .arg(target)
             .output()
             .await
-            .map_err(|e| format!("Error ejecutando tracepath: {}", e))?;
+            .map_err(|e| format!("Error executing tracepath: {}", e))?;
 
         let text = String::from_utf8_lossy(&output.stdout);
         let hops = Self::parse_output(&text, target);
         if hops.is_empty() {
-            return Err("No se obtuvieron saltos del trazado de ruta".to_string());
+            return Err("No hops obtained from traceroute".to_string());
         }
         Ok(hops)
     }
 
-    /// Parsea la salida textual de `tracepath -n`
+    /// Parses textual output of `tracepath -n`
     pub fn parse_output(text: &str, target: &str) -> Vec<HopInfo> {
         let mut hops: Vec<HopInfo> = Vec::new();
 
         for line in text.lines() {
             let line = line.trim();
-            // Formato de tracepath: " 1:  192.168.1.1  1.293ms" o " 6:  no reply"
+            // tracepath format: " 1:  192.168.1.1  1.293ms" or " 6:  no reply"
             if let Some(colon_pos) = line.find(':') {
                 let hop_str = line[..colon_pos].trim();
                 if let Ok(hop_num) = hop_str.parse::<u32>() {
@@ -70,13 +70,13 @@ impl Traceroute {
                             }
 
                             let label = if hop_num == 1 && (ip.starts_with("192.168.") || ip.starts_with("10.")) {
-                                Some("Router Local (Gateway)".to_string())
+                                Some("Local Router (Gateway)".to_string())
                             } else if hop_num == 2 && (ip.starts_with("192.168.") || ip.starts_with("10.")) {
                                 Some("Modem / ISP Gateway".to_string())
                             } else if hop_num == 3 {
-                                Some("Nodo Operador ISP".to_string())
+                                Some("ISP Operator Node".to_string())
                             } else if ip == target {
-                                Some("Destino Final".to_string())
+                                Some("Final Destination".to_string())
                             } else {
                                 None
                             };

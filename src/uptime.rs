@@ -7,15 +7,15 @@ use tokio::time::timeout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutageType {
-    IspInternetDown,   // Gateway responde, pero Internet (DNS público) está caído
-    LocalNetworkDown,  // Ni el Gateway local responde
+    IspInternetDown,   // Gateway responds, but Internet (public DNS) is down
+    LocalNetworkDown,  // Neither local Gateway nor Internet responds
 }
 
 impl OutageType {
     pub fn label(&self) -> &'static str {
         match self {
-            OutageType::IspInternetDown => "Corte de ISP / Proveedor de Internet",
-            OutageType::LocalNetworkDown => "Desconexión de Red Local (Wi-Fi / LAN)",
+            OutageType::IspInternetDown => "ISP / Internet Service Provider Outage",
+            OutageType::LocalNetworkDown => "Local Network Disconnection (Wi-Fi / LAN)",
         }
     }
 }
@@ -52,23 +52,23 @@ impl Default for UptimeTracker {
 }
 
 impl UptimeTracker {
-    /// Comprueba la conectividad hacia la puerta de enlace y hacia Internet (Cloudflare/Google DNS)
+    /// Checks connectivity to the gateway and the Internet (Cloudflare/Google DNS)
     pub async fn probe_connectivity(gateway_ip: Option<Ipv4Addr>) -> (bool, bool) {
-        // 1. Probar Gateway (puerto 80 o 53)
+        // 1. Probe Gateway (port 80 or 53)
         let gw_ok = if let Some(gw) = gateway_ip {
             Self::probe_tcp_quick(gw, 80).await || Self::probe_tcp_quick(gw, 53).await || Self::probe_ping(gw).await
         } else {
             false
         };
 
-        // 2. Probar Internet externo (1.1.1.1 o 8.8.8.8 en puerto 53 DNS)
+        // 2. Probe external Internet (1.1.1.1 or 8.8.8.8 on DNS port 53)
         let internet_ok = Self::probe_tcp_quick(Ipv4Addr::new(1, 1, 1, 1), 53).await
             || Self::probe_tcp_quick(Ipv4Addr::new(8, 8, 8, 8), 53).await;
 
         (gw_ok, internet_ok)
     }
 
-    /// Prueba rápida de socket TCP con timeout de 300ms
+    /// Quick TCP socket test with 350ms timeout
     async fn probe_tcp_quick(ip: Ipv4Addr, port: u16) -> bool {
         let addr = SocketAddrV4::new(ip, port);
         timeout(Duration::from_millis(350), TcpStream::connect(addr))
@@ -77,7 +77,7 @@ impl UptimeTracker {
             .unwrap_or(false)
     }
 
-    /// Prueba de ping rápido
+    /// Quick ping test
     async fn probe_ping(ip: Ipv4Addr) -> bool {
         tokio::process::Command::new("ping")
             .args(["-c", "1", "-W", "1", &ip.to_string()])
@@ -89,7 +89,7 @@ impl UptimeTracker {
             .unwrap_or(false)
     }
 
-    /// Registra el resultado del sondeo de conectividad y devuelve un mensaje de evento si hubo cambio de estado
+    /// Records connectivity probe result and returns an event message on state change
     pub fn record_probe(&mut self, gw_ok: bool, internet_ok: bool) -> Option<(crate::history::NetworkEventType, String, String)> {
         self.total_checks += 1;
         let now = Local::now();
@@ -99,7 +99,7 @@ impl UptimeTracker {
             self.consecutive_failures = 0;
 
             if !self.is_online {
-                // Recuperación de conexión tras una caída
+                // Connection recovery after an outage
                 self.is_online = true;
                 if let Some((start, o_type)) = self.current_outage_start.take() {
                     let duration = (now - start).num_seconds().max(1) as u64;
@@ -122,15 +122,15 @@ impl UptimeTracker {
 
                     return Some((
                         crate::history::NetworkEventType::InternetRestored,
-                        "Conexión a Internet Restablecida".to_string(),
-                        format!("El servicio se recuperó tras una interrupción de {}.", dur_str),
+                        "Internet Connection Restored".to_string(),
+                        format!("Service recovered after an interruption of {}.", dur_str),
                     ));
                 }
             }
         } else {
             self.consecutive_failures += 1;
 
-            // Se requieren al menos 2 fallos consecutivos para confirmar caída real y evitar falsos positivos
+            // At least 2 consecutive failures are required to confirm real outage and avoid false positives
             if self.consecutive_failures >= 2 && self.is_online {
                 self.is_online = false;
                 let o_type = if gw_ok {
@@ -143,8 +143,8 @@ impl UptimeTracker {
 
                 return Some((
                     crate::history::NetworkEventType::InternetOutage,
-                    format!("Alerta: {}", o_type.label()),
-                    "Se ha interrumpido el acceso a Internet en la red local.".to_string(),
+                    format!("Alert: {}", o_type.label()),
+                    "Internet access has been interrupted on the local network.".to_string(),
                 ));
             }
         }
@@ -152,7 +152,7 @@ impl UptimeTracker {
         None
     }
 
-    /// Porcentaje de disponibilidad estimado
+    /// Estimated uptime percentage
     pub fn uptime_percentage(&self) -> f32 {
         if self.total_checks == 0 {
             100.0

@@ -27,7 +27,7 @@ use oui::Oui;
 use std::env;
 use std::sync::Arc;
 
-/// Solicita a la biblioteca C (glibc) liberar toda la memoria devuelta al kernel Linux
+/// Requests the C library (glibc) to release all freed memory back to the Linux kernel
 #[cfg(target_os = "linux")]
 pub fn trim_memory() {
     unsafe extern "C" {
@@ -44,23 +44,23 @@ pub fn trim_memory() {}
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
 
-    // Inicializar el runtime de Tokio multihilo optimizado (4 hilos de trabajo)
-    // Reduce drásticamente el uso de memoria RAM evitando crear 20 arenas de glibc en CPUs con muchos núcleos
+    // Initialize optimized multi-threaded Tokio runtime (4 worker threads)
+    // Drastically reduces memory usage by preventing glibc from creating 20+ arenas on high-core CPUs
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
         .thread_stack_size(1024 * 1024)
         .enable_all()
         .build()
-        .expect("Fallo al inicializar runtime de Tokio");
+        .expect("Failed to initialize Tokio runtime");
     let _guard = rt.enter();
 
-    // Modo CLI opcional: permite escanear e imprimir en terminal si se pasa --cli o --scan
+    // Optional CLI mode: allows scanning and printing directly to terminal via --cli or --scan
     if args.iter().any(|a| a == "--cli" || a == "--scan" || a == "-c") {
         rt.block_on(run_cli_scan());
         return Ok(());
     }
 
-    // Modo GUI Daemon con Iced (permite ejecutarse en segundo plano en el System Tray sin ventana fija en la barra de tareas)
+    // GUI Daemon mode with Iced (runs in background with System Tray without remaining pinned to taskbar)
     iced::daemon(App::boot, App::update, App::view)
         .title(|app: &App, _win: iced::window::Id| i18n::Translations::window_title(app.language).to_string())
         .theme(|app: &App, _win: iced::window::Id| Some(app.current_theme.clone()))
@@ -70,23 +70,23 @@ fn main() -> iced::Result {
 
 async fn run_cli_scan() {
     println!("\n=======================================================");
-    println!("⚡ NetLens CLI - Explorador de Dispositivos de Red Local");
+    println!("⚡ NetLens CLI - Local Network Device Explorer");
     println!("=======================================================\n");
 
     let ctx = scanner::Scanner::detect_network_context();
     let gw_str = ctx
         .gateway_ip
         .map(|ip| ip.to_string())
-        .unwrap_or_else(|| "Desconocido".to_string());
+        .unwrap_or_else(|| "Unknown".to_string());
     let local_str = ctx
         .local_ip
         .map(|ip| ip.to_string())
-        .unwrap_or_else(|| "Desconocido".to_string());
+        .unwrap_or_else(|| "Unknown".to_string());
 
-    println!("📡 Interfaz de Red    : {}", ctx.interface);
-    println!("📍 IP Local (Este host): {}", local_str);
-    println!("🌐 Puerta de Enlace   : {}", gw_str);
-    println!("🔍 Subred a Escanear  : {}\n", ctx.subnet_cidr);
+    println!("📡 Network Interface : {}", ctx.interface);
+    println!("📍 Local IP (This host): {}", local_str);
+    println!("🌐 Gateway IP        : {}", gw_str);
+    println!("🔍 Subnet to Scan     : {}\n", ctx.subnet_cidr);
 
     let oui_db = Oui::default().ok().map(Arc::new);
     let (tx, mut rx) = iced::futures::channel::mpsc::unbounded();
@@ -95,7 +95,7 @@ async fn run_cli_scan() {
         scanner::Scanner::execute_scan(ctx, oui_db, tx).await;
     });
 
-    println!("{:<16} {:<18} {:<24} {:<22} {:<10}", "DIRECCIÓN IP", "DIRECCIÓN MAC", "NOMBRE / HOSTNAME", "FABRICANTE", "LATENCIA");
+    println!("{:<16} {:<18} {:<24} {:<22} {:<10}", "IP ADDRESS", "MAC ADDRESS", "NAME / HOSTNAME", "MANUFACTURER", "LATENCY");
     println!("{:-<16} {:-<18} {:-<24} {:-<22} {:-<10}", "", "", "", "", "");
 
     while let Some(event) = rx.next().await {
@@ -129,13 +129,13 @@ async fn run_cli_scan() {
                 duration_ms,
             } => {
                 println!(
-                    "\n✅ Escaneo completado con éxito: {} dispositivos detectados en {:.2} s.\n",
+                    "\n✅ Scan completed successfully: {} devices detected in {:.2} s.\n",
                     total_found,
                     duration_ms as f32 / 1000.0
                 );
             }
             scanner::ScanEvent::Error(err) => {
-                eprintln!("\n❌ Error durante el escaneo: {}\n", err);
+                eprintln!("\n❌ Error during scan: {}\n", err);
             }
         }
     }

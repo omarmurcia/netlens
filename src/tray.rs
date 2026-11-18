@@ -22,7 +22,7 @@ pub fn send_tray_action(action: TrayAction) {
     let _ = get_tray_sender().send(action);
 }
 
-/// Extrae y convierte el icono de NetLens a formato ARGB32 para el System Tray
+/// Extracts and converts NetLens icon to ARGB32 format for System Tray
 pub fn get_icon_argb() -> Option<Icon> {
     let png_bytes = include_bytes!("../assets/netlens.png");
     let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png).ok()?;
@@ -36,7 +36,7 @@ pub fn get_icon_argb() -> Option<Icon> {
     Some(Icon { width, height, data })
 }
 
-/// Extrae el icono de NetLens en formato RGBA estándar para la ventana y barra de tareas
+/// Extracts NetLens icon in standard RGBA format for window and taskbar
 pub fn get_window_icon() -> Option<iced::window::Icon> {
     let png_bytes = include_bytes!("../assets/netlens.png");
     let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png).ok()?;
@@ -161,7 +161,7 @@ impl Tray for NetLensTray {
     }
 }
 
-/// Registra el StatusNotifierItem en la bandeja del sistema (System Tray D-Bus)
+/// Registers StatusNotifierItem in system tray (System Tray D-Bus)
 pub fn spawn_tray(
     state: Arc<Mutex<TrayState>>,
     handle_holder: Arc<Mutex<Option<Handle<NetLensTray>>>>,
@@ -169,9 +169,9 @@ pub fn spawn_tray(
     let icon_cache = get_icon_argb();
 
     tokio::spawn(async move {
-        // En arranque del sistema, el servicio de bandeja (StatusNotifierWatcher) puede tardar unos segundos.
-        // `assume_sni_available(true)` espera automáticamente a que el panel/watcher esté disponible en D-Bus.
-        // Además, se realizan reintentos progresivos en caso de retardos del bus de sesión al iniciar sesión.
+        // At system startup, StatusNotifierWatcher may take a few seconds to initialize.
+        // `assume_sni_available(true)` automatically waits for the panel/watcher to become available on D-Bus.
+        // In addition, progressive retries are performed in case of session bus delays upon login.
         for attempt in 1..=5 {
             let tray = NetLensTray {
                 state: Arc::clone(&state),

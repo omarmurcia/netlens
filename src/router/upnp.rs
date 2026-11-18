@@ -5,18 +5,18 @@ use tokio::net::UdpSocket;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-/// Regla de reenvío de puertos activa en el router (Port Forwarding / NAT)
+/// Active port forwarding rule on router (Port Forwarding / NAT)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct UpnpPortMapping {
     pub external_port: u16,
     pub internal_port: u16,
     pub internal_client: String,
-    pub protocol: String, // "TCP" o "UDP"
+    pub protocol: String, // "TCP" or "UDP"
     pub description: String,
     pub enabled: bool,
 }
 
-/// Estado global del router obtenido mediante UPnP IGD
+/// Global router status obtained via UPnP IGD
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpnpRouterStatus {
     pub external_ip: Option<String>,
@@ -32,7 +32,7 @@ pub struct UpnpRouterStatus {
 pub struct UpnpClient;
 
 impl UpnpClient {
-    /// Consulta el router mediante UPnP IGD para obtener IP pública, estado y puertos mapeados
+    /// Queries the router via UPnP IGD for public IP, status, and mapped ports
     pub async fn query_router(gateway_ip: Ipv4Addr) -> Result<UpnpRouterStatus, String> {
         let (control_url, service_type) = Self::discover_control_url(gateway_ip)
             .await
@@ -45,18 +45,18 @@ impl UpnpClient {
 
         let mut status = UpnpRouterStatus::default();
 
-        // 1. Obtener IP pública (GetExternalIPAddress)
+        // 1. Get public IP (GetExternalIPAddress)
         if let Ok(ip) = Self::get_external_ip(&control_url, &service_type).await {
             status.external_ip = Some(ip);
         }
 
-        // 2. Obtener estado de conexión y tiempo de actividad (GetStatusInfo)
+        // 2. Get connection status and uptime (GetStatusInfo)
         if let Ok((conn_status, uptime)) = Self::get_status_info(&control_url, &service_type).await {
             status.connection_status = Some(conn_status);
             status.uptime_secs = Some(uptime);
         }
 
-        // 3. Obtener contadores de bytes (GetTotalBytesReceived / Sent)
+        // 3. Get byte counters (GetTotalBytesReceived / Sent)
         if let Ok(rx) = Self::get_bytes(&control_url, &service_type, "GetTotalBytesReceived").await {
             status.total_bytes_received = Some(rx);
         }
@@ -64,13 +64,13 @@ impl UpnpClient {
             status.total_bytes_sent = Some(tx);
         }
 
-        // 4. Obtener tabla de reenvío de puertos (GetGenericPortMappingEntry)
+        // 4. Get port forwarding table (GetGenericPortMappingEntry)
         status.port_mappings = Self::get_port_mappings(&control_url, &service_type).await;
 
         Ok(status)
     }
 
-    /// Descubre la URL de control de WANIPConnection mediante SSDP unicast
+    /// Discovers WANIPConnection control URL via unicast SSDP
     async fn discover_control_url(gateway_ip: Ipv4Addr) -> Option<(String, String)> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.ok()?;
         let target = SocketAddrV4::new(gateway_ip, 1900);
@@ -99,7 +99,7 @@ impl UpnpClient {
         None
     }
 
-    /// Descarga el XML de descripción del dispositivo y extrae la URL de control
+    /// Downloads device description XML and extracts control URL
     async fn parse_desc_xml(desc_url: &str) -> Option<(String, String)> {
         let output = Command::new("curl")
             .args(["-s", "--max-time", "2", desc_url])
@@ -120,7 +120,7 @@ impl UpnpClient {
             return None;
         };
 
-        // Extraer <controlURL>
+        // Extract <controlURL>
         let ctl_tag = "<controlURL>";
         let ctl_end = "</controlURL>";
         if let Some(start_idx) = xml.find(ctl_tag) {
@@ -130,7 +130,7 @@ impl UpnpClient {
                 let full_url = if raw_ctl.starts_with("http://") || raw_ctl.starts_with("https://") {
                     raw_ctl.to_string()
                 } else {
-                    // Extraer base URL
+                    // Extract base URL
                     if let Some(slash_idx) = desc_url[7..].find('/') {
                         let base = &desc_url[..7 + slash_idx];
                         if raw_ctl.starts_with('/') {
@@ -149,7 +149,7 @@ impl UpnpClient {
         None
     }
 
-    /// Ejecuta una llamada SOAP a la URL de control UPnP
+    /// Executes a SOAP call to the UPnP control URL
     async fn execute_soap(control_url: &str, service_type: &str, action: &str, body_xml: &str) -> Result<String, String> {
         let soap_envelope = format!(
             "<?xml version=\"1.0\"?>\r\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n<s:Body>\r\n<u:{action} xmlns:u=\"{service_type}\">\r\n{body_xml}</u:{action}>\r\n</s:Body>\r\n</s:Envelope>",
@@ -172,33 +172,33 @@ impl UpnpClient {
             ])
             .output()
             .await
-            .map_err(|e| format!("Error en petición SOAP UPnP: {}", e))?;
+            .map_err(|e| format!("Error in UPnP SOAP request: {}", e))?;
 
         if !output.status.success() {
-            return Err("El router rechazó la petición UPnP SOAP".to_string());
+            return Err("Router rejected UPnP SOAP request".to_string());
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    /// Obtiene la dirección IP pública del router
+    /// Retrieves public IP address of router
     async fn get_external_ip(control_url: &str, service_type: &str) -> Result<String, String> {
         let resp = Self::execute_soap(control_url, service_type, "GetExternalIPAddress", "").await?;
         Self::extract_tag_value(&resp, "NewExternalIPAddress")
-            .ok_or_else(|| "No se encontró NewExternalIPAddress en la respuesta".to_string())
+            .ok_or_else(|| "NewExternalIPAddress not found in response".to_string())
     }
 
-    /// Obtiene el estado y tiempo de actividad
+    /// Retrieves connection status and uptime
     async fn get_status_info(control_url: &str, service_type: &str) -> Result<(String, u64), String> {
         let resp = Self::execute_soap(control_url, service_type, "GetStatusInfo", "").await?;
-        let status = Self::extract_tag_value(&resp, "NewConnectionStatus").unwrap_or_else(|| "Conectado".to_string());
+        let status = Self::extract_tag_value(&resp, "NewConnectionStatus").unwrap_or_else(|| "Connected".to_string());
         let uptime: u64 = Self::extract_tag_value(&resp, "NewUptime")
             .and_then(|u| u.parse().ok())
             .unwrap_or(0);
         Ok((status, uptime))
     }
 
-    /// Obtiene contadores de bytes recibidos o enviados
+    /// Retrieves received or sent byte counters
     async fn get_bytes(control_url: &str, service_type: &str, action: &str) -> Result<u64, String> {
         let resp = Self::execute_soap(control_url, service_type, action, "").await?;
         let tag = if action.contains("Received") {
@@ -208,18 +208,18 @@ impl UpnpClient {
         };
         Self::extract_tag_value(&resp, tag)
             .and_then(|val| val.parse().ok())
-            .ok_or_else(|| "No se pudo leer contador de bytes".to_string())
+            .ok_or_else(|| "Failed to read byte counter".to_string())
     }
 
-    /// Obtiene la lista de puertos reenviados (Port Forwardings)
+    /// Retrieves port forwarding list (Port Forwardings)
     async fn get_port_mappings(control_url: &str, service_type: &str) -> Vec<UpnpPortMapping> {
         let mut mappings = Vec::new();
-        // Iterar sobre los índices 0 a 64
+        // Iterate over indices 0 to 64
         for idx in 0..64 {
             let body = format!("<NewPortMappingIndex>{}</NewPortMappingIndex>", idx);
             if let Ok(resp) = Self::execute_soap(control_url, service_type, "GetGenericPortMappingEntry", &body).await {
                 if resp.contains("s:Fault") || resp.contains("errorCode>713") {
-                    break; // Fin de la lista de reglas
+                    break; // End of rules list
                 }
 
                 let ext_port: u16 = Self::extract_tag_value(&resp, "NewExternalPort")
@@ -253,7 +253,7 @@ impl UpnpClient {
         mappings
     }
 
-    /// Utilidad simple para extraer contenido entre etiquetas XML sin dependencias pesadas
+    /// Simple utility to extract content between XML tags without heavy dependencies
     fn extract_tag_value(xml: &str, tag: &str) -> Option<String> {
         let open_tag = format!("<{}>", tag);
         let close_tag = format!("</{}>", tag);

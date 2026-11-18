@@ -227,7 +227,7 @@ impl Default for NotificationSettings {
 }
 
 impl NotificationSettings {
-    /// Formatea el título agregando el prefijo configurado
+    /// Formats the title by prepending the configured prefix
     pub fn format_title(&self, title: &str) -> String {
         let prefix = self.custom_prefix.trim();
         if prefix.is_empty() {
@@ -237,7 +237,7 @@ impl NotificationSettings {
         }
     }
 
-    /// Formatea el cuerpo de la notificación según el nivel de detalle y filtros de contenido
+    /// Formats notification body according to detail level and content filters
     pub fn format_device_message(
         &self,
         event_name: &str,
@@ -274,14 +274,14 @@ impl NotificationSettings {
                     lines.push(format!("MAC: {}", mac));
                 }
                 if self.show_vendor && !vendor.is_empty() && vendor != "Desconocido" && vendor != "Unknown" {
-                    lines.push(format!("Fabricante: {}", vendor));
+                    lines.push(format!("Vendor: {}", vendor));
                 }
                 lines.join("\n")
             }
         }
     }
 
-    /// Envía una notificación estándar respetando habilitación, título, urgencia, sonido y tiempo
+    /// Dispatches standard notification respecting enablement, title, urgency, sound, and timeout
     pub fn dispatch(&self, title: &str, body: &str, icon: &str, custom_urgency: Option<NotificationUrgency>) {
         if !self.enabled {
             return;
@@ -313,7 +313,7 @@ impl NotificationSettings {
         }
     }
 
-    /// Envía una notificación interactiva asíncrona con opciones (Trust / Block)
+    /// Dispatches an asynchronous interactive alert with action buttons (Trust / Block)
     pub async fn dispatch_interactive_alert(
         &self,
         title: &str,

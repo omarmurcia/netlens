@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::net::Ipv4Addr;
 
-/// Categoría deducida del dispositivo
+/// Inferred device category
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceCategory {
     Router,
@@ -72,7 +72,7 @@ impl fmt::Display for DeviceCategory {
     }
 }
 
-/// Estado de conectividad del dispositivo
+/// Device connectivity status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceStatus {
     Online,
@@ -84,14 +84,14 @@ impl DeviceStatus {
     #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
-            DeviceStatus::Online => "En línea",
-            DeviceStatus::Degraded => "Inestable",
-            DeviceStatus::Offline => "Desconectado",
+            DeviceStatus::Online => "Online",
+            DeviceStatus::Degraded => "Degraded",
+            DeviceStatus::Offline => "Offline",
         }
     }
 }
 
-/// Información sobre un puerto abierto
+/// Information about an open network port
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortInfo {
     pub port: u16,
@@ -99,7 +99,7 @@ pub struct PortInfo {
     pub description: String,
 }
 
-/// Registro de petición de red, consulta DNS o búsqueda web por dispositivo
+/// Network request, DNS query, or web activity record per device
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceRequestEntry {
     pub timestamp: DateTime<Local>,
@@ -108,7 +108,7 @@ pub struct DeviceRequestEntry {
     pub protocol: String,
 }
 
-/// Representa un dispositivo descubierto en la red local
+/// Discovered device on the local network
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
     pub ip: Ipv4Addr,
@@ -147,7 +147,7 @@ pub struct Device {
 }
 
 impl Device {
-    /// Nombre principal para mostrar en la interfaz
+    /// Primary display name to show in the user interface
     pub fn display_name(&self) -> String {
         if let Some(alias) = &self.custom_alias {
             if !alias.trim().is_empty() {
@@ -164,40 +164,40 @@ impl Device {
                 return host.clone();
             }
         }
-        if !self.vendor.trim().is_empty() && self.vendor != "Desconocido" {
+        if !self.vendor.trim().is_empty() && self.vendor != "Desconocido" && self.vendor != "Unknown" {
             return format!("{} ({})", self.vendor, self.ip);
         }
         if self.is_gateway {
-            return format!("Puerta de Enlace ({})", self.ip);
+            return format!("Gateway ({})", self.ip);
         }
         if self.is_current_host {
-            return format!("Este Equipo ({})", self.ip);
+            return format!("This Device ({})", self.ip);
         }
-        format!("Dispositivo {}", self.ip)
+        format!("Device {}", self.ip)
     }
 
-    /// Subtítulo con información técnica
+    /// Technical subtitle with hardware and connection details
     #[allow(dead_code)]
     pub fn subtitle(&self) -> String {
         let mut parts = Vec::new();
         if self.is_gateway {
-            parts.push("Puerta de Enlace Predeterminada");
+            parts.push("Default Gateway");
         }
         if self.is_current_host {
-            parts.push("Este Equipo (Host Local)");
+            parts.push("This Device (Local Host)");
         }
-        if !self.vendor.is_empty() && self.vendor != "Desconocido" {
+        if !self.vendor.is_empty() && self.vendor != "Desconocido" && self.vendor != "Unknown" {
             parts.push(&self.vendor);
         } else if self.is_randomized_mac {
-            parts.push("Dirección MAC Privada / Aleatoria");
+            parts.push("Private / Randomized MAC Address");
         }
         if parts.is_empty() {
-            parts.push("Fabricante no identificado");
+            parts.push("Unidentified Manufacturer");
         }
         parts.join(" • ")
     }
 
-    /// Registra una nueva petición o búsqueda en el historial de este dispositivo
+    /// Records a new request or search query in this device's history
     pub fn add_request(&mut self, query: String, category: String, protocol: String) {
         let entry = DeviceRequestEntry {
             timestamp: Local::now(),
@@ -212,7 +212,7 @@ impl Device {
     }
 }
 
-/// Información del contexto de red local
+/// Local network context information
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkContext {
     pub interface: String,
@@ -223,44 +223,44 @@ pub struct NetworkContext {
     pub subnet_cidr: String,
 }
 
-/// Definición de puertos estándar
+/// Standard well-known ports definition
 pub struct WellKnownPort;
 
 impl WellKnownPort {
     pub fn describe(port: u16) -> (&'static str, &'static str) {
         match port {
-            21 => ("FTP", "Transferencia de archivos sin cifrar"),
-            22 => ("SSH", "Terminal remota segura (Linux/Unix/Mac)"),
-            23 => ("Telnet", "Acceso por terminal sin cifrar"),
-            25 => ("SMTP", "Servidor de correo saliente"),
-            53 => ("DNS", "Resolución de nombres de dominio"),
-            80 => ("HTTP", "Servidor web / Panel de administración"),
-            110 => ("POP3", "Recepción de correo electrónico"),
-            135 => ("MS-RPC", "Llamada a procedimiento remoto de Windows"),
-            139 => ("NetBIOS", "Servicio de sesión NetBIOS"),
-            143 => ("IMAP", "Acceso a buzón de correo"),
-            443 => ("HTTPS", "Servidor web seguro cifrado"),
-            445 => ("SMB", "Compartición de archivos Windows / Samba"),
-            548 => ("AFP", "Apple Filing Protocol para macOS"),
-            554 => ("RTSP", "Streaming de video / Cámaras IP"),
-            631 => ("IPP/CUPS", "Servidor de impresión"),
-            993 => ("IMAPS", "Correo IMAP seguro"),
-            995 => ("POP3S", "Correo POP3 seguro"),
-            1433 => ("MSSQL", "Base de datos Microsoft SQL Server"),
-            1723 => ("PPTP", "Túnel VPN punto a punto"),
-            1900 => ("SSDP/UPnP", "Descubrimiento de Smart TVs y media"),
-            3306 => ("MySQL", "Base de datos MySQL / MariaDB"),
-            3389 => ("RDP", "Escritorio Remoto de Windows"),
-            5000 => ("UPnP / DSM", "Panel Synology NAS o servidor UPnP"),
+            21 => ("FTP", "Unencrypted file transfer"),
+            22 => ("SSH", "Secure remote terminal (Linux/Unix/Mac)"),
+            23 => ("Telnet", "Unencrypted legacy remote terminal"),
+            25 => ("SMTP", "Outgoing mail server"),
+            53 => ("DNS", "Domain name resolution"),
+            80 => ("HTTP", "Web server / Admin panel"),
+            110 => ("POP3", "Incoming mail retrieval"),
+            135 => ("MS-RPC", "Windows Remote Procedure Call"),
+            139 => ("NetBIOS", "NetBIOS Session Service"),
+            143 => ("IMAP", "Mailbox access protocol"),
+            443 => ("HTTPS", "Encrypted secure web server"),
+            445 => ("SMB", "Windows / Samba file sharing"),
+            548 => ("AFP", "Apple Filing Protocol for macOS"),
+            554 => ("RTSP", "Real-Time Streaming Protocol / IP Cameras"),
+            631 => ("IPP/CUPS", "Internet Printing Protocol / CUPS"),
+            993 => ("IMAPS", "Secure IMAP mail"),
+            995 => ("POP3S", "Secure POP3 mail"),
+            1433 => ("MSSQL", "Microsoft SQL Server database"),
+            1723 => ("PPTP", "Point-to-Point VPN tunnel"),
+            1900 => ("SSDP/UPnP", "Smart TV & media discovery"),
+            3306 => ("MySQL", "MySQL / MariaDB database"),
+            3389 => ("RDP", "Windows Remote Desktop"),
+            5000 => ("UPnP / DSM", "Synology NAS panel or UPnP server"),
             5353 => ("mDNS", "Multicast DNS ZeroConf"),
-            5432 => ("PostgreSQL", "Base de datos PostgreSQL"),
-            8008 => ("Google Cast", "Dispositivo Chromecast / Google Home"),
-            8009 => ("Google Cast V2", "Streaming Chromecast seguro"),
-            8080 => ("HTTP-Alt", "Servidor web alternativo / Proxy"),
-            8443 => ("HTTPS-Alt", "Servidor web seguro alternativo"),
-            9000 => ("Portainer", "Gestor web de contenedores Docker"),
-            9100 => ("RAW Print", "Puerto de impresión directo JetDirect"),
-            _ => ("Desconocido", "Servicio no estándar"),
+            5432 => ("PostgreSQL", "PostgreSQL database"),
+            8008 => ("Google Cast", "Chromecast / Google Home device"),
+            8009 => ("Google Cast V2", "Secure Chromecast media streaming"),
+            8080 => ("HTTP-Alt", "Alternative web server / Proxy"),
+            8443 => ("HTTPS-Alt", "Alternative secure web server"),
+            9000 => ("Portainer", "Portainer Docker management web UI"),
+            9100 => ("RAW Print", "JetDirect raw network printing"),
+            _ => ("Unknown", "Non-standard service"),
         }
     }
 }

@@ -1,28 +1,28 @@
-//! Módulo de base de datos OUI (Organizationally Unique Identifier) ultra-compacto y de alto rendimiento.
-//! Almacena más de 52,500 fabricantes IEEE indexados en formato binario precompilado (.rodata).
-//! Consume 0 MB de memoria heap dinámica (frente a los ~72 MB de la librería estándar mac_oui).
+//! Ultra-compact, high-performance OUI (Organizationally Unique Identifier) database module.
+//! Stores over 52,500 indexed IEEE vendors in a precompiled binary format (.rodata).
+//! Consumes 0 MB of dynamic heap memory (compared to ~72 MB in the standard mac_oui crate).
 
-/// Estructura de compatibilidad para entrada OUI
+/// Compatibility structure for OUI entry
 #[derive(Debug, Clone)]
 pub struct OuiEntry {
     pub company_name: String,
 }
 
-/// Base de datos OUI estática embebida directamente en la sección de solo lectura del binario
+/// Static OUI database embedded directly into the binary's read-only section
 pub struct Oui;
 
 static OUI_DATA: &[u8] = include_bytes!("../assets/oui_compact.bin");
 
 impl Oui {
-    /// Inicializa la base de datos OUI (operación instantánea sin consumo de heap)
+    /// Initializes the OUI database (instantaneous operation with zero heap allocation)
     pub fn default() -> Result<Self, String> {
         if OUI_DATA.len() < 28 || &OUI_DATA[0..12] != b"NETLENS_OUI\x01" {
-            return Err("Datos OUI compactos inválidos o corruptos".to_string());
+            return Err("Invalid or corrupted compact OUI data".to_string());
         }
         Ok(Self)
     }
 
-    /// Busca el fabricante asociado a una dirección MAC dada
+    /// Looks up the manufacturer associated with a given MAC address
     pub fn lookup_by_mac(&self, mac: &str) -> Result<Option<OuiEntry>, String> {
         Ok(OuiDatabase::lookup(mac).map(|company_name| OuiEntry {
             company_name: company_name.to_string(),
@@ -33,7 +33,7 @@ impl Oui {
 pub struct OuiDatabase;
 
 impl OuiDatabase {
-    /// Búsqueda binaria ultra-rápida (en ~15 nanosegundos) sin ninguna asignación en heap
+    /// Ultra-fast binary search (~15 nanoseconds) with zero heap allocation
     pub fn lookup(mac: &str) -> Option<&'static str> {
         let bytes = parse_mac_bytes(mac)?;
 
@@ -57,7 +57,7 @@ impl OuiDatabase {
 
         let pool = &OUI_DATA[pool_offset..pool_offset + pool_len];
 
-        // 1. Intentar prefijo de 36 bits (9 caracteres hexadecimales = 4.5 bytes)
+        // 1. Try 36-bit prefix (9 hex characters = 4.5 bytes)
         let target_36 = [bytes[0], bytes[1], bytes[2], bytes[3], bytes[4] & 0xF0];
         let table_36 = &OUI_DATA[table_36_offset..table_36_offset + count_36 * 11];
         if let Some((offset, len)) = binary_search_entry::<5>(table_36, count_36, &target_36) {
@@ -68,7 +68,7 @@ impl OuiDatabase {
             }
         }
 
-        // 2. Intentar prefijo de 28 bits (7 caracteres hexadecimales = 3.5 bytes)
+        // 2. Try 28-bit prefix (7 hex characters = 3.5 bytes)
         let target_28 = [bytes[0], bytes[1], bytes[2], bytes[3] & 0xF0];
         let table_28 = &OUI_DATA[table_28_offset..table_28_offset + count_28 * 10];
         if let Some((offset, len)) = binary_search_entry::<4>(table_28, count_28, &target_28) {
@@ -79,7 +79,7 @@ impl OuiDatabase {
             }
         }
 
-        // 3. Intentar prefijo estándar de 24 bits (6 caracteres hexadecimales = 3 bytes)
+        // 3. Try standard 24-bit prefix (6 hex characters = 3 bytes)
         let target_24 = [bytes[0], bytes[1], bytes[2]];
         let table_24 = &OUI_DATA[table_24_offset..table_24_offset + count_24 * 9];
         if let Some((offset, len)) = binary_search_entry::<3>(table_24, count_24, &target_24) {
@@ -94,7 +94,7 @@ impl OuiDatabase {
     }
 }
 
-/// Búsqueda binaria sobre una tabla contigua ordenada de longitud fija N
+/// Binary search over an ordered contiguous fixed-length N table
 fn binary_search_entry<const N: usize>(
     table: &[u8],
     count: usize,
@@ -124,7 +124,7 @@ fn binary_search_entry<const N: usize>(
     None
 }
 
-/// Convierte una cadena de dirección MAC (con formato ':' o '-') a un arreglo de bytes
+/// Converts a MAC address string (formatted with ':' or '-') into a byte array
 fn parse_mac_bytes(mac: &str) -> Option<[u8; 6]> {
     let mut bytes = [0u8; 6];
     let mut byte_idx = 0;

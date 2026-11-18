@@ -4,7 +4,7 @@ use iced::{Background, Border, Color, Shadow, Theme};
 pub struct CustomStyles;
 
 impl CustomStyles {
-    // Colores base
+    // Base colors
     #[allow(dead_code)]
     pub fn bg_dark() -> Color {
         Color::from_rgb8(15, 23, 42) // Slate 900
@@ -46,7 +46,7 @@ impl CustomStyles {
         Color::from_rgb8(100, 116, 139)
     }
 
-    // Estilo para tarjetas principales
+    // Style for primary cards
     pub fn card_container() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -61,7 +61,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para tarjeta destacada (Gateway o equipo actual)
+    // Style for highlighted card (Gateway or local host)
     pub fn card_highlighted() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -76,7 +76,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para tarjeta de velocidad de descarga (Verde / Esmeralda)
+    // Style for download speed card (Emerald / Green)
     pub fn card_download() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -91,7 +91,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para tarjeta de velocidad de subida (Púrpura / Azul)
+    // Style for upload speed card (Purple / Blue)
     pub fn card_upload() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -106,7 +106,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para tarjeta de intensidad de señal Wi-Fi
+    // Style for Wi-Fi signal strength card
     pub fn card_signal() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -121,7 +121,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para banner de alerta de intrusos / peligro
+    // Style for intruder / danger alert banner
     pub fn card_danger() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -136,7 +136,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para badges / etiquetas
+    // Style for badges / pill labels
     pub fn badge_pill(bg_color: Color, text_color: Color) -> container::Style {
         container::Style {
             text_color: Some(text_color),
@@ -151,7 +151,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para el panel lateral / inspector
+    // Style for side inspector panel
     pub fn inspector_panel() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -166,7 +166,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para el panel de ajustes / configuración
+    // Style for settings / preferences panel
     pub fn settings_panel() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -181,7 +181,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo para modales avanzados (Auditoría, Historial, Wi-Fi, UPnP)
+    // Style for advanced modal dialogs (Audit, History, Wi-Fi, UPnP)
     pub fn modal_panel(accent_color: Color) -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -196,7 +196,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón de acción primario estilizado (Escanear)
+    // Styled primary action button (Scan)
     pub fn primary_button() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(14, 165, 233))),
@@ -211,7 +211,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón sutil / secundario
+    // Subtle / secondary button
     pub fn secondary_button() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(51, 65, 85))),
@@ -226,7 +226,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón de peligro / bloqueo (Rojo)
+    // Danger / block action button (Red)
     pub fn danger_button() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(220, 38, 38))),
@@ -241,7 +241,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón de éxito / readmisión (Verde esmeralda)
+    // Success / allow button (Emerald green)
     pub fn success_button() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(16, 185, 129))),
@@ -256,7 +256,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón pill para filtros activos
+    // Pill button for active filters
     pub fn filter_pill_active() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(14, 165, 233))),
@@ -271,7 +271,7 @@ impl CustomStyles {
         }
     }
 
-    // Botón pill para filtros inactivos
+    // Pill button for inactive filters
     pub fn filter_pill_inactive() -> button::Style {
         button::Style {
             background: Some(Background::Color(Color::from_rgb8(30, 41, 59))),
@@ -286,7 +286,7 @@ impl CustomStyles {
         }
     }
 
-    // Banner de notificación flotante (éxito)
+    // Floating notification banner (success)
     pub fn notification_success() -> container::Style {
         container::Style {
             text_color: Some(Color::WHITE),
@@ -301,7 +301,7 @@ impl CustomStyles {
         }
     }
 
-    // Banner de notificación flotante (error)
+    // Floating notification banner (error)
     pub fn notification_error() -> container::Style {
         container::Style {
             text_color: Some(Color::WHITE),
@@ -316,7 +316,7 @@ impl CustomStyles {
         }
     }
 
-    // Estilo elegante para barras de desplazamiento (Scrollables)
+    // Elegant style for scrollbars
     pub fn scrollbar_style() -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style {
         |theme, status| {
             let (scroller_bg, border_color) = match status {
@@ -386,7 +386,7 @@ impl CustomStyles {
         }
     }
 
-    /// Estilo para contenedores de Tooltips emergentes elegantes
+    /// Style for elegant tooltip popup containers
     pub fn tooltip_style() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),

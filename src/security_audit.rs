@@ -74,7 +74,7 @@ pub struct SecurityAuditReport {
 pub struct SecurityAuditor;
 
 impl SecurityAuditor {
-    /// Ejecuta una auditoría integral de seguridad de la red local
+    /// Executes a comprehensive security audit of the local network
     pub fn audit(
         devices: &[Device],
         port_mappings: &[UpnpPortMapping],
@@ -84,7 +84,7 @@ impl SecurityAuditor {
         let mut checks = Vec::new();
         let total_devices = devices.len();
 
-        // 1. Verificación: Puertos inseguros sin cifrar (Telnet / FTP)
+        // 1. Verification: Insecure unencrypted ports (Telnet / FTP)
         let mut telnet_devices = Vec::new();
         let mut ftp_devices = Vec::new();
         for d in devices {
@@ -103,10 +103,10 @@ impl SecurityAuditor {
         if has_telnet {
             score -= 20;
             checks.push(SecurityCheckItem {
-                title: "Protocolo Telnet Detectado (Puerto 23)".to_string(),
-                description: "Se detectaron dispositivos con Telnet abierto. Telnet transmite credenciales y comandos en texto plano sin cifrar.".to_string(),
+                title: "Telnet Protocol Detected (Port 23)".to_string(),
+                description: "Devices with open Telnet detected. Telnet transmits credentials and commands in unencrypted plaintext.".to_string(),
                 severity: AuditSeverity::Critical,
-                recommendation: "Deshabilita Telnet y utiliza SSH (puerto 22) para administración segura cifrada.".to_string(),
+                recommendation: "Disable Telnet and use SSH (port 22) for secure encrypted administration.".to_string(),
                 affected_devices: telnet_devices,
                 check_id: Some(SecurityCheckId::TelnetDetected),
             });
@@ -115,10 +115,10 @@ impl SecurityAuditor {
         if has_ftp {
             score -= 10;
             checks.push(SecurityCheckItem {
-                title: "Servicio FTP Inseguro (Puerto 21)".to_string(),
-                description: "FTP tradicional no cifra contraseñas ni archivos durante la transferencia local.".to_string(),
+                title: "Insecure FTP Service (Port 21)".to_string(),
+                description: "Traditional FTP does not encrypt passwords or files during local transfer.".to_string(),
                 severity: AuditSeverity::Warning,
-                recommendation: "Migra hacia SFTP (sobre SSH) o FTPS con certificados TLS modernos.".to_string(),
+                recommendation: "Migrate to SFTP (over SSH) or FTPS with modern TLS certificates.".to_string(),
                 affected_devices: ftp_devices,
                 check_id: Some(SecurityCheckId::FtpDetected),
             });
@@ -126,16 +126,16 @@ impl SecurityAuditor {
 
         if !has_telnet && !has_ftp {
             checks.push(SecurityCheckItem {
-                title: "Servicios de Red Cifrados".to_string(),
-                description: "No se detectaron puertos vulnerables obsoletos (Telnet o FTP plano) en los dispositivos activos.".to_string(),
+                title: "Encrypted Network Services".to_string(),
+                description: "No obsolete vulnerable ports (Telnet or plaintext FTP) detected on active devices.".to_string(),
                 severity: AuditSeverity::Pass,
-                recommendation: "Continúa utilizando servicios cifrados (SSH, HTTPS, SFTP).".to_string(),
+                recommendation: "Continue using encrypted services (SSH, HTTPS, SFTP).".to_string(),
                 affected_devices: Vec::new(),
                 check_id: Some(SecurityCheckId::EncryptedServices),
             });
         }
 
-        // 2. Verificación: Dispositivos no autorizados / Fuera de lista blanca
+        // 2. Verification: Unauthorized devices / Outside whitelist
         let unwhitelisted: Vec<String> = devices
             .iter()
             .filter(|d| !d.is_gateway && !d.is_current_host && !d.is_whitelisted)
@@ -145,25 +145,25 @@ impl SecurityAuditor {
         if !unwhitelisted.is_empty() && devices.iter().any(|d| d.is_whitelisted) {
             score -= (unwhitelisted.len() as i32 * 5).min(20);
             checks.push(SecurityCheckItem {
-                title: "Dispositivos no incluidos en Lista Blanca".to_string(),
-                description: format!("Existen {} dispositivos conectados que no han sido validados como conocidos.", unwhitelisted.len()),
+                title: "Devices Not on Whitelist".to_string(),
+                description: format!("There are {} connected devices that have not been validated as known.", unwhitelisted.len()),
                 severity: AuditSeverity::Warning,
-                recommendation: "Revisa la lista de dispositivos y añade los legítimos a la Lista Blanca o bloquéalos en el router si son desconocidos.".to_string(),
+                recommendation: "Review the device list and add legitimate devices to the Whitelist or block them on the router if unknown.".to_string(),
                 affected_devices: unwhitelisted,
                 check_id: Some(SecurityCheckId::UnwhitelistedDevices),
             });
         } else {
             checks.push(SecurityCheckItem {
-                title: "Control de Acceso y Lista Blanca".to_string(),
-                description: "Todos los dispositivos conectados están identificados o no se han marcado intrusos.".to_string(),
+                title: "Access Control & Whitelist".to_string(),
+                description: "All connected devices are identified or no intruders were flagged.".to_string(),
                 severity: AuditSeverity::Pass,
-                recommendation: "Mantén actualizado el inventario de dispositivos del hogar.".to_string(),
+                recommendation: "Keep your home network device inventory updated.".to_string(),
                 affected_devices: Vec::new(),
                 check_id: Some(SecurityCheckId::AccessControlWhitelisted),
             });
         }
 
-        // 3. Verificación: Direcciones MAC privadas/aleatorias no identificadas
+        // 3. Verification: Unidentified private / randomized MAC addresses
         let unaliased_random_macs: Vec<String> = devices
             .iter()
             .filter(|d| d.is_randomized_mac && d.custom_alias.is_none())
@@ -173,22 +173,22 @@ impl SecurityAuditor {
         if !unaliased_random_macs.is_empty() {
             score -= (unaliased_random_macs.len() as i32 * 4).min(15);
             checks.push(SecurityCheckItem {
-                title: "MACs Aleatorias sin Identificar".to_string(),
-                description: "Dispositivos modernos (iOS/Android) usan MAC privada aleatoria, dificultando saber a quién pertenece el equipo.".to_string(),
+                title: "Unidentified Randomized MACs".to_string(),
+                description: "Modern devices (iOS/Android) use randomized private MACs, making identification harder.".to_string(),
                 severity: AuditSeverity::Info,
-                recommendation: "Asigna un alias personalizado a cada dispositivo para reconocerlo fácilmente en futuras conexiones.".to_string(),
+                recommendation: "Assign a custom alias to each device to easily recognize it in future connections.".to_string(),
                 affected_devices: unaliased_random_macs,
                 check_id: Some(SecurityCheckId::RandomizedMacs),
             });
         }
 
-        // 4. Verificación: Reenvío de puertos hacia Internet (UPnP Port Mapping)
+        // 4. Verification: Internet port forwarding (UPnP Port Mapping)
         let mut dangerous_ports_forwarded = Vec::new();
         for m in port_mappings {
             if m.enabled {
                 if [22, 23, 80, 445, 3389, 5900].contains(&m.external_port) {
                     dangerous_ports_forwarded.push(format!(
-                        "Puerto {} ({}) -> {}",
+                        "Port {} ({}) -> {}",
                         m.external_port, m.protocol, m.internal_client
                     ));
                 }
@@ -198,41 +198,41 @@ impl SecurityAuditor {
         if !dangerous_ports_forwarded.is_empty() {
             score -= 25;
             checks.push(SecurityCheckItem {
-                title: "Puertos Críticos Expuestos a Internet".to_string(),
-                description: "Se detectaron reglas NAT en el router que exponen servicios sensibles a ataques directos desde Internet.".to_string(),
+                title: "Critical Ports Exposed to Internet".to_string(),
+                description: "Router NAT rules detected that expose sensitive services to direct Internet attacks.".to_string(),
                 severity: AuditSeverity::Critical,
-                recommendation: "Elimina las reglas de reenvío de puertos para SSH, RDP, SMB o Telnet hacia Internet. Utiliza una VPN doméstica (WireGuard/OpenVPN) para acceder de forma remota.".to_string(),
+                recommendation: "Remove port forwarding rules for SSH, RDP, SMB, or Telnet to the Internet. Use a home VPN (WireGuard/OpenVPN) for remote access.".to_string(),
                 affected_devices: dangerous_ports_forwarded,
                 check_id: Some(SecurityCheckId::DangerousPortsForwarded),
             });
         } else if !port_mappings.is_empty() {
             checks.push(SecurityCheckItem {
-                title: "Mapeo de Puertos Controlado".to_string(),
-                description: format!("Hay {} puertos abiertos en el router, ninguno considerado de alto riesgo crítico.", port_mappings.len()),
+                title: "Controlled Port Mapping".to_string(),
+                description: format!("There are {} open ports on the router, none considered high risk.", port_mappings.len()),
                 severity: AuditSeverity::Pass,
-                recommendation: "Revisa periódicamente las aplicaciones que abren puertos mediante UPnP.".to_string(),
+                recommendation: "Periodically review applications that open ports via UPnP.".to_string(),
                 affected_devices: Vec::new(),
                 check_id: Some(SecurityCheckId::ControlledPortMapping),
             });
         }
 
-        // 5. Verificación: Seguridad de la Puerta de Enlace (Router)
+        // 5. Verification: Gateway / Router Security
         if !has_router_password {
             score -= 10;
             checks.push(SecurityCheckItem {
-                title: "Contraseña de Router no Configurada en NetLens".to_string(),
-                description: "NetLens no tiene guardada la contraseña administrativa para aplicar bloqueo 24/7 en el router.".to_string(),
+                title: "Router Password Not Configured in NetLens".to_string(),
+                description: "NetLens does not have the admin password saved to apply 24/7 router hardware blocking.".to_string(),
                 severity: AuditSeverity::Info,
-                recommendation: "Ingresa la contraseña en Ajustes para habilitar el control por hardware y aislamiento de intrusos.".to_string(),
+                recommendation: "Enter the password in Settings to enable hardware control and intruder isolation.".to_string(),
                 affected_devices: Vec::new(),
                 check_id: Some(SecurityCheckId::RouterPasswordMissing),
             });
         } else {
             checks.push(SecurityCheckItem {
-                title: "Integración con Router Activa".to_string(),
-                description: "La contraseña de administración del router está configurada, permitiendo aplicar listas de bloqueo directamente por hardware.".to_string(),
+                title: "Router Integration Active".to_string(),
+                description: "Router administrative password is configured, enabling direct hardware-level blocklists.".to_string(),
                 severity: AuditSeverity::Pass,
-                recommendation: "Excelente, la red está protegida activamente.".to_string(),
+                recommendation: "Excellent, the network is actively protected.".to_string(),
                 affected_devices: Vec::new(),
                 check_id: Some(SecurityCheckId::RouterIntegrationActive),
             });
@@ -240,10 +240,10 @@ impl SecurityAuditor {
 
         let final_score = score.clamp(0, 100) as u32;
         let grade_label = match final_score {
-            90..=100 => "Excelente".to_string(),
-            75..=89 => "Buena".to_string(),
-            50..=74 => "Advertencia".to_string(),
-            _ => "En Riesgo".to_string(),
+            90..=100 => "Excellent".to_string(),
+            75..=89 => "Good".to_string(),
+            50..=74 => "Warning".to_string(),
+            _ => "At Risk".to_string(),
         };
 
         let issues_count = checks

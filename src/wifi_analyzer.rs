@@ -36,14 +36,14 @@ pub struct WifiAnalyzerReport {
 pub struct WifiAnalyzer;
 
 impl WifiAnalyzer {
-    /// Escanea las redes Wi-Fi del entorno y genera un reporte analítico de canales y saturación
+    /// Scans surrounding Wi-Fi networks and generates an analytical report on channels and saturation
     pub async fn scan() -> Result<WifiAnalyzerReport, String> {
-        // Ejecutar nmcli para listar redes Wi-Fi
+        // Execute nmcli to list Wi-Fi networks
         let output = Command::new("nmcli")
             .args(["-t", "-f", "IN-USE,SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY", "dev", "wifi", "list"])
             .output()
             .await
-            .map_err(|e| format!("Error ejecutando nmcli: {}", e))?;
+            .map_err(|e| format!("Error executing nmcli: {}", e))?;
 
         let raw = String::from_utf8_lossy(&output.stdout);
         let mut networks = Vec::new();
@@ -61,13 +61,13 @@ impl WifiAnalyzer {
             }
         }
 
-        // Si nmcli falló o está vacío, intentar sin IN-USE
+        // If nmcli failed or output is empty, try without IN-USE
         if networks.is_empty() {
             let output_fallback = Command::new("nmcli")
                 .args(["-t", "-f", "SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY", "dev", "wifi", "list"])
                 .output()
                 .await
-                .map_err(|e| format!("Error en nmcli fallback: {}", e))?;
+                .map_err(|e| format!("Error in nmcli fallback: {}", e))?;
 
             let raw_fallback = String::from_utf8_lossy(&output_fallback.stdout);
             for line in raw_fallback.lines() {
@@ -81,7 +81,7 @@ impl WifiAnalyzer {
         Ok(report)
     }
 
-    /// Analiza la ocupación de canales y calcula las recomendaciones de espectro
+    /// Analyzes channel occupancy and computes spectrum recommendations
     fn analyze_networks(
         networks: Vec<WifiNetworkInfo>,
         current_ssid: Option<String>,
@@ -90,7 +90,7 @@ impl WifiAnalyzer {
         let mut map_24: HashMap<u32, (usize, u8, Vec<String>)> = HashMap::new();
         let mut map_5: HashMap<u32, (usize, u8, Vec<String>)> = HashMap::new();
 
-        // Inicializar canales no solapados estándar de 2.4 GHz
+        // Initialize standard non-overlapping 2.4 GHz channels
         for &ch in &[1, 6, 11] {
             map_24.insert(ch, (0, 0, Vec::new()));
         }
@@ -103,7 +103,7 @@ impl WifiAnalyzer {
             entry.0 += 1;
             entry.1 = entry.1.max(net.signal_percent);
             let display_ssid = if net.ssid.is_empty() {
-                format!("(Red Oculta {})", &net.bssid[..8.min(net.bssid.len())])
+                format!("(Hidden Network {})", &net.bssid[..8.min(net.bssid.len())])
             } else {
                 net.ssid.clone()
             };
@@ -112,7 +112,7 @@ impl WifiAnalyzer {
             }
         }
 
-        // Convertir a listas ordenadas
+        // Convert to sorted lists
         let mut channels_24: Vec<ChannelOccupancy> = map_24
             .into_iter()
             .map(|(channel, (networks_count, max_signal, ssids))| ChannelOccupancy {
@@ -135,7 +135,7 @@ impl WifiAnalyzer {
             .collect();
         channels_5.sort_by_key(|c| c.channel);
 
-        // Elegir mejor canal en 2.4 GHz entre los no solapados (1, 6, 11)
+        // Pick best channel in 2.4 GHz among non-overlapping (1, 6, 11)
         let mut best_ch_24 = 1;
         let mut min_interference_24 = usize::MAX;
         for &ch in &[1, 6, 11] {
@@ -146,7 +146,7 @@ impl WifiAnalyzer {
             }
         }
 
-        // Elegir mejor canal en 5 GHz (canales típicos 36, 40, 44, 48, 149, 153, 157, 161)
+        // Pick best channel in 5 GHz (typical channels 36, 40, 44, 48, 149, 153, 157, 161)
         let candidates_5 = [36, 44, 48, 149, 157];
         let mut best_ch_5 = 36;
         let mut min_interference_5 = usize::MAX;
@@ -158,24 +158,24 @@ impl WifiAnalyzer {
             }
         }
 
-        // Redactar recomendación
+        // Draft recommendation
         let recommendation_text = match current_channel {
             Some(curr) if curr <= 14 => {
                 if curr == best_ch_24 {
-                    format!("Tu red está en el canal {} (2.4 GHz), el cual presenta la menor interferencia en tu entorno.", curr)
+                    format!("Your network is on channel {} (2.4 GHz), which has the lowest interference in your environment.", curr)
                 } else {
                     format!(
-                        "Tu red está en el canal {} (2.4 GHz). Se recomienda cambiar al canal {} para evitar interferencias de {} redes vecinas.",
+                        "Your network is on channel {} (2.4 GHz). It is recommended to switch to channel {} to avoid interference from {} neighboring networks.",
                         curr, best_ch_24, min_interference_24
                     )
                 }
             }
             Some(curr) => {
-                format!("Tu red opera en el canal {} (5 GHz). El espectro de 5 GHz está optimizado.", curr)
+                format!("Your network is operating on channel {} (5 GHz). The 5 GHz spectrum is optimized.", curr)
             }
             None => {
                 format!(
-                    "Canal 2.4 GHz recomendado: Canal {} (menos congestionado). Canal 5 GHz recomendado: Canal {}.",
+                    "Recommended 2.4 GHz channel: Channel {} (least congested). Recommended 5 GHz channel: Channel {}.",
                     best_ch_24, best_ch_5
                 )
             }
@@ -193,7 +193,7 @@ impl WifiAnalyzer {
         }
     }
 
-    /// Parsea una línea de salida de nmcli con formato con IN-USE
+    /// Parses a line of nmcli output with IN-USE format
     fn parse_nmcli_line(line: &str) -> Option<WifiNetworkInfo> {
         let clean = line.replace(r"\:", "__COLON__");
         let parts: Vec<&str> = clean.split(':').collect();
@@ -221,7 +221,7 @@ impl WifiAnalyzer {
         })
     }
 
-    /// Parsea una línea simple sin IN-USE
+    /// Parses a simple line without IN-USE
     fn parse_nmcli_line_simple(line: &str) -> Option<WifiNetworkInfo> {
         let clean = line.replace(r"\:", "__COLON__");
         let parts: Vec<&str> = clean.split(':').collect();

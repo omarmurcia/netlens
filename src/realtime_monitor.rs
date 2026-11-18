@@ -21,7 +21,7 @@ pub enum NeighborAction {
 pub struct RealtimeMonitor;
 
 impl RealtimeMonitor {
-    /// Parsea una línea de evento emitida por el kernel a través de `ip monitor neigh`
+    /// Parses an event line emitted by the kernel via `ip monitor neigh`
     pub fn parse_neighbor_line(line: &str) -> Option<NeighborAction> {
         let line = line.trim();
         if line.is_empty() {
@@ -42,7 +42,7 @@ impl RealtimeMonitor {
             return None;
         }
 
-        // IP es el primer token (ignorar si es IPv6 u otro formato)
+        // IP is the first token (ignore if IPv6 or other format)
         let ip: Ipv4Addr = parts[0].parse().ok()?;
 
         let mut iface = String::new();
@@ -71,7 +71,7 @@ impl RealtimeMonitor {
             return Some(NeighborAction::Disappeared { ip, mac, iface });
         }
 
-        // Ignorar estados de fallo o incompletos
+        // Ignore failed or incomplete states
         if state == "FAILED" || state == "INCOMPLETE" {
             return None;
         }
@@ -92,7 +92,7 @@ impl RealtimeMonitor {
         None
     }
 
-    /// Inicia el listener asíncrono en segundo plano conectado a los eventos del kernel Linux
+    /// Spawns the background asynchronous listener connected to Linux kernel events
     pub fn spawn_listener(sender: mpsc::UnboundedSender<NeighborAction>) {
         tokio::spawn(async move {
             loop {
@@ -118,13 +118,13 @@ impl RealtimeMonitor {
                     }
                     Err(err) => {
                         eprintln!(
-                            "Aviso: No se pudo iniciar monitor netlink en tiempo real: {}",
+                            "Warning: Could not start real-time netlink monitor: {}",
                             err
                         );
                     }
                 }
 
-                // Pausa antes de reintentar si el comando termina
+                // Pause before retrying if the command terminates
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         });

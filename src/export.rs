@@ -17,19 +17,19 @@ struct JsonExportReport<'a> {
 pub struct Exporter;
 
 impl Exporter {
-    /// Genera el nombre de archivo por defecto para JSON con marca temporal
+    /// Generates default JSON report filename with current timestamp
     pub fn generate_json_filename() -> String {
         let now_str = Local::now().format("%Y%m%d_%H%M%S").to_string();
         format!("netlens_scan_{}.json", now_str)
     }
 
-    /// Genera el nombre de archivo por defecto para CSV con marca temporal
+    /// Generates default CSV report filename with current timestamp
     pub fn generate_csv_filename() -> String {
         let now_str = Local::now().format("%Y%m%d_%H%M%S").to_string();
         format!("netlens_scan_{}.csv", now_str)
     }
 
-    /// Obtiene la ruta por defecto en la carpeta de descargas o home del usuario
+    /// Resolves the default export path in user's Downloads or home folder
     pub fn get_export_path(filename: &str) -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         let downloads = PathBuf::from(&home).join("Downloads");
@@ -40,14 +40,14 @@ impl Exporter {
         }
     }
 
-    /// Abre un selector de archivos nativo (zenity o kdialog) para que el usuario elija la ruta de guardado
+    /// Opens native desktop file dialog (zenity or kdialog) for user to choose save destination
     pub fn pick_save_path_with_file_dialog(
         default_path: &Path,
         filter_name: &str,
         filter_ext: &str,
         title: &str,
     ) -> Option<PathBuf> {
-        // 1. Intentar con zenity (estándar en entornos GNOME/X11/Wayland)
+        // 1. Try zenity (standard in GNOME / Wayland / GTK environments)
         let zenity_res = Command::new("zenity")
             .arg("--file-selection")
             .arg("--save")
@@ -71,12 +71,12 @@ impl Exporter {
                     return Some(p);
                 }
             } else if output.status.code() == Some(1) {
-                // El usuario canceló explícitamente el selector
+                // User explicitly clicked Cancel or closed the dialog
                 return None;
             }
         }
 
-        // 2. Intentar con kdialog (estándar en entornos KDE)
+        // 2. Try kdialog (standard in KDE Plasma desktop environments)
         let kdialog_res = Command::new("kdialog")
             .arg("--getsavefilename")
             .arg(default_path.to_string_lossy().to_string())
@@ -96,23 +96,23 @@ impl Exporter {
                     return Some(p);
                 }
             } else if output.status.code() == Some(1) {
-                // El usuario canceló explícitamente
+                // User cancelled in kdialog
                 return None;
             }
         }
 
-        // 3. Fallback: Si no hay entorno gráfico de diálogo, se devuelve la ruta por defecto
+        // 3. Fallback: If no GUI dialog is available, return default path
         Some(default_path.to_path_buf())
     }
 
-    /// Guarda los datos en formato JSON en una ruta específica
+    /// Saves device and network data formatted as JSON to the specified path
     pub fn save_json_to_path(
         path: &Path,
         devices: &[Device],
         ctx: &NetworkContext,
     ) -> Result<(), String> {
         let report = JsonExportReport {
-            app: "NetLens - Explorador de Red",
+            app: "NetLens - Network Explorer",
             timestamp: Local::now().to_rfc3339(),
             total_devices: devices.len(),
             network: ctx,
@@ -120,7 +120,7 @@ impl Exporter {
         };
 
         let json_str = serde_json::to_string_pretty(&report)
-            .map_err(|e| format!("Error serializando JSON: {}", e))?;
+            .map_err(|e| format!("Error serializing JSON: {}", e))?;
 
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() && !parent.exists() {
@@ -129,16 +129,16 @@ impl Exporter {
         }
 
         fs::write(path, json_str)
-            .map_err(|e| format!("Error guardando archivo JSON en {:?}: {}", path, e))?;
+            .map_err(|e| format!("Error saving JSON file to {:?}: {}", path, e))?;
 
         Ok(())
     }
 
-    /// Guarda los datos en formato CSV en una ruta específica
+    /// Saves device data formatted as CSV to the specified path
     pub fn save_csv_to_path(path: &Path, devices: &[Device]) -> Result<(), String> {
         let mut csv = String::new();
-        // Cabecera CSV
-        csv.push_str("IP,MAC,Nombre/Hostname,Fabricante,Categoría,MAC_Privada,Latencia_ms,Puertos_Abiertos,Interfaz,Alias\n");
+        // CSV Header
+        csv.push_str("IP,MAC,Hostname,Manufacturer,Category,Private_MAC,Latency_ms,Open_Ports,Interface,Alias\n");
 
         for d in devices {
             let host = d.hostname.as_deref().unwrap_or("-");
@@ -161,7 +161,7 @@ impl Exporter {
                 host.replace('"', "\"\""),
                 d.vendor.replace('"', "\"\""),
                 d.category.display_name(),
-                if d.is_randomized_mac { "Sí" } else { "No" },
+                if d.is_randomized_mac { "Yes" } else { "No" },
                 latency,
                 ports_str,
                 d.interface,
@@ -176,12 +176,12 @@ impl Exporter {
         }
 
         fs::write(path, csv)
-            .map_err(|e| format!("Error guardando archivo CSV en {:?}: {}", path, e))?;
+            .map_err(|e| format!("Error saving CSV file to {:?}: {}", path, e))?;
 
         Ok(())
     }
 
-    /// Exporta los dispositivos a formato JSON con sangría legible (ruta por defecto)
+    /// Exports devices to pretty-printed JSON format (default path)
     #[allow(dead_code)]
     pub fn export_json(devices: &[Device], ctx: &NetworkContext) -> Result<PathBuf, String> {
         let filename = Self::generate_json_filename();
@@ -190,7 +190,7 @@ impl Exporter {
         Ok(path)
     }
 
-    /// Exporta los dispositivos a formato CSV estándar (ruta por defecto)
+    /// Exports devices to standard CSV format (default path)
     #[allow(dead_code)]
     pub fn export_csv(devices: &[Device]) -> Result<PathBuf, String> {
         let filename = Self::generate_csv_filename();

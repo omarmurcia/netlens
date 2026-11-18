@@ -55,7 +55,7 @@ struct JnapGenericResponse<T> {
 pub struct LinksysRouter;
 
 impl LinksysRouter {
-    /// Codificador Base64 autónomo para cabeceras HTTP Basic
+    /// Standalone Base64 encoder for HTTP Basic headers
     pub fn base64_encode(input: &str) -> String {
         const CHARSET: &[u8; 64] =
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -88,7 +88,7 @@ impl LinksysRouter {
         result
     }
 
-    /// Ejecuta una llamada JNAP al router Linksys deserializando el contenedor de respuesta general
+    /// Executes a JNAP call to the Linksys router deserializing general response container
     async fn execute_jnap_raw<T: for<'de> Deserialize<'de>>(
         ip: &str,
         action: &str,
@@ -120,7 +120,7 @@ impl LinksysRouter {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("Error iniciando petición curl JNAP: {}", e))?;
+            .map_err(|e| format!("Error initiating curl JNAP request: {}", e))?;
 
         if let Some(mut stdin) = child.stdin.take() {
             let data = payload_json.as_bytes().to_vec();
@@ -132,25 +132,25 @@ impl LinksysRouter {
         let output = child
             .wait_with_output()
             .await
-            .map_err(|e| format!("Error esperando respuesta JNAP: {}", e))?;
+            .map_err(|e| format!("Error awaiting JNAP response: {}", e))?;
 
         if !output.status.success() {
-            return Err("El router no respondió o no se encuentra accesible en la IP especificada".to_string());
+            return Err("Router did not respond or is not reachable at the specified IP".to_string());
         }
 
         let body = String::from_utf8_lossy(&output.stdout);
         let resp: JnapGenericResponse<T> = serde_json::from_str(&body)
-            .map_err(|e| format!("Error deserializando respuesta JNAP: {}. Respuesta: {}", e, body))?;
+            .map_err(|e| format!("Error deserializing JNAP response: {}. Response: {}", e, body))?;
 
         if resp.result != "OK" {
             let err_msg = resp.error.unwrap_or(resp.result);
-            return Err(format!("Error en router JNAP: {}", err_msg));
+            return Err(format!("Router JNAP error: {}", err_msg));
         }
 
         Ok(resp)
     }
 
-    /// Ejecuta una llamada JNAP de tipo consulta (GET) que devuelve datos en el campo "output"
+    /// Executes a query-type JNAP call (GET) that returns data in "output" field
     pub async fn execute_jnap<T: for<'de> Deserialize<'de>>(
         ip: &str,
         action: &str,
@@ -160,10 +160,10 @@ impl LinksysRouter {
         let resp: JnapGenericResponse<T> =
             Self::execute_jnap_raw(ip, action, payload_json, password).await?;
         resp.output
-            .ok_or_else(|| "Respuesta de router no incluyó sección de datos (output)".to_string())
+            .ok_or_else(|| "Router response did not include data section (output)".to_string())
     }
 
-    /// Ejecuta una llamada JNAP de tipo acción/configuración (SET) donde la respuesta es {"result": "OK"}
+    /// Executes an action/configuration JNAP call (SET) where response is {"result": "OK"}
     pub async fn execute_jnap_action(
         ip: &str,
         action: &str,
@@ -175,7 +175,7 @@ impl LinksysRouter {
         Ok(())
     }
 
-    /// Obtiene información de hardware y firmware del router Linksys
+    /// Retrieves hardware and firmware information from Linksys router
     #[allow(dead_code)]
     pub async fn get_device_info(ip: &str) -> Result<RouterInfo, String> {
         #[derive(Deserialize)]
@@ -197,7 +197,7 @@ impl LinksysRouter {
         })
     }
 
-    /// Verifica si la contraseña de administración ingresada es válida
+    /// Verifies if administrative password is valid
     pub async fn verify_admin_password(ip: &str, password: &str) -> Result<bool, String> {
         let res: Result<JnapGenericResponse<serde_json::Value>, String> = Self::execute_jnap_raw(
             ip,
@@ -219,7 +219,7 @@ impl LinksysRouter {
         }
     }
 
-    /// Obtiene la configuración actual del filtro de direcciones MAC
+    /// Retrieves current MAC address filter configuration
     pub async fn get_mac_filter_settings(ip: &str, password: &str) -> Result<MacFilterSettings, String> {
         Self::execute_jnap(
             ip,
@@ -230,14 +230,14 @@ impl LinksysRouter {
         .await
     }
 
-    /// Aplica una nueva lista de filtro MAC en el router
+    /// Applies new MAC address filter settings on router
     pub async fn set_mac_filter_settings(
         ip: &str,
         password: &str,
         settings: &MacFilterSettings,
     ) -> Result<(), String> {
         let payload = serde_json::to_string(settings)
-            .map_err(|e| format!("Error serializando MacFilterSettings: {}", e))?;
+            .map_err(|e| format!("Error serializing MacFilterSettings: {}", e))?;
 
         Self::execute_jnap_action(
             ip,
@@ -248,7 +248,7 @@ impl LinksysRouter {
         .await
     }
 
-    /// Bloquea una dirección MAC en el router mediante la lista negra permanente
+    /// Blocks a MAC address on router using permanent deny list
     pub async fn block_mac(ip: &str, password: &str, mac_to_block: &str) -> Result<(), String> {
         let mut current = Self::get_mac_filter_settings(ip, password).await?;
         let mac_norm = mac_to_block.trim().to_uppercase();
@@ -265,7 +265,7 @@ impl LinksysRouter {
         Self::set_mac_filter_settings(ip, password, &current).await
     }
 
-    /// Desbloquea / readmite una dirección MAC en el router
+    /// Unblocks / readmits a MAC address on router
     pub async fn unblock_mac(ip: &str, password: &str, mac_to_unblock: &str) -> Result<(), String> {
         let mut current = Self::get_mac_filter_settings(ip, password).await?;
         let mac_norm = mac_to_unblock.trim();
@@ -283,7 +283,7 @@ impl LinksysRouter {
         Self::set_mac_filter_settings(ip, password, &current).await
     }
 
-    /// Obtiene las conexiones físicas y Wi-Fi activas directamente desde el router Linksys
+    /// Retrieves active physical and Wi-Fi connections directly from Linksys router
     pub async fn get_network_connections(
         ip: &str,
         password: &str,

@@ -2,7 +2,7 @@ use iced::mouse;
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
-/// Widget gráfico Sparkline ultra-ligero para visualizar telemetría en tiempo real (tráfico y latencia)
+/// Ultra-lightweight Sparkline chart widget to visualize real-time telemetry (traffic and latency)
 #[derive(Debug, Clone)]
 pub struct Sparkline {
     pub points: Vec<f32>,

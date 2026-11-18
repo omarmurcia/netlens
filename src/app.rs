@@ -115,7 +115,7 @@ impl fmt::Display for SortOption {
     }
 }
 
-/// Filtro de seguridad (Todos, Lista Blanca, Bloqueados)
+/// Security filter (All, Whitelist, Blocked)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SecurityFilter {
     #[default]
@@ -124,7 +124,7 @@ pub enum SecurityFilter {
     Blocked,
 }
 
-/// Envoltorio para mostrar opciones de ordenación localizadas dinámicamente
+/// Wrapper for dynamically localized sorting options
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalizedSortOption {
     pub sort: SortOption,
@@ -137,7 +137,7 @@ impl fmt::Display for LocalizedSortOption {
     }
 }
 
-/// Envoltorio para mostrar categorías de dispositivos localizadas dinámicamente
+/// Wrapper for dynamically localized device categories
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalizedCategory {
     pub category: DeviceCategory,
@@ -155,7 +155,7 @@ impl fmt::Display for LocalizedCategory {
     }
 }
 
-/// Estado descriptivo de la aplicación para renderizar reactivamente en cualquier idioma
+/// Descriptive application state for reactive rendering in any language
 #[derive(Debug, Clone)]
 pub enum AppStatus {
     Ready,
@@ -253,7 +253,7 @@ pub struct App {
     pub is_pinging: bool,
     pub is_deep_scanning: bool,
     pub deep_ports: Vec<PortInfo>,
-    pub notification: Option<(String, bool)>, // (Mensaje, es_exito)
+    pub notification: Option<(String, bool)>, // (Message, is_success)
     pub alias_input: String,
     pub current_theme: Theme,
     pub language: Language,
@@ -273,60 +273,60 @@ pub struct App {
     pub is_testing_router: bool,
     pub is_operating_device: Option<Ipv4Addr>,
 
-    // Telemetría con Sparklines en tiempo real
+    // Real-time telemetry sparklines
     pub download_history: VecDeque<f32>,
     pub upload_history: VecDeque<f32>,
     pub ping_history: VecDeque<f32>,
 
-    // Auto-Discovery periódico
+    // Periodic Auto-Discovery
     pub auto_scan_interval_secs: u32,
     pub last_scan_time: Instant,
 
-    // Detección de Intrusos / Rogue Device Alert
+    // Intruder detection / Rogue Device Alert
     pub known_macs: HashSet<String>,
     pub alerted_macs: HashSet<String>,
     pub pending_intruder_alert: Option<IntruderAlert>,
 
-    // Topología Linksys Mesh
+    // Linksys Mesh topology
     pub router_connections: HashMap<String, RouterConnection>,
 
-    // Traceroute Visual
+    // Visual Traceroute
     pub is_tracing_route: bool,
     pub traceroute_hops: Option<Vec<HopInfo>>,
     pub traceroute_error: Option<String>,
 
-    // Segundo Plano & Inicio Automático
+    // Background & System Autostart
     pub autostart_enabled: bool,
     pub minimize_on_close: bool,
 
-    // Ventana y Ciclo de Vida (Daemon)
+    // Window & Lifecycle (Daemon)
     pub active_window_id: Option<iced::window::Id>,
 
-    // System Tray (Bandeja del Sistema)
+    // System Tray
     pub tray_state: Arc<Mutex<TrayState>>,
     pub tray_handle: Arc<Mutex<Option<ksni::Handle<NetLensTray>>>>,
 
-    // Historial y Timeline de Eventos
+    // Event History & Timeline
     pub network_events: Vec<NetworkEvent>,
     pub is_timeline_open: bool,
 
-    // Auditoría de Salud y Seguridad de la Red
+    // Network Health & Security Audit
     pub security_audit_report: Option<SecurityAuditReport>,
     pub is_audit_open: bool,
 
-    // UPnP Router & Mapeo de Puertos NAT
+    // Router UPnP & NAT Port Mapping
     pub upnp_status: Option<UpnpRouterStatus>,
     pub is_upnp_open: bool,
 
-    // Monitor de Estabilidad / Caídas de Internet
+    // Internet Stability / Outage Monitor
     pub uptime_tracker: UptimeTracker,
 
-    // Analizador de Canales Wi-Fi y Espectro
+    // Wi-Fi Channel & Spectrum Analyzer
     pub wifi_analyzer_report: Option<WifiAnalyzerReport>,
     pub is_wifi_analyzer_open: bool,
     pub is_scanning_wifi: bool,
 
-    // Configuración y Envío de Notificaciones de Escritorio
+    // Desktop Notification Settings & Dispatch
     pub notification_settings: NotificationSettings,
     pub notification_prefix_input: String,
     pub scanned_macs_current_cycle: HashSet<String>,
@@ -334,11 +334,11 @@ pub struct App {
     pub initial_scan_completed: bool,
     pub last_realtime_events: HashMap<String, Instant>,
 
-    // Detección Rápida de Desconexión (Heartbeat Keep-Alive)
+    // Fast Disconnection Detection (Heartbeat Keep-Alive)
     pub missed_heartbeats: HashMap<Ipv4Addr, u32>,
     pub last_heartbeat_time: Instant,
 
-    // Explorador de Almacenamiento USB / NAS del Router
+    // Router USB Storage / NAS Explorer
     pub is_storage_explorer_open: bool,
     pub is_storage_creds_open: bool,
     pub is_storage_loading: bool,
@@ -367,7 +367,7 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    // Explorador de Almacenamiento USB / NAS del Router
+    // Router USB Storage / NAS Explorer
     OpenStorageExplorer,
     CloseStorageExplorer,
     RefreshStorageShares,
@@ -404,11 +404,11 @@ pub enum Message {
     StorageDirectoryLoaded(Result<(Vec<StorageFileEntry>, Option<StorageDiskInfo>), String>),
     StorageOperationCompleted(Result<String, String>),
 
-    // Detección Rápida de Desconexión (Heartbeat)
+    // Fast Disconnection Detection (Heartbeat)
     ToggleHeartbeat(bool),
     HeartbeatResultsReceived(Vec<(Ipv4Addr, String, String, bool)>),
 
-    // Monitoreo en Tiempo Real (Kernel Netlink)
+    // Real-Time Monitoring (Kernel Netlink)
     ToggleRealtimeMonitor(bool),
     RealtimeNeighborEvent(NeighborAction),
     RealtimeDeviceEnriched {
@@ -421,7 +421,7 @@ pub enum Message {
         services: Vec<String>,
     },
 
-    // Parámetros y Configuración de Notificaciones
+    // Notification Parameters & Settings
     ToggleNotificationsMaster(bool),
     ToggleNotifyUnknown(bool),
     ToggleNotifyKnownUnwhitelisted(bool),
@@ -438,13 +438,13 @@ pub enum Message {
     NotificationPrefixChanged(String),
     SendTestNotification,
 
-    // Escaneo
+    // Scanning
     StartScan,
     StartBackgroundScan,
     ScanEventReceived(ScanEvent),
     RefreshNetwork,
 
-    // Ventana, System Tray y Segundo Plano
+    // Window, System Tray & Background
     WindowCloseRequested(iced::window::Id),
     WindowClosed(iced::window::Id),
     RestoreWindowFromTray,
@@ -457,30 +457,30 @@ pub enum Message {
         action: String,
     },
 
-    // Temporizador periódico (1 segundo para telemetría de velocidad y señal)
+    // Periodic timer (1 second for speed and signal telemetry)
     Tick,
 
-    // Ajustes / Configuración
+    // Settings / Configuration
     OpenSettings,
     CloseSettings,
     LanguageChanged(Language),
     ThemeChanged(Theme),
     AutoScanIntervalChanged(u32),
 
-    // Test de Velocidad de Internet
+    // Internet Speed Test
     OpenSpeedTest,
     CloseSpeedTest,
     StartSpeedTest,
     SpeedTestEventReceived(SpeedTestEvent),
     ClearSpeedTestHistory,
 
-    // Filtros y Búsqueda
+    // Filters & Search
     SearchChanged(String),
     CategorySelected(Option<DeviceCategory>),
     SecurityFilterChanged(SecurityFilter),
     SortChanged(SortOption),
 
-    // Inspector de Dispositivo
+    // Device Inspector
     SelectDevice(Ipv4Addr),
     CloseInspector,
     StartPingTest(Ipv4Addr),
@@ -494,7 +494,7 @@ pub enum Message {
     OpenInBrowser(Ipv4Addr),
     ChangeDeviceCategory(Ipv4Addr, DeviceCategory),
 
-    // Control de Seguridad, Intrusos y Router
+    // Security Control, Intruders & Router
     ToggleDeviceBlocked(Ipv4Addr, String),
     ToggleDeviceWhitelist(Ipv4Addr, String),
     TrustDevice(String),
@@ -516,51 +516,51 @@ pub enum Message {
     AliasInputChanged(String),
     SaveAlias(Ipv4Addr),
 
-    // Portapapeles
+    // Clipboard
     CopyToClipboard(String, String),
 
-    // Exportación
+    // Export
     ExportJson,
     ExportJsonSelected(Option<PathBuf>),
     ExportCsv,
     ExportCsvSelected(Option<PathBuf>),
 
-    // Notificaciones
+    // Notifications
     DismissNotification,
 
-    // Historial y Timeline de Eventos
+    // Event History & Timeline
     OpenTimeline,
     CloseTimeline,
     ClearTimeline,
 
-    // Auditoría de Seguridad
+    // Security Audit
     RunSecurityAudit,
     OpenSecurityAudit,
     CloseSecurityAudit,
 
-    // UPnP Router & Mapeo de Puertos NAT
+    // Router UPnP & NAT Port Mapping
     QueryUpnpRouter,
     OpenUpnpModal,
     CloseUpnpModal,
     UpnpRouterResult(Result<UpnpRouterStatus, String>),
 
-    // Analizador de Canales Wi-Fi
+    // Wi-Fi Channel Analyzer
     ScanWifi,
     OpenWifiAnalyzer,
     CloseWifiAnalyzer,
     WifiScanCompleted(Result<WifiAnalyzerReport, String>),
 
-    // Monitoreo de conectividad (Uptime)
+    // Connectivity monitoring (Uptime)
     ConnectivityChecked { gw_ok: bool, internet_ok: bool },
 
-    // Historial de peticiones y dominios de dispositivos
+    // Device requests and domains history
     ClearDeviceRequestHistory(Ipv4Addr),
     AddDeviceSampleRequest(Ipv4Addr),
 }
 
-/// Sondeo rápido y ligero para Heartbeat Keep-Alive (detecta desconexiones en segundos)
+/// Fast, lightweight probe for Heartbeat Keep-Alive (detects disconnections in seconds)
 async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
-    // 1. Sondeo ICMP Ping con timeout de 600ms
+    // 1. ICMP Ping probe with 600ms timeout
     let ping_ok = tokio::time::timeout(Duration::from_millis(600), async {
         tokio::process::Command::new("ping")
             .args(["-c", "1", "-W", "1", &ip.to_string()])
@@ -578,7 +578,7 @@ async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
         return true;
     }
 
-    // 2. Si ping falla (ej. equipos con firewall que descartan ICMP pero están conectados), probar puertos TCP estándar
+    // 2. If ping fails (e.g. firewalled devices that drop ICMP but are connected), probe standard TCP ports
     let tcp_ok = tokio::time::timeout(Duration::from_millis(400), async {
         for port in [80, 443, 53, 8080, 22] {
             if tokio::net::TcpStream::connect((ip, port)).await.is_ok() {
@@ -593,7 +593,7 @@ async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
     tcp_ok
 }
 
-/// Configuración de ventana predeterminada de NetLens (con icono oficial de la app)
+/// Default window configuration for NetLens (with official app icon)
 pub fn default_window_settings() -> iced::window::Settings {
     let icon = crate::tray::get_window_icon();
     iced::window::Settings {
@@ -615,7 +615,7 @@ impl App {
         let oui_db = Oui::default().ok().map(Arc::new);
         let telemetry = Telemetry::new(&network.interface);
 
-        // Cargar estado guardado de configuración persistente (idioma, tema, dispositivos, metadata)
+        // Load persisted configuration state (language, theme, devices, metadata)
         let saved = Storage::load();
         let current_theme = theme_from_string(&saved.theme);
         let language = saved.language;
@@ -647,9 +647,11 @@ impl App {
         let router_password_input = saved.router_password.unwrap_or_default();
         let speed_test_history = saved.speed_test_history;
         let auto_scan_interval_secs = saved.auto_scan_interval_secs;
-        let autostart_enabled = saved.autostart || AutostartManager::is_enabled();
+        let autostart_enabled = saved.autostart;
         if autostart_enabled {
             AutostartManager::sync_if_needed(true);
+        } else {
+            AutostartManager::sync_if_needed(false);
         }
         let minimize_on_close = saved.minimize_to_tray_on_close;
         let notification_settings = saved.notification_settings;
@@ -777,7 +779,7 @@ impl App {
             router_has_storage: false,
         };
 
-        // Iniciar servicio StatusNotifierItem de System Tray (Bandeja del Sistema)
+        // Start System Tray StatusNotifierItem service
         spawn_tray(Arc::clone(&app.tray_state), Arc::clone(&app.tray_handle));
 
         let start_minimized = std::env::args().any(|a| a == "--minimized" || a == "--background");
@@ -795,12 +797,12 @@ impl App {
         (app, initial_task)
     }
 
-    /// Punto de arranque para la infraestructura iced::daemon
+    /// Entry point for iced::daemon infrastructure
     pub fn boot() -> (Self, Task<Message>) {
         Self::new()
     }
 
-    /// Sincroniza el estado actual de escaneo y dispositivos con el System Tray
+    /// Synchronizes current scan state and devices with System Tray
     pub fn sync_tray_state(&self) {
         if let Ok(mut s) = self.tray_state.lock() {
             s.device_count = self.devices.len();
@@ -817,7 +819,7 @@ impl App {
         }
     }
 
-    /// Guarda el estado actual de la aplicación de manera persistente en disco
+    /// Persists current application state to disk
     pub fn save_state(&self) {
         let state = AppState {
             language: self.language,
@@ -845,7 +847,7 @@ impl App {
         }
     }
 
-    /// Suscripción periódica de 1 segundo para medir velocidad de subida/bajada, eventos de ventana y System Tray
+    /// Periodic 1-second subscription for measuring upload/download speed, window events, and System Tray
     pub fn subscription(&self) -> Subscription<Message> {
         let tick_sub = Subscription::run(|| {
             iced::futures::stream::unfold(
@@ -899,7 +901,7 @@ impl App {
             Message::Tick => {
                 self.telemetry.update_sample(&self.network.interface);
 
-                // Telemetría con Sparklines: registrar muestras de los últimos 30 segundos
+                // Telemetry sparklines: record samples of the last 30 seconds
                 self.download_history
                     .push_back(self.telemetry.download_speed_bps as f32);
                 if self.download_history.len() > 30 {
@@ -919,7 +921,7 @@ impl App {
                     }
                 }
 
-                // Auto-Discovery: si el intervalo está activo y transcurrió el tiempo, re-escanear silenciosamente en segundo plano
+                // Auto-Discovery: if interval is active and time elapsed, re-scan silently in background
                 if self.auto_scan_interval_secs > 0
                     && !self.is_scanning
                     && self.last_scan_time.elapsed().as_secs() >= self.auto_scan_interval_secs as u64
@@ -932,14 +934,14 @@ impl App {
 
                 let mut tick_tasks = Vec::new();
 
-                // 1. Sondeo periódico de estabilidad de Internet cada 5 segundos
+                // 1. Periodic Internet stability probe every 5 seconds
                 let gw = self.network.gateway_ip;
                 tick_tasks.push(Task::future(async move {
                     let (gw_ok, internet_ok) = UptimeTracker::probe_connectivity(gw).await;
                     Message::ConnectivityChecked { gw_ok, internet_ok }
                 }));
 
-                // 2. Detección Rápida de Desconexión (Heartbeat Keep-Alive cada 4 segundos)
+                // 2. Fast Disconnection Detection (Heartbeat Keep-Alive every 4 seconds)
                 if self.notification_settings.enabled
                     && self.notification_settings.fast_disconnection_heartbeat
                     && !self.is_scanning
@@ -1032,7 +1034,7 @@ impl App {
                 Task::none()
             }
 
-            // Detección Rápida de Desconexión (Heartbeat)
+            // Fast Disconnection Detection (Heartbeat)
             Message::ToggleHeartbeat(enabled) => {
                 self.notification_settings.fast_disconnection_heartbeat = enabled;
                 self.save_state();
@@ -1110,7 +1112,7 @@ impl App {
                 Task::none()
             }
 
-            // Monitoreo en Tiempo Real (Kernel Netlink)
+            // Real-Time Monitoring (Kernel Netlink)
             Message::ToggleRealtimeMonitor(enabled) => {
                 self.notification_settings.realtime_netlink_monitor = enabled;
                 self.save_state();
@@ -1129,7 +1131,7 @@ impl App {
                             return Task::none();
                         }
 
-                        // Anti-rebote: evitar procesar múltiples transiciones del mismo equipo en menos de 4 segundos
+                        // Debounce: prevent processing multiple transitions of the same device within 4 seconds
                         if let Some(prev) = self.last_realtime_events.get(&mac_key) {
                             if prev.elapsed() < Duration::from_secs(4) {
                                 return Task::none();
@@ -1149,7 +1151,7 @@ impl App {
                             return Task::none();
                         }
 
-                        // El dispositivo acaba de aparecer o reconectarse: enriquecer rápidamente
+                        // Device just appeared or reconnected: quickly enrich
                         let oui_db = self.oui_db.clone();
                         Task::future(async move {
                             let vendor = Scanner::lookup_vendor(oui_db.as_deref(), &mac);
@@ -1318,9 +1320,9 @@ impl App {
                         }
                     }
                 } else {
-                    // Dispositivo conocido que se reconecta en tiempo real
+                    // Known device reconnecting in real time
                     if !dev.is_current_host && !dev.is_gateway && !dev.is_whitelisted {
-                        // *** ALERTA INSTANTÁNEA: RECONEXIÓN DE NO WHITELIST ***
+                        // *** INSTANT ALERT: NON-WHITELIST RECONNECTION ***
                         let event = HistoryManager::create_event(
                             NetworkEventType::SecurityAlert,
                             "Reconexión No Autorizada (Tiempo Real)".to_string(),
@@ -1406,7 +1408,7 @@ impl App {
                 notif_task
             }
 
-            // Gestión y Configuración de Notificaciones de Escritorio
+            // Desktop Notification Management & Settings
             Message::ToggleNotificationsMaster(enabled) => {
                 self.notification_settings.enabled = enabled;
                 self.save_state();
@@ -1509,8 +1511,8 @@ impl App {
 
             Message::WindowCloseRequested(id) => {
                 if self.minimize_on_close {
-                    // Cerrar y destruir la ventana completamente para que desaparezca de la barra de tareas
-                    // y solo quede el icono de la bandeja del sistema (System Tray real).
+                    // Close and destroy window completely so it disappears from taskbar,
+                    // leaving only the system tray icon.
                     self.active_window_id = None;
                     crate::trim_memory();
                     iced::window::close(id)
@@ -1534,7 +1536,7 @@ impl App {
                         iced::window::gain_focus(id),
                     ])
                 } else {
-                    // Si la ventana estaba cerrada al minimizar a segundo plano, abrirla nuevamente de forma limpia
+                    // If window was closed when minimizing to background, reopen cleanly
                     let (id, open_task) = iced::window::open(default_window_settings());
                     self.active_window_id = Some(id);
                     Task::batch(vec![
@@ -1948,7 +1950,7 @@ impl App {
                 Task::none()
             }
 
-            // Historial y Timeline de Eventos
+            // Event History & Timeline
             Message::OpenTimeline => {
                 self.is_timeline_open = true;
                 self.is_settings_open = false;
@@ -1969,7 +1971,7 @@ impl App {
                 Task::none()
             }
 
-            // Auditoría de Salud y Seguridad
+            // Health & Security Audit
             Message::OpenSecurityAudit => {
                 self.is_audit_open = true;
                 self.is_settings_open = false;
@@ -1993,7 +1995,7 @@ impl App {
                 Task::none()
             }
 
-            // UPnP Router Universal & Port Forwarding
+            // Universal Router UPnP & Port Forwarding
             Message::OpenUpnpModal => {
                 self.is_upnp_open = true;
                 self.is_settings_open = false;
@@ -2036,7 +2038,7 @@ impl App {
                 Task::none()
             }
 
-            // Explorador de Almacenamiento USB / NAS del Router
+            // Router USB Storage / NAS Explorer
             Message::OpenStorageExplorer => {
                 self.is_storage_explorer_open = true;
                 self.is_upnp_open = false;
@@ -2182,7 +2184,7 @@ impl App {
                     Ok((files, disk_info)) => {
                         self.storage_files = files;
                         if let Some(mut d) = disk_info {
-                            // Preservar la actualización de espacio liberado si el router reporta datos en caché
+                            // Preserve freed space update if router reports cached data
                             if let Some(curr) = self.storage_disk_info {
                                 if self.storage_last_freed.is_some() && d.free_bytes < curr.free_bytes {
                                     d.free_bytes = curr.free_bytes;
@@ -2335,25 +2337,25 @@ impl App {
                     None => return Task::none(),
                 };
 
-                // Actualización Inmediata en la Interfaz (Optimistic UI Update)
-                // 1. Obtener la entrada para saber su tamaño antes de removerla
+                // Immediate UI Update (Optimistic UI Update)
+                // 1. Get entry to determine its size before removal
                 let removed_entry = self.storage_files.iter().find(|f| f.name == name).cloned();
 
-                // 2. Remover de forma inmediata el archivo o carpeta de la lista visible
+                // 2. Immediately remove file or folder from visible list
                 self.storage_files.retain(|f| f.name != name);
 
-                // 3. Si la tarjeta de propiedades estaba abierta para este elemento, cerrarla inmediatamente
+                // 3. If properties card was open for this item, close it immediately
                 if self.storage_selected_file.as_ref().map(|f| f.name == name).unwrap_or(false) {
                     self.storage_selected_file = None;
                 }
 
-                // 4. Actualizar de forma inmediata la barra de capacidad y porcentaje de uso
-                // Para carpetas: se computa un tamaño significativo para que el porcentaje se actualice visiblemente
+                // 4. Immediately update capacity bar and usage percentage
+                // For folders: compute significant size so usage percentage updates visibly
                 let freed_bytes: u64 = if is_dir {
                     if self.is_storage_demo_mode {
-                        1_850_000_000 // 1.85 GB en modo demo para actualización clara del porcentaje
+                        1_850_000_000 // 1.85 GB in demo mode for clear percentage update
                     } else {
-                        1_500_000_000 // 1.5 GB estimado para carpetas en router
+                        1_500_000_000 // 1.5 GB estimate for router folders
                     }
                 } else {
                     removed_entry.as_ref().map(|e| e.size_bytes.max(1024)).unwrap_or(10_240)
@@ -2365,7 +2367,7 @@ impl App {
                     disk.free_bytes = (disk.free_bytes + freed_bytes).min(disk.total_bytes);
                 }
 
-                // 5. Mostrar inmediatamente el mensaje de confirmación en la barra de estado
+                // 5. Immediately display confirmation message in status bar
                 let type_label = if is_dir { "Carpeta" } else { "Archivo" };
                 self.is_storage_loading = true;
                 self.storage_status_msg = Some(format!(
@@ -2842,7 +2844,7 @@ impl App {
                     }
                     self.storage_status_msg = Some(message);
 
-                    // Actualizar espacio libre en disco restando el tamaño subido
+                    // Update free disk space subtracting uploaded size
                     if self.is_storage_demo_mode {
                         self.demo_storage_disk.free_bytes = self.demo_storage_disk.free_bytes.saturating_sub(total_bytes);
                         self.storage_disk_info = Some(self.demo_storage_disk);
@@ -2893,7 +2895,7 @@ impl App {
                 Task::done(Message::StorageRefreshDirectory)
             }
 
-            // Analizador de Canales Wi-Fi y Espectro
+            // Wi-Fi Channel & Spectrum Analyzer
             Message::OpenWifiAnalyzer => {
                 self.is_wifi_analyzer_open = true;
                 self.is_settings_open = false;
@@ -2930,7 +2932,7 @@ impl App {
                 Task::none()
             }
 
-            // Monitoreo de Conectividad (Uptime)
+            // Connectivity Monitoring (Uptime)
             Message::ConnectivityChecked { gw_ok, internet_ok } => {
                 if let Some((evt_type, title, details)) = self.uptime_tracker.record_probe(gw_ok, internet_ok) {
                     if self.notification_settings.enabled && self.notification_settings.notify_internet_outages {
@@ -2989,14 +2991,14 @@ impl App {
 
             Message::StartScan => {
                 if self.is_scanning {
-                    // Si ya había un escaneo en segundo plano corriendo, hacerlo visible inmediatamente
+                    // If a background scan was already running, make it visible immediately
                     self.is_background_scan = false;
                     self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                     return Task::none();
                 }
 
                 self.is_scanning = true;
-                self.is_background_scan = false; // Escaneo manual: muestra barra de progreso en la UI
+                self.is_background_scan = false; // Manual scan: shows progress bar in UI
                 self.scan_progress = 0.0;
                 self.status = AppStatus::ScanningSubnet(self.network.subnet_cidr.clone());
                 self.notification = None;
@@ -3020,7 +3022,7 @@ impl App {
                 }
 
                 self.is_scanning = true;
-                self.is_background_scan = true; // Escaneo en segundo plano: NO muestra barra de progreso
+                self.is_background_scan = true; // Background scan: does NOT show progress bar
                 self.scan_progress = 0.0;
                 self.sync_tray_state();
 
@@ -3055,7 +3057,7 @@ impl App {
                     let mac_key = device.mac.trim().to_lowercase();
                     self.scanned_macs_current_cycle.insert(mac_key.clone());
 
-                    // Reaplicar metadatos guardados si existen para esta MAC
+                    // Reapply persisted metadata if it exists for this MAC
                     if let Some(meta) = self.device_metadata.get(&mac_key) {
                         if let Some(alias) = &meta.custom_alias {
                             if !alias.trim().is_empty() {
@@ -3070,7 +3072,7 @@ impl App {
                         device.speed_limit_kbps = meta.speed_limit_kbps;
                     }
 
-                    // Enriquecer con topología del router si ya está disponible en cache
+                    // Enrich with router topology if already available in cache
                     let norm_mac = device.mac.trim().to_uppercase();
                     if let Some(conn) = self.router_connections.get(&norm_mac) {
                         if let Some(w) = &conn.wireless {
@@ -3084,7 +3086,7 @@ impl App {
 
                     let mut intruder_task = Task::none();
 
-                    // Buscar dispositivo previo en lista por MAC o por IP
+                    // Find previous device in list by MAC or by IP
                     let existing_idx = self.devices.iter().position(|d| d.mac.trim().to_lowercase() == mac_key || d.ip == device.ip);
                     let was_offline = existing_idx.map(|idx| self.devices[idx].status == DeviceStatus::Offline).unwrap_or(true);
                     let was_not_active = !self.active_online_macs.contains(&mac_key);
@@ -3095,7 +3097,7 @@ impl App {
                     self.known_macs.insert(mac_key.clone());
                     self.missed_heartbeats.insert(device.ip, 0);
 
-                    // Asegurar que el estado del dispositivo detectado en este escaneo es Online
+                    // Ensure detected device state is Online
                     device.status = DeviceStatus::Online;
 
                     if is_new_device {
@@ -3108,7 +3110,7 @@ impl App {
                         );
                         self.network_events.insert(0, event);
 
-                        // Si es un dispositivo nuevo desconocido fuera de lista blanca: Alerta de Intruso
+                        // If new unknown device not on whitelist: Intruder Alert
                         if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
                             if self.alerted_macs.insert(mac_key.clone()) {
                                 self.pending_intruder_alert = Some(IntruderAlert {
@@ -3146,9 +3148,9 @@ impl App {
                             }
                         }
                     } else if is_reconnection {
-                        // El dispositivo ya era conocido y se ha reconectado a la red
+                        // Device was previously known and reconnected to network
                         if !device.is_current_host && !device.is_gateway && !device.is_whitelisted {
-                            // *** FIX CRÍTICO: RECONEXIÓN DE DISPOSITIVO CONOCIDO NO AUTORIZADO (FUERA DE LISTA BLANCA) ***
+                            // *** CRITICAL: RECONNECTION OF KNOWN UNAUTHORIZED DEVICE (NOT ON WHITELIST) ***
                             let event = HistoryManager::create_event(
                                 NetworkEventType::SecurityAlert,
                                 "Reconexión No Autorizada".to_string(),
@@ -3193,7 +3195,7 @@ impl App {
                                 });
                             }
                         } else if device.is_whitelisted {
-                            // Reconexión de dispositivo de confianza (en lista blanca)
+                            // Reconnection of trusted device (on whitelist)
                             let event = HistoryManager::create_event(
                                 NetworkEventType::DeviceConnected,
                                 "Dispositivo Conectado".to_string(),
@@ -3216,7 +3218,7 @@ impl App {
                                 self.notification_settings.dispatch(title, &body, "network-wireless", None);
                             }
                         } else {
-                            // Gateway o Host reconectado
+                            // Gateway or Host reconnected
                             let event = HistoryManager::create_event(
                                 NetworkEventType::DeviceConnected,
                                 "Dispositivo Conectado".to_string(),
@@ -3278,7 +3280,7 @@ impl App {
                     total_found,
                     duration_ms,
                 } => {
-                    // Detectar dispositivos que se han desconectado (estaban online y no respondieron en este ciclo)
+                    // Detect disconnected devices (were online and did not respond in this cycle)
                     for dev in self.devices.iter_mut() {
                         let dev_mac = dev.mac.trim().to_lowercase();
                         if dev.status == DeviceStatus::Online && !self.scanned_macs_current_cycle.contains(&dev_mac) {
@@ -3327,7 +3329,7 @@ impl App {
                     self.save_state();
                     crate::trim_memory();
 
-                    // Reevaluar auditoría de seguridad integral de red
+                    // Reevaluate network security audit
                     let port_mappings = self.upnp_status.as_ref().map(|u| u.port_mappings.as_slice()).unwrap_or(&[]);
                     let has_router_pw = !self.router_password_input.trim().is_empty();
                     let audit = SecurityAuditor::audit(&self.devices, port_mappings, has_router_pw);
@@ -3628,22 +3630,22 @@ impl App {
     pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
         let mut content = Column::new().spacing(14).padding(16);
 
-        // 1. Cabecera principal (Título, botón de Ajustes, botones de escaneo y exportación)
+        // 1. Main header (Title, Settings button, scan and export buttons)
         content = content.push(self.view_header());
 
-        // Barra de progreso de escaneo: SOLO se muestra si es escaneo manual iniciado por el botón
+        // Scan progress bar: ONLY shown for manual scan started by button
         if self.is_scanning && !self.is_background_scan {
             content = content.push(
                 container(progress_bar(0.0..=1.0, self.scan_progress))
             );
         }
 
-        // Notificación flotante si está activa
+        // Floating notification if active
         if let Some((msg, is_success)) = &self.notification {
             content = content.push(self.view_notification(msg, *is_success));
         }
 
-        // Si los ajustes están abiertos, mostrar la vista de configuración
+        // If settings open, show configuration view
         if self.is_settings_open {
             content = content.push(
                 container(center(self.view_settings_panel()))
@@ -3657,7 +3659,7 @@ impl App {
                 .into();
         }
 
-        // Si el test de velocidad está abierto, mostrar la vista modal de velocidad
+        // If speed test open, show speed test modal view
         if self.is_speed_test_open {
             content = content.push(
                 container(center(self.view_speed_test_modal()))
@@ -3671,7 +3673,7 @@ impl App {
                 .into();
         }
 
-        // Si la auditoría de seguridad está abierta, mostrar la vista modal de auditoría
+        // If security audit open, show audit modal view
         if self.is_audit_open {
             content = content.push(
                 container(center(self.view_security_audit_modal()))
@@ -3685,7 +3687,7 @@ impl App {
                 .into();
         }
 
-        // Si el historial de eventos está abierto, mostrar la vista modal de eventos
+        // If event history open, show event history modal view
         if self.is_timeline_open {
             content = content.push(
                 container(center(self.view_timeline_modal()))
@@ -3699,7 +3701,7 @@ impl App {
                 .into();
         }
 
-        // Si el analizador de Wi-Fi está abierto, mostrar la vista modal de espectro Wi-Fi
+        // If Wi-Fi analyzer open, show Wi-Fi spectrum modal view
         if self.is_wifi_analyzer_open {
             content = content.push(
                 container(center(self.view_wifi_analyzer_modal()))
@@ -3713,7 +3715,7 @@ impl App {
                 .into();
         }
 
-        // Si el panel UPnP del router está abierto, mostrar la vista modal de UPnP
+        // If router UPnP panel open, show UPnP modal view
         if self.is_upnp_open {
             content = content.push(
                 container(center(self.view_upnp_modal()))
@@ -3727,7 +3729,7 @@ impl App {
                 .into();
         }
 
-        // Si el explorador de almacenamiento USB del router está abierto, mostrar la vista modal de almacenamiento
+        // If router USB storage explorer open, show storage modal view
         if self.is_storage_explorer_open {
             content = content.push(
                 container(center(self.view_storage_explorer_modal()))
@@ -3741,18 +3743,18 @@ impl App {
                 .into();
         }
 
-        // 2. Dashboard de Telemetría en Vivo (Velocidad de bajada, subida, señal Wi-Fi y red)
+        // 2. Live Telemetry Dashboard (Download, upload speed, Wi-Fi signal, and network)
         content = content.push(self.view_telemetry_dashboard());
 
-        // Banner de Alerta de Intrusos (Rogue Device) si se detecta un dispositivo desconocido
+        // Intruder Alert Banner (Rogue Device) if unknown device is detected
         if let Some(alert) = &self.pending_intruder_alert {
             content = content.push(self.view_intruder_alert(alert));
         }
 
-        // 3. Barra de filtros, categorías, buscador y ordenación
+        // 3. Filter bar, categories, search, and sorting
         content = content.push(self.view_controls());
 
-        // 4. Área de contenido principal: lista de dispositivos + inspector lateral (si está abierto)
+        // 4. Main content area: device list + side inspector (if open)
         let filtered_devices = self.get_filtered_devices();
         let device_list = self.view_device_list(&filtered_devices);
 
@@ -3789,7 +3791,7 @@ impl App {
             .into()
     }
 
-    /// Banner destacado de advertencia cuando se detecta un nuevo dispositivo no reconocido en la red local
+    /// Prominent warning banner when an unrecognized device is detected on local network
     fn view_intruder_alert(&self, alert: &IntruderAlert) -> Element<'_, Message> {
         let title = text(Translations::intruder_alert_title(self.language))
             .size(12)
@@ -3838,7 +3840,7 @@ impl App {
             .into()
     }
 
-    /// Envuelve un elemento visual con un tooltip estilizado
+    /// Wraps a visual element with a styled tooltip
     fn tip<'a>(
         &self,
         content: impl Into<Element<'a, Message>>,
@@ -3856,9 +3858,9 @@ impl App {
         .into()
     }
 
-    /// Cabecera de la aplicación y barra de herramientas modular rediseñada
+    /// Application header and redesigned modular toolbar
     fn view_header(&self) -> Element<'_, Message> {
-        // 1. Icono oficial de la app en la esquina superior izquierda
+        // 1. Official app icon in top-left corner
         let app_icon = iced::widget::image(iced::widget::image::Handle::from_bytes(
             include_bytes!("../assets/netlens.png").as_slice(),
         ))
@@ -3889,7 +3891,7 @@ impl App {
 
         let title_col = column![title_row, status_row].spacing(2);
 
-        // Acciones primarias superiores derechas (Exportar + Escanear)
+        // Primary top-right actions (Export + Scan)
         let scan_btn = if self.is_scanning && !self.is_background_scan {
             button(
                 row![
@@ -3949,8 +3951,8 @@ impl App {
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-        // 2. Barra de herramientas de navegación modular (Tools Bar)
-        // Rediseñada en una barra dedicada para que los botones nunca se salgan de pantalla al reducir la ventana
+        // 2. Modular navigation toolbar (Tools Bar)
+        // Redesigned dedicated bar so buttons never overflow when resizing window
         let audit_label = if let Some(audit) = &self.security_audit_report {
             format!("{} ({})", Translations::security_audit_btn(self.language), audit.score)
         } else {
@@ -3960,7 +3962,7 @@ impl App {
         let timeline_label = format!("{} ({})", Translations::timeline_btn(self.language), self.network_events.len());
 
         let nav_tools = row![
-            // Botón de Ajustes (Settings)
+            // Settings button
             self.tip(
                 button(text(Translations::settings(self.language)).size(11))
                     .style(|_, _| {
@@ -3980,7 +3982,7 @@ impl App {
                 tooltip::Position::Bottom,
             ),
 
-            // Botón Test de Velocidad (Speed Test)
+            // Speed Test button
             self.tip(
                 button(text(Translations::speed_test_btn(self.language)).size(11))
                     .style(|_, _| {
@@ -4000,7 +4002,7 @@ impl App {
                 tooltip::Position::Bottom,
             ),
 
-            // Botón Auditoría de Seguridad
+            // Security Audit button
             self.tip(
                 button(text(audit_label).size(11))
                     .style(|_, _| {
@@ -4020,7 +4022,7 @@ impl App {
                 tooltip::Position::Bottom,
             ),
 
-            // Botón Historial de Eventos (Timeline)
+            // Event History button (Timeline)
             self.tip(
                 button(text(timeline_label).size(11))
                     .style(|_, _| {
@@ -4040,7 +4042,7 @@ impl App {
                 tooltip::Position::Bottom,
             ),
 
-            // Botón Analizador de Espectro Wi-Fi
+            // Wi-Fi Spectrum Analyzer button
             self.tip(
                 button(text(Translations::wifi_analyzer_btn(self.language)).size(11))
                     .style(|_, _| {
@@ -4060,7 +4062,7 @@ impl App {
                 tooltip::Position::Bottom,
             ),
 
-            // Botón Explorador de Almacenamiento USB del Router (NAS)
+            // Router USB Storage Explorer button (NAS)
             self.tip(
                 button(text(Translations::storage_btn_header(self.language)).size(11))
                     .style(|_, _| {
@@ -4096,7 +4098,7 @@ impl App {
         .into()
     }
 
-    /// Panel de Ajustes / Configuración (Tema de UI e Idioma entre los 10 más hablados del mundo)
+    /// Settings / Configuration Panel (UI Theme and Language among top 10 world languages)
     fn view_settings_panel(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::settings(self.language))
@@ -4114,7 +4116,7 @@ impl App {
         ]
         .align_y(Alignment::Center);
 
-        // Ajuste 1: Tema del UI
+        // Setting 1: UI Theme
         let theme_row = row![
             column![
                 text(Translations::theme_label(self.language)).size(14).color(CustomStyles::text_primary()),
@@ -4130,7 +4132,7 @@ impl App {
         .align_y(Alignment::Center)
         .spacing(12);
 
-        // Ajuste 2: Idioma de la aplicación (Top 10 idiomas más hablados del mundo)
+        // Setting 2: Application Language (Top 10 most spoken languages)
         let lang_row = row![
             column![
                 text(Translations::language_label(self.language)).size(14).color(CustomStyles::text_primary()),
@@ -4146,7 +4148,7 @@ impl App {
         .align_y(Alignment::Center)
         .spacing(12);
 
-        // Ajuste 3: Escaneo Automático Periódico (Auto-Discovery)
+        // Setting 3: Periodic Automatic Scan (Auto-Discovery)
         let intervals: &[(u32, &'static str)] = &[
             (0, Translations::auto_scan_disabled(self.language)),
             (30, Translations::auto_scan_30s(self.language)),
@@ -4186,7 +4188,7 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
-        // Ajuste 4: Segundo Plano & Inicio Automático con el Sistema
+        // Setting 4: Background & System Autostart
         let autostart_btn = button(
             text(if self.autostart_enabled {
                 Translations::btn_enabled(self.language)
@@ -4251,7 +4253,7 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
-        // Ajuste 5: Control de Router (Linksys MR73 Mesh / JNAP)
+        // Setting 5: Router Control (Linksys MR73 Mesh / JNAP)
         let router_ip_input = text_input("192.168.1.1", &self.router_ip_input)
             .on_input(Message::RouterIpChanged)
             .padding(Padding::from([5, 8]))
@@ -4303,7 +4305,7 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
-        // Ajuste 6: Notificaciones del Sistema y Alertas Parametrizables
+        // Setting 6: System Notifications & Parameterizable Alerts
         let notif_master_btn = button(
             text(if self.notification_settings.enabled {
                 Translations::notif_master_enabled(self.language)
@@ -4341,7 +4343,7 @@ impl App {
         .spacing(10);
 
         if self.notification_settings.enabled {
-            // Subsección A: Disparadores de Eventos
+            // Subsection A: Event Triggers
             let trigger_btn = |active: bool, msg: Message| {
                 button(text(if active {
                     Translations::btn_enabled(self.language)
@@ -4407,7 +4409,7 @@ impl App {
             ]
             .spacing(6);
 
-            // Subsección B: Comportamiento (Urgencia, Duración y Sonido)
+            // Subsection B: Behavior (Urgency, Duration, and Sound)
             let urgencies = NotificationUrgency::ALL;
             let mut urgency_buttons = row![].spacing(6).align_y(Alignment::Center);
             for &u in urgencies {
@@ -4467,7 +4469,7 @@ impl App {
             ]
             .spacing(6);
 
-            // Subsección C: Contenido y Formato
+            // Subsection C: Content & Format
             let details = NotificationDetailLevel::ALL;
             let mut detail_buttons = row![].spacing(6).align_y(Alignment::Center);
             for &d in details {
@@ -4530,7 +4532,7 @@ impl App {
             .padding(12)
             .style(|_| CustomStyles::card_container());
 
-        // Resumen técnico del sistema
+        // Technical system summary
         let info_col = column![
             text(Translations::sys_info_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
             row![
@@ -4590,7 +4592,7 @@ impl App {
             .into()
     }
 
-    /// Modal de Test de Velocidad de Internet (Ping, Descarga y Subida en tiempo real)
+    /// Internet Speed Test Modal (Real-time Ping, Download, and Upload)
     fn view_speed_test_modal(&self) -> Element<'_, Message> {
         let is_running = self.speed_test_stage == SpeedTestStage::TestingPing
             || self.speed_test_stage == SpeedTestStage::TestingDownload
@@ -4630,7 +4632,7 @@ impl App {
         ]
         .align_y(Alignment::Center);
 
-        // Tarjetas de Métricas (Ping, Descarga, Subida)
+        // Metric Cards (Ping, Download, Upload)
         let ping_str = self
             .speed_test_ping
             .map(|p| format!("{:.1} ms", p))
@@ -4710,7 +4712,7 @@ impl App {
 
         let metrics_row = row![card_ping, card_dl, card_ul].spacing(10);
 
-        // Información de red / servidor
+        // Network / server information
         let server_info = column![
             row![
                 text(Translations::speed_test_server(self.language))
@@ -4738,7 +4740,7 @@ impl App {
         ]
         .spacing(6);
 
-        // Botones de acción
+        // Action buttons
         let start_btn = if is_running {
             button(text(Translations::speed_test_running(self.language)).size(13))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -4755,7 +4757,7 @@ impl App {
             .padding(Padding::from([8, 16]))
             .on_press(Message::CloseSpeedTest);
 
-        // Sección: Historial Persistente de Pruebas de Velocidad
+        // Section: Persistent Speed Test History
         let mut history_header = row![
             text(Translations::speed_test_history_title(self.language))
                 .size(13)
@@ -4850,9 +4852,9 @@ impl App {
             .into()
     }
 
-    /// Dashboard superior de telemetría en vivo: Velocidad de bajada, subida, señal Wi-Fi y router
+    /// Top live telemetry dashboard: Download, upload speed, Wi-Fi signal, and router
     fn view_telemetry_dashboard(&self) -> Element<'_, Message> {
-        // Card 1: Velocidad de Descarga (Download con Sparkline)
+        // Card 1: Download Speed (with Sparkline)
         let rx_speed_str = Telemetry::format_speed(self.telemetry.download_speed_bps);
         let rx_session_str = Telemetry::format_bytes(self.telemetry.session_download_bytes());
 
@@ -4881,7 +4883,7 @@ impl App {
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::card_download());
 
-        // Card 2: Velocidad de Subida (Upload con Sparkline)
+        // Card 2: Upload Speed (with Sparkline)
         let tx_speed_str = Telemetry::format_speed(self.telemetry.upload_speed_bps);
         let tx_session_str = Telemetry::format_bytes(self.telemetry.session_upload_bytes());
 
@@ -4910,7 +4912,7 @@ impl App {
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::card_upload());
 
-        // Card 3: Intensidad y Calidad de Señal Wi-Fi / Conexión de red
+        // Card 3: Wi-Fi Signal Strength & Quality / Network Connection
         let (signal_title, signal_big_str, signal_sub_str) = if let Some(wifi) = &self.telemetry.wifi {
             let dbm_part = wifi.signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
             let big = format!("{}%{}", wifi.signal_percent, dbm_part);
@@ -4950,7 +4952,7 @@ impl App {
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::card_signal());
 
-        // Card 4: Router / Puerta de Enlace y Red Local
+        // Card 4: Router / Gateway & Local Network
         let total_devices = self.devices.len();
         let gw_ip_str = self
             .network
@@ -5008,7 +5010,7 @@ impl App {
             .into()
     }
 
-    /// Controles de filtrado, búsqueda y ordenación
+    /// Filter, search, and sorting controls
     fn view_controls(&self) -> Element<'_, Message> {
         let search_bar = text_input(
             Translations::search_placeholder(self.language),
@@ -5018,7 +5020,7 @@ impl App {
         .padding(Padding::from([7, 10]))
         .width(Length::FillPortion(1));
 
-        // Botones de categoría tipo "pills" compactos y estilizados
+        // Category compact styled pill buttons
         let mut category_pills = row![].spacing(6).align_y(Alignment::Center);
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
@@ -5062,7 +5064,7 @@ impl App {
             );
         }
 
-        // Filtros de Seguridad y Listas (Lista Blanca y Bloqueados)
+        // Security & List Filters (Whitelist and Blocked)
         let whitelist_count = self.devices.iter().filter(|d| d.is_whitelisted).count();
         let blocked_count = self.devices.iter().filter(|d| d.is_blocked).count();
 
@@ -5105,7 +5107,7 @@ impl App {
             );
         }
 
-        // Selector de ordenación reactivo localizado
+        // Localized reactive sort selector
         let sort_options: Vec<LocalizedSortOption> = SortOption::ALL
             .iter()
             .map(|&s| LocalizedSortOption {
@@ -5136,7 +5138,7 @@ impl App {
         .into()
     }
 
-    /// Genera la lista scrolleable de tarjetas de dispositivos
+    /// Generates scrollable device cards list
     fn view_device_list<'a>(&'a self, devices: &[&'a Device]) -> Element<'a, Message> {
         if devices.is_empty() {
             let empty_text = if self.is_scanning && !self.is_background_scan {
@@ -5187,14 +5189,14 @@ impl App {
             .into()
     }
 
-    /// Tarjeta individual para cada dispositivo con diseño responsive de 2 niveles (sin desbordamientos ni solapamientos)
+    /// Individual device card with responsive 2-level layout (no overflow or overlap)
     fn view_device_card<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
         let is_selected = self.selected_device_ip == Some(device.ip);
 
-        // Icono de categoría
+        // Category icon
         let icon_widget = text(device.category.icon()).size(24);
 
-        // Nombre del dispositivo
+        // Device name
         let name_widget = text(device.display_name())
             .size(14)
             .color(if device.is_gateway || device.is_current_host {
@@ -5203,7 +5205,7 @@ impl App {
                 CustomStyles::text_primary()
             });
 
-        // Badges de roles especiales
+        // Special role badges
         let mut role_tags = row![].spacing(4).align_y(Alignment::Center);
 
         if device.is_blocked {
@@ -5242,7 +5244,7 @@ impl App {
             );
         }
 
-        // Latencia y Calidad de Conexión
+        // Latency & Connection Quality
         let (quality_label, quality_color, lat_str) = if let Some(lat) = device.latency_ms {
             if lat < 1.0 {
                 (Translations::latency_cable(self.language), CustomStyles::accent_cyan(), format!("{:.1} ms", lat))
@@ -5271,7 +5273,7 @@ impl App {
         .padding(Padding::from([2, 6]))
         .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(18, 25, 38), quality_color));
 
-        // Botón Detalles
+        // Details button
         let btn_details = self.tip(
             button(
                 text(Translations::details_btn(self.language)).size(11),
@@ -5289,7 +5291,7 @@ impl App {
             tooltip::Position::Top,
         );
 
-        // Fila 1 (Superior): Icono + Nombre + Badges de rol + Espacio + Latencia + Botón Detalles
+        // Row 1 (Top): Icon + Name + Role badges + Spacer + Latency + Details button
         let top_row = row![
             icon_widget,
             name_widget,
@@ -5302,8 +5304,8 @@ impl App {
         .align_y(Alignment::Center)
         .width(Length::Fill);
 
-        // Fila 2 (Inferior): Metadatos organizados en píldoras con espaciado limpio
-        // 1. IP con botón de copiar
+        // Row 2 (Bottom): Metadata in clean pill layout
+        // 1. IP with copy button
         let ip_pill = container(
             row![
                 text("IP: ").size(10).color(CustomStyles::text_muted()),
@@ -5323,7 +5325,7 @@ impl App {
         .padding(Padding::from([2, 6]))
         .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_primary()));
 
-        // 2. MAC con botón de copiar
+        // 2. MAC with copy button
         let mac_pill = container(
             row![
                 text("MAC: ").size(10).color(CustomStyles::text_muted()),
@@ -5343,7 +5345,7 @@ impl App {
         .padding(Padding::from([2, 6]))
         .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_secondary()));
 
-        // 3. Categoría
+        // 3. Category
         let cat_label = Translations::category_name(device.category, self.language)
             .split('/')
             .next()
@@ -5353,7 +5355,7 @@ impl App {
             .padding(Padding::from([2, 6]))
             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan()));
 
-        // 4. Fabricante
+        // 4. Vendor
         let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
             device.vendor.clone()
         } else if device.is_randomized_mac {
@@ -5379,7 +5381,7 @@ impl App {
         .spacing(6)
         .align_y(Alignment::Center);
 
-        // 5. Topología Router (si está disponible)
+        // 5. Router topology (if available)
         if let Some(conn_type) = &device.connection_type {
             let (top_label, top_bg, top_color) = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
                 let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
@@ -5399,7 +5401,7 @@ impl App {
             );
         }
 
-        // Servicios / Puertos detectados (máximo 2 en la tarjeta para no sobrecargar)
+        // Detected ports/services (max 2 on card to avoid clutter)
         for p in device.open_ports.iter().take(2) {
             bottom_row = bottom_row.push(
                 container(text(format!("{}: {}", p.port, p.service)).size(9).color(CustomStyles::accent_cyan()))
@@ -5428,10 +5430,10 @@ impl App {
             .into()
     }
 
-    /// Inspector de detalles para el dispositivo seleccionado (panel lateral con ancho fijo y reactividad total)
+    /// Detail inspector for selected device (fixed-width reactive side panel)
     fn view_inspector<'a>(&'a self, device: &'a Device) -> Element<'a, Message> {
-        // Barra superior fija del inspector (Título + Cerrar)
-        // Se mantiene fija en la parte superior para que nunca se oculte al hacer scroll
+        // Fixed top bar of inspector (Title + Close)
+        // Kept pinned to top so it is never hidden while scrolling
         let close_btn = self.tip(
             button(text("✕").size(13))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -5457,7 +5459,7 @@ impl App {
             left: 2.0,
         });
 
-        // Nombre y subtítulo traducido
+        // Name and localized subtitle
         insp_body = insp_body.push(
             column![
                 text(device.display_name()).size(16).color(CustomStyles::text_primary()),
@@ -5466,7 +5468,7 @@ impl App {
             .spacing(1),
         );
 
-        // Selector para indicar/cambiar el tipo de dispositivo (LOCALIZADO!)
+        // Device type selector (Localized)
         let category_options: Vec<LocalizedCategory> = DeviceCategory::all()
             .iter()
             .map(|&c| LocalizedCategory {
@@ -5496,7 +5498,7 @@ impl App {
 
         insp_body = insp_body.push(category_selector);
 
-        // Editor de alias personalizado
+        // Custom alias editor
         let save_alias_btn = self.tip(
             button(text(Translations::save(self.language)).size(11))
                 .style(|_, _| CustomStyles::primary_button())
@@ -5518,7 +5520,7 @@ impl App {
 
         insp_body = insp_body.push(alias_row);
 
-        // Ficha técnica (LOCALIZADA EN SU TOTALIDAD)
+        // Technical specs (Fully localized)
         let mut specs_col = Column::new().spacing(5);
 
         specs_col = specs_col.push(Self::spec_line(Translations::spec_ip(self.language), &device.ip.to_string()));
@@ -5544,13 +5546,13 @@ impl App {
             },
         ));
 
-        // Calidad estimada de enlace Wi-Fi / Red
+        // Estimated Wi-Fi link / network quality
         specs_col = specs_col.push(Self::spec_line(
             Translations::spec_link_quality(self.language),
             Translations::link_quality_desc(device.latency_ms, self.language),
         ));
 
-        // Información de topología Linksys Mesh si está disponible
+        // Linksys Mesh topology info if available
         if let Some(conn_type) = &device.connection_type {
             let label = if conn_type.contains("5GHz") || conn_type.contains("5 GHz") {
                 let sig = device.wifi_signal_dbm.map(|s| format!(" ({} dBm)", s)).unwrap_or_default();
@@ -5581,7 +5583,7 @@ impl App {
                 .style(|_| CustomStyles::card_container()),
         );
 
-        // Acciones rápidas (Copiar, Abrir en navegador, WoL)
+        // Quick actions (Copy, Open in browser, WoL)
         let mut quick_actions = row![].spacing(6).align_y(Alignment::Center);
 
         quick_actions = quick_actions.push(
@@ -5644,7 +5646,7 @@ impl App {
 
         insp_body = insp_body.push(quick_actions);
 
-        // Acciones de Seguridad y Control de Router (Lista Blanca y Bloqueo Permanente)
+        // Security & Router Control Actions (Whitelist & Permanent Block)
         let mut security_actions = row![].spacing(6).align_y(Alignment::Center);
 
         let (wl_label, wl_style) = if device.is_whitelisted {
@@ -5687,7 +5689,7 @@ impl App {
 
         insp_body = insp_body.push(security_actions);
 
-        // Herramienta 1: Test de Ping en tiempo real (LOCALIZADA!)
+        // Tool 1: Real-time Ping Test (Localized)
         let ping_btn_text = if self.is_pinging {
             Translations::btn_measuring(self.language)
         } else {
@@ -5747,7 +5749,7 @@ impl App {
                 .style(|_| CustomStyles::card_container()),
         );
 
-        // Herramienta 2: Escáner de Puertos (LOCALIZADA!)
+        // Tool 2: Port Scanner (Localized)
         let port_btn_text = if self.is_deep_scanning {
             Translations::btn_scanning_ports(self.language)
         } else {
@@ -5823,7 +5825,7 @@ impl App {
                 .style(|_| CustomStyles::card_container()),
         );
 
-        // Herramienta 3: Diagnóstico de Ruta / Traceroute Visual
+        // Tool 3: Route Diagnostics / Visual Traceroute
         let trace_btn_text = if self.is_tracing_route {
             Translations::traceroute_btn_tracing(self.language)
         } else {
@@ -5915,7 +5917,7 @@ impl App {
                 .style(|_| CustomStyles::card_container()),
         );
 
-        // Herramienta 4: Historial de Peticiones y Búsquedas del Dispositivo
+        // Tool 4: Device Requests & Domain History
         let req_count = device.request_history.len();
         let mut req_header = row![
             text(Translations::device_requests_title(self.language)).size(12).color(CustomStyles::accent_cyan()),
@@ -6032,7 +6034,7 @@ impl App {
         .into()
     }
 
-    /// Línea de especificación técnica clave-valor
+    /// Key-value technical spec row
     fn spec_line(key: &'static str, val: &str) -> Element<'static, Message> {
         row![
             text(key).size(11).color(CustomStyles::text_muted()).width(120),
@@ -6043,7 +6045,7 @@ impl App {
         .into()
     }
 
-    /// Notificación flotante de resultado
+    /// Floating result notification
     fn view_notification<'a>(&self, message: &'a str, is_success: bool) -> Element<'a, Message> {
         let style_fn = if is_success {
             CustomStyles::notification_success
@@ -6070,7 +6072,7 @@ impl App {
             .into()
     }
 
-    /// Filtra y ordena los dispositivos según las preferencias actuales del usuario
+    /// Filters and sorts devices according to current user preferences
     fn get_filtered_devices(&self) -> Vec<&Device> {
         let q = self.search_query.trim().to_lowercase();
 
@@ -6147,7 +6149,7 @@ impl App {
         list
     }
 
-    /// Modal: Auditoría Integral de Seguridad de la Red
+    /// Modal: Comprehensive Network Security Audit
     fn view_security_audit_modal(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::audit_title(self.language))
@@ -6310,7 +6312,7 @@ impl App {
             .into()
     }
 
-    /// Modal: Historial y Cronología de Eventos de Red
+    /// Modal: Network Event History & Timeline
     fn view_timeline_modal(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::timeline_modal_title(self.language))
@@ -6452,7 +6454,7 @@ impl App {
             .into()
     }
 
-    /// Modal: Analizador de Canales Wi-Fi y Espectro Radioeléctrico
+    /// Modal: Wi-Fi Channel & RF Spectrum Analyzer
     fn view_wifi_analyzer_modal(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::wifi_modal_title(self.language))
@@ -6521,7 +6523,7 @@ impl App {
 
             modal_body = modal_body.push(reco_card);
 
-            // Resumen de Canales 2.4 GHz
+            // 2.4 GHz Channel Summary
             modal_body = modal_body.push(
                 text(Translations::wifi_occupancy_24_title(self.language))
                     .size(12)
@@ -6546,7 +6548,7 @@ impl App {
             }
             modal_body = modal_body.push(ch24_row);
 
-            // Redes Wi-Fi Detectadas
+            // Detected Wi-Fi Networks
             modal_body = modal_body.push(
                 text(Translations::wifi_detected_networks_header(report.networks.len(), self.language))
                     .size(12)
@@ -6644,7 +6646,7 @@ impl App {
             .into()
     }
 
-    /// Modal: Router Universal UPnP / IGD y Reenvío de Puertos
+    /// Modal: Universal Router UPnP / IGD & Port Forwarding
     fn view_upnp_modal(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::upnp_modal_title(self.language))
@@ -6740,7 +6742,7 @@ impl App {
             let stats_grid = row![stat_card_ip, stat_card_uptime, stat_card_traffic].spacing(8);
             modal_body = modal_body.push(stats_grid);
 
-            // Reenvío de Puertos (Port Forwarding)
+            // Port Forwarding
             modal_body = modal_body.push(
                 text(Translations::upnp_port_mappings_header(upnp.port_mappings.len(), self.language))
                     .size(13)
@@ -6856,7 +6858,7 @@ impl App {
             .into()
     }
 
-    /// Explorador de Almacenamiento USB / NAS del Router
+    /// Router USB Storage / NAS Explorer
     fn view_storage_explorer_modal(&self) -> Element<'_, Message> {
         let title_row = row![
             text(Translations::storage_modal_title(self.language))
@@ -6878,7 +6880,7 @@ impl App {
             .size(11)
             .color(CustomStyles::text_muted());
 
-        // Fila 1: Control de Conexión, IP de Destino, Credenciales y Modo Demo
+        // Row 1: Connection Control, Target IP, Credentials, and Demo Mode
         let ip_input = text_input("192.168.1.1", &self.storage_target_ip)
             .on_input(Message::StorageTargetIpChanged)
             .padding(Padding::from([4, 8]))
@@ -6931,7 +6933,7 @@ impl App {
 
         let mut modal_body = column![connection_bar].spacing(10);
 
-        // Diálogo de Credenciales SMB / NAS si está abierto
+        // SMB / NAS Credentials dialog if open
         if self.is_storage_creds_open {
             let user_in = text_input(Translations::storage_creds_user_placeholder(self.language), &self.storage_credentials.username)
                 .on_input(Message::StorageCredentialsUserChanged)
@@ -6981,7 +6983,7 @@ impl App {
             modal_body = modal_body.push(creds_card);
         }
 
-        // Barra de Capacidad y Espacio en Disco (actualización limpia sin badges redundantes)
+        // Capacity & Disk Space Bar (clean update without redundant badges)
         if let Some(disk) = self.storage_disk_info {
             let used_str = format_file_size(disk.used_bytes());
             let total_str = format_file_size(disk.total_bytes);
@@ -7013,7 +7015,7 @@ impl App {
             modal_body = modal_body.push(capacity_card);
         }
 
-        // Selector de Recurso / Share
+        // Share / Resource Selector
         if !self.storage_shares.is_empty() {
             let mut share_chips = row![
                 text(Translations::storage_share_select(self.language)).size(11).color(CustomStyles::text_muted()),
@@ -7047,7 +7049,7 @@ impl App {
             modal_body = modal_body.push(share_chips);
         }
 
-        // Barra de Herramientas y Navegación (Breadcrumbs, Subir, Nueva Carpeta, Subir Archivo, Filtro)
+        // Navigation & Toolbar (Breadcrumbs, Upload, New Folder, Upload File, Filter)
         let is_root = self.storage_current_path.trim_matches('/').is_empty();
         let up_btn = self.tip(
             button(text(Translations::storage_up_level(self.language)).size(10))
@@ -7060,7 +7062,7 @@ impl App {
                 })
                 .padding(Padding::from([3, 8]))
                 .on_press(if is_root {
-                    Message::CloseStorageExplorer // No op cuando es raíz
+                    Message::CloseStorageExplorer // No-op when at root
                 } else {
                     Message::StorageNavigateUp
                 }),
@@ -7068,7 +7070,7 @@ impl App {
             tooltip::Position::Bottom,
         );
 
-        // Generar Breadcrumbs
+        // Generate Breadcrumbs
         let root_btn = self.tip(
             button(text(Translations::storage_btn_root(self.language)).size(11))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -7151,7 +7153,7 @@ impl App {
 
         modal_body = modal_body.push(toolbar);
 
-        // Barra y Tarjeta de Progreso de Subida (Archivo o Carpeta)
+        // Upload Progress Bar & Card (File or Folder)
         if let Some(upload) = &self.storage_upload_progress {
             let percent = upload.percent.clamp(0.0, 100.0);
             let percent_str = format!("{:.1}%", percent);
@@ -7248,7 +7250,7 @@ impl App {
             modal_body = modal_body.push(card);
         }
 
-        // Formulario inline para crear nueva carpeta
+        // Inline form for creating new folder
         if self.is_creating_folder {
             let folder_input = text_input(Translations::storage_new_folder_placeholder(self.language), &self.new_folder_name_input)
                 .on_input(Message::StorageCreateFolderNameChanged)
@@ -7277,7 +7279,7 @@ impl App {
             modal_body = modal_body.push(container(create_row).padding(8).style(|_| CustomStyles::card_container()));
         }
 
-        // Diálogo de Confirmación de Eliminación
+        // Delete Confirmation Dialog
         if let Some((_, _is_dir, name)) = &self.file_to_delete {
             let msg = format!("{}: '{}'?", Translations::storage_confirm_delete_msg(self.language), name);
             let confirm_del_card = container(
@@ -7306,7 +7308,7 @@ impl App {
             modal_body = modal_body.push(confirm_del_card);
         }
 
-        // Modal / Tarjeta de Propiedades y Metadatos de Archivo
+        // File Properties & Metadata Modal / Card
         if let Some(f) = &self.storage_selected_file {
             let full_path = if self.storage_current_path.is_empty() {
                 f.name.clone()
@@ -7382,7 +7384,7 @@ impl App {
             modal_body = modal_body.push(props_card);
         }
 
-        // Mensaje de estado o error
+        // Status or error message
         if let Some(err) = &self.storage_error_msg {
             let err_card = container(
                 row![
@@ -7415,7 +7417,7 @@ impl App {
             modal_body = modal_body.push(status_card);
         }
 
-        // Encabezado de la tabla de archivos con anchos estrictamente alineados
+        // File table header with strictly aligned widths
         let table_header = container(
             row![
                 container(text(Translations::storage_col_type(self.language)).size(11).color(CustomStyles::text_muted())).width(45).align_x(Alignment::Center),
@@ -7432,7 +7434,7 @@ impl App {
 
         modal_body = modal_body.push(table_header);
 
-        // Contenido de archivos / carpetas
+        // Files / folders content
         let query = self.storage_filter_query.trim().to_lowercase();
         let filtered_files: Vec<&StorageFileEntry> = self
             .storage_files
@@ -7498,7 +7500,7 @@ impl App {
                     tooltip::Position::Top,
                 );
 
-                // Acciones de cada fila centradas
+                // Centered row action buttons
                 let mut row_actions = row![].spacing(4).align_y(Alignment::Center);
 
                 if is_dir {
@@ -7583,7 +7585,7 @@ impl App {
 
         modal_body = modal_body.push(scrollable_files);
 
-        // Barra inferior: resumen de elementos y botón de cierre
+        // Bottom bar: item summary and close button
         let total_count = self.storage_files.len();
         let dirs_count = self.storage_files.iter().filter(|f| f.is_dir).count();
         let regular_count = total_count - dirs_count;

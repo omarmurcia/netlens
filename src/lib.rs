@@ -21,7 +21,7 @@ pub mod uptime;
 pub mod widget;
 pub mod wifi_analyzer;
 
-/// Solicita al asignador de memoria del sistema (glibc) liberar páginas no utilizadas de vuelta al kernel
+/// Requests the system memory allocator (glibc) to release unused heap pages back to the kernel
 #[cfg(target_os = "linux")]
 pub fn trim_memory() {
     unsafe extern "C" {

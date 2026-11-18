@@ -2,7 +2,7 @@ use std::fs;
 use std::process::Command;
 use std::time::Instant;
 
-/// Información del estado de la conexión Wi-Fi local
+/// Information about local Wi-Fi connection status
 #[derive(Debug, Clone, Default)]
 pub struct WifiStatus {
     #[allow(dead_code)]
@@ -19,15 +19,15 @@ impl WifiStatus {
     #[allow(dead_code)]
     pub fn signal_label(&self) -> &'static str {
         if self.signal_percent >= 80 {
-            "Excelente"
+            "Excellent"
         } else if self.signal_percent >= 60 {
-            "Buena"
+            "Good"
         } else if self.signal_percent >= 40 {
-            "Media"
+            "Fair"
         } else if self.signal_percent >= 20 {
-            "Baja"
+            "Weak"
         } else {
-            "Muy Débil"
+            "Very Weak"
         }
     }
 
@@ -48,7 +48,7 @@ impl WifiStatus {
     }
 }
 
-/// Información de la conexión Ethernet por cable
+/// Information about wired Ethernet connection
 #[derive(Debug, Clone, Default)]
 pub struct EthernetStatus {
     pub interface: String,
@@ -68,12 +68,12 @@ impl EthernetStatus {
                 format!("{} Mbps", speed)
             }
         } else {
-            "Cable Ethernet Conectado".to_string()
+            "Connected Ethernet Cable".to_string()
         }
     }
 }
 
-/// Telemetría de red en tiempo real (tráfico y señal)
+/// Real-time network telemetry (traffic and signal)
 #[derive(Debug, Clone)]
 pub struct Telemetry {
     pub current_rx_bytes: u64,
@@ -112,7 +112,7 @@ impl Telemetry {
         }
     }
 
-    /// Actualiza el muestreo de velocidad y estado de la red
+    /// Updates speed sampling and network status
     pub fn update_sample(&mut self, active_interface: &str) {
         self.active_interface = active_interface.to_string();
         let (rx, tx) = Self::sample_total_traffic();
@@ -133,12 +133,12 @@ impl Telemetry {
             self.last_sample = now;
         }
 
-        // Refrescar estado de Wi-Fi y Ethernet
+        // Refresh Wi-Fi and Ethernet status
         self.wifi = Self::detect_wifi();
         self.ethernet = Self::detect_ethernet(active_interface);
     }
 
-    /// Lee los bytes totales transmitidos y recibidos en /proc/net/dev
+    /// Reads total transmitted and received bytes in /proc/net/dev
     pub fn sample_total_traffic() -> (u64, u64) {
         let mut total_rx = 0u64;
         let mut total_tx = 0u64;
@@ -147,7 +147,7 @@ impl Telemetry {
             for line in content.lines().skip(2) {
                 if let Some((iface, data)) = line.split_once(':') {
                     let iface_clean = iface.trim();
-                    // Ignorar interfaz de loopback local
+                    // Ignore local loopback interface
                     if iface_clean != "lo" && !iface_clean.starts_with("docker") && !iface_clean.starts_with("veth") {
                         let fields: Vec<&str> = data.split_whitespace().collect();
                         if fields.len() >= 9 {
@@ -164,11 +164,11 @@ impl Telemetry {
         (total_rx, total_tx)
     }
 
-    /// Detecta y parsea la información de señal Wi-Fi
+    /// Detects and parses Wi-Fi signal information
     pub fn detect_wifi() -> Option<WifiStatus> {
         let mut wifi_iface = None;
 
-        // Buscar interfaces inalámbricas en /sys/class/net/*/wireless o por prefijo wl
+        // Search for wireless interfaces in /sys/class/net/*/wireless or starting with wl
         if let Ok(entries) = fs::read_dir("/sys/class/net") {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -188,7 +188,7 @@ impl Telemetry {
             ..Default::default()
         };
 
-        // 1. Intentar con el comando `iw dev <iface> link`
+        // 1. Attempt with `iw dev <iface> link` command
         if let Ok(output) = Command::new("iw").args(["dev", &iface, "link"]).output() {
             let text = String::from_utf8_lossy(&output.stdout);
             if text.contains("Connected to") {
@@ -222,14 +222,14 @@ impl Telemetry {
             }
         }
 
-        // 2. Fallback: Parsear /proc/net/wireless si no se obtuvo señal con `iw`
+        // 2. Fallback: Parse /proc/net/wireless if no signal obtained from `iw`
         if status.signal_dbm.is_none() {
             if let Ok(wireless_content) = fs::read_to_string("/proc/net/wireless") {
                 for line in wireless_content.lines().skip(2) {
                     if line.contains(&iface) {
                         let fields: Vec<&str> = line.split_whitespace().collect();
                         if fields.len() >= 4 {
-                            // Columna 3 es nivel de señal
+                            // Column 3 is signal level
                             let level_str = fields[3].trim_end_matches('.');
                             if let Ok(level) = level_str.parse::<i32>() {
                                 status.signal_dbm = Some(level);
@@ -249,7 +249,7 @@ impl Telemetry {
         }
     }
 
-    /// Detecta y parsea la información de la interfaz cableada Ethernet
+    /// Detects and parses Ethernet wired interface information
     pub fn detect_ethernet(iface: &str) -> Option<EthernetStatus> {
         let path = format!("/sys/class/net/{}", iface);
         let speed_path = format!("{}/speed", path);
@@ -270,7 +270,7 @@ impl Telemetry {
             .map(|s| s.trim() == "up")
             .unwrap_or(false);
 
-        // Si es una interfaz de cable (no wireless) y está activa
+        // If it is a wired interface (not wireless) and active
         if !iface.starts_with("wl") && (speed.is_some() || is_up) {
             Some(EthernetStatus {
                 interface: iface.to_string(),
@@ -283,19 +283,19 @@ impl Telemetry {
         }
     }
 
-    /// Convierte dBm (-100 a -30) en porcentaje legible (0% a 100%)
+    /// Converts dBm (-100 to -30) to readable percentage (0% to 100%)
     pub fn dbm_to_percent(dbm: i32) -> u8 {
         if dbm >= -50 {
             100
         } else if dbm <= -100 {
             0
         } else {
-            // Entre -100 y -50 hay 50 dBm de rango -> cada dBm equivale a 2%
+            // Between -100 and -50 there is 50 dBm range -> each dBm equals 2%
             (2 * (dbm + 100)).clamp(0, 100) as u8
         }
     }
 
-    /// Formatea bytes por segundo a texto legible (B/s, KB/s, MB/s, GB/s)
+    /// Formats bytes per second to readable text (B/s, KB/s, MB/s, GB/s)
     pub fn format_speed(bps: f64) -> String {
         if bps < 1024.0 {
             format!("{:.0} B/s", bps)
@@ -308,7 +308,7 @@ impl Telemetry {
         }
     }
 
-    /// Formatea bytes acumulados a texto legible (KB, MB, GB)
+    /// Formats cumulative bytes to readable text (KB, MB, GB)
     pub fn format_bytes(bytes: u64) -> String {
         let b = bytes as f64;
         if b < 1024.0 {
@@ -322,12 +322,12 @@ impl Telemetry {
         }
     }
 
-    /// Total de bytes descargados en esta sesión
+    /// Total bytes downloaded during this session
     pub fn session_download_bytes(&self) -> u64 {
         self.current_rx_bytes.saturating_sub(self.initial_rx_bytes)
     }
 
-    /// Total de bytes subidos en esta sesión
+    /// Total bytes uploaded during this session
     pub fn session_upload_bytes(&self) -> u64 {
         self.current_tx_bytes.saturating_sub(self.initial_tx_bytes)
     }

@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
-/// Información de identidad descubierta mediante protocolos de red locales (mDNS, NetBIOS, SSDP)
+/// Discovered identity information via local network protocols (mDNS, NetBIOS, SSDP)
 #[derive(Debug, Clone, Default)]
 pub struct DiscoveredIdentity {
     pub model_or_friendly_name: Option<String>,
@@ -14,18 +14,18 @@ pub struct DiscoveredIdentity {
 pub struct Discovery;
 
 impl Discovery {
-    /// Intenta enriquecer la identidad del dispositivo consultando mDNS, NetBIOS y SSDP
+    /// Attempts to enrich device identity by querying mDNS, NetBIOS, and SSDP
     pub async fn probe(ip: Ipv4Addr) -> DiscoveredIdentity {
         let mut identity = DiscoveredIdentity::default();
 
-        // 1. Intentar consulta NetBIOS Name Service (UDP 137)
+        // 1. Attempt NetBIOS Name Service query (UDP 137)
         if let Ok(Ok(Some(netbios_name))) = timeout(Duration::from_millis(350), Self::probe_netbios(ip)).await {
             identity.model_or_friendly_name = Some(netbios_name.clone());
             identity.hostname = Some(netbios_name);
             identity.services.push("NetBIOS / SMB".to_string());
         }
 
-        // 2. Intentar consulta mDNS PTR (UDP 5353)
+        // 2. Attempt mDNS PTR query (UDP 5353)
         if let Ok(Ok(Some(mdns_name))) = timeout(Duration::from_millis(350), Self::probe_mdns_ptr(ip)).await {
             let clean_name = mdns_name.trim_end_matches(".local").replace(".local.", "");
             if identity.model_or_friendly_name.is_none() {
@@ -39,7 +39,7 @@ impl Discovery {
             }
         }
 
-        // 3. Intentar consulta SSDP (UDP 1900)
+        // 3. Attempt SSDP query (UDP 1900)
         if let Ok(Ok(Some((friendly_name, server_tag)))) = timeout(Duration::from_millis(350), Self::probe_ssdp(ip)).await {
             if let Some(fname) = friendly_name {
                 identity.model_or_friendly_name = Some(fname);
@@ -54,13 +54,13 @@ impl Discovery {
         identity
     }
 
-    /// Consulta NetBIOS Node Status (NBSTAT) en puerto UDP 137
+    /// Queries NetBIOS Node Status (NBSTAT) on UDP port 137
     async fn probe_netbios(ip: Ipv4Addr) -> Result<Option<String>, ()> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 137);
 
-        // Paquete NetBIOS Node Status Request estándar (50 bytes)
-        // Consulta "*" codificado en base32 half-ASCII (RFC 1002)
+        // Standard NetBIOS Node Status Request packet (50 bytes)
+        // Query "*" encoded in base32 half-ASCII (RFC 1002)
         #[rustfmt::skip]
         let query: [u8; 50] = [
             0x82, 0x28, // Transaction ID
@@ -88,7 +88,7 @@ impl Discovery {
             return Ok(None);
         }
 
-        // En la respuesta NetBIOS, a partir del byte 56 está el número de nombres
+        // In NetBIOS response, number of names starts at byte 56
         let num_names = buf[56] as usize;
         let mut offset = 57;
 
@@ -99,7 +99,7 @@ impl Discovery {
             let name_bytes = &buf[offset..offset + 15];
             let name_type = buf[offset + 15];
 
-            // Tipo 0x00 = Workstation/Machine Name, Tipo 0x20 = Server
+            // Type 0x00 = Workstation/Machine Name, Type 0x20 = Server
             if name_type == 0x00 || name_type == 0x20 {
                 if let Ok(name_str) = std::str::from_utf8(name_bytes) {
                     let trimmed = name_str.trim();
@@ -118,12 +118,12 @@ impl Discovery {
         Ok(None)
     }
 
-    /// Consulta inversa mDNS (PTR) para <ip-reversed>.in-addr.arpa en UDP 5353
+    /// Reverse mDNS query (PTR) for <ip-reversed>.in-addr.arpa on UDP 5353
     async fn probe_mdns_ptr(ip: Ipv4Addr) -> Result<Option<String>, ()> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 5353);
 
-        // Construir nombre inverso: 1.168.192.in-addr.arpa
+        // Build reverse name: 1.168.192.in-addr.arpa
         let octets = ip.octets();
         let labels = [
             octets[3].to_string(),
@@ -162,7 +162,7 @@ impl Discovery {
             return Ok(None);
         }
 
-        // Buscar cadenas legibles que terminen en .local
+        // Search for readable strings ending in .local
         let body = &buf[12..len];
         if let Some(name) = Self::extract_local_name(body) {
             return Ok(Some(name));
@@ -171,7 +171,7 @@ impl Discovery {
         Ok(None)
     }
 
-    /// Extrae un nombre de host de bytes DNS terminados en .local
+    /// Extracts a hostname from DNS bytes ending in .local
     fn extract_local_name(bytes: &[u8]) -> Option<String> {
         let text = String::from_utf8_lossy(bytes);
         for word in text.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.') {
@@ -182,7 +182,7 @@ impl Discovery {
         None
     }
 
-    /// Consulta SSDP M-SEARCH (UDP 1900)
+    /// SSDP M-SEARCH query (UDP 1900)
     async fn probe_ssdp(ip: Ipv4Addr) -> Result<Option<(Option<String>, Option<String>)>, ()> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 1900);

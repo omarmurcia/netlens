@@ -21,12 +21,25 @@ pub struct DeviceMetadata {
     pub request_history: Vec<crate::model::DeviceRequestEntry>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_theme() -> String {
+    "TokyoNight".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
+    #[serde(default)]
     pub language: Language,
+    #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
     pub devices: Vec<Device>,
+    #[serde(default)]
     pub device_metadata: HashMap<String, DeviceMetadata>,
+    #[serde(default)]
     pub last_speed_test: Option<SpeedTestResult>,
     #[serde(default)]
     pub speed_test_history: Vec<SpeedTestResult>,
@@ -40,7 +53,7 @@ pub struct AppState {
     pub known_macs: Vec<String>,
     #[serde(default)]
     pub autostart: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub minimize_to_tray_on_close: bool,
     #[serde(default)]
     pub network_events: Vec<crate::history::NetworkEvent>,
@@ -53,7 +66,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            language: Language::Spanish,
+            language: Language::English,
             theme: "TokyoNight".to_string(),
             devices: Vec::new(),
             device_metadata: HashMap::new(),
@@ -64,7 +77,7 @@ impl Default for AppState {
             auto_scan_interval_secs: 0,
             known_macs: Vec::new(),
             autostart: false,
-            minimize_to_tray_on_close: false,
+            minimize_to_tray_on_close: true,
             network_events: Vec::new(),
             notification_settings: NotificationSettings::default(),
             storage_credentials: None,
@@ -75,7 +88,7 @@ impl Default for AppState {
 pub struct Storage;
 
 impl Storage {
-    /// Ruta del archivo de configuración persistente según XDG (~/.config/netlens/state.json)
+    /// Persistent configuration file path according to XDG (~/.config/netlens/state.json)
     pub fn get_storage_path() -> PathBuf {
         let base_dir = if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
             PathBuf::from(xdg_config)
@@ -88,7 +101,7 @@ impl Storage {
         base_dir.join("netlens").join("state.json")
     }
 
-    /// Carga el estado guardado desde el disco. Si no existe o falla, retorna valores por defecto.
+    /// Loads saved state from disk. If absent or corrupted, returns defaults.
     pub fn load() -> AppState {
         let path = Self::get_storage_path();
         if !path.exists() {
@@ -98,23 +111,23 @@ impl Storage {
         match fs::read_to_string(&path) {
             Ok(content) => match serde_json::from_str::<AppState>(&content) {
                 Ok(mut state) => {
-                    // Reaplicar metadatos (alias, categorías, listas blancas/negras) a los dispositivos
+                    // Re-apply metadata (aliases, categories, whitelists/blacklists) to devices
                     Self::apply_metadata(&mut state.devices, &state.device_metadata);
                     state
                 }
                 Err(err) => {
-                    eprintln!("Aviso: No se pudo deserializar el estado guardado: {}", err);
+                    eprintln!("Warning: Failed to deserialize saved state: {}", err);
                     AppState::default()
                 }
             },
             Err(err) => {
-                eprintln!("Aviso: No se pudo leer el archivo de estado {:?}: {}", path, err);
+                eprintln!("Warning: Failed to read state file {:?}: {}", path, err);
                 AppState::default()
             }
         }
     }
 
-    /// Guarda el estado actual en el disco de manera segura
+    /// Safely writes current state to disk
     pub fn save(state: &AppState) -> Result<(), String> {
         let path = Self::get_storage_path();
         if let Some(parent) = path.parent() {
@@ -124,15 +137,15 @@ impl Storage {
         }
 
         let json = serde_json::to_string_pretty(state)
-            .map_err(|e| format!("Error serializando estado a JSON: {}", e))?;
+            .map_err(|e| format!("Error serializing state to JSON: {}", e))?;
 
         fs::write(&path, json)
-            .map_err(|e| format!("Error guardando estado en {:?}: {}", path, e))?;
+            .map_err(|e| format!("Error saving state to {:?}: {}", path, e))?;
 
         Ok(())
     }
 
-    /// Aplica alias, categorías y políticas de seguridad (whitelist/blacklist) a dispositivos por su MAC
+    /// Applies aliases, categories, and security policies (whitelist/blacklist) to devices by MAC
     pub fn apply_metadata(devices: &mut [Device], metadata: &HashMap<String, DeviceMetadata>) {
         for dev in devices.iter_mut() {
             let mac_key = dev.mac.trim().to_lowercase();
@@ -155,7 +168,7 @@ impl Storage {
         }
     }
 
-    /// Actualiza o inserta la personalización de un dispositivo por su MAC
+    /// Updates or inserts device customization metadata by MAC
     pub fn update_device_meta(
         metadata: &mut HashMap<String, DeviceMetadata>,
         mac: &str,
@@ -172,7 +185,7 @@ impl Storage {
         }
     }
 
-    /// Marca o desmarca un dispositivo en la lista blanca
+    /// Marks or unmarks a device on the whitelist
     pub fn set_device_whitelist(
         metadata: &mut HashMap<String, DeviceMetadata>,
         mac: &str,
@@ -183,7 +196,7 @@ impl Storage {
         entry.is_whitelisted = whitelisted;
     }
 
-    /// Marca o desmarca un dispositivo en la lista negra (bloqueado)
+    /// Marks or unmarks a device on the blacklist (blocked)
     pub fn set_device_blocked(
         metadata: &mut HashMap<String, DeviceMetadata>,
         mac: &str,
@@ -194,7 +207,7 @@ impl Storage {
         entry.is_blocked = blocked;
     }
 
-    /// Define o quita el límite de velocidad asignado a un dispositivo
+    /// Defines or clears assigned speed limit for a device
     #[allow(dead_code)]
     pub fn set_device_speed_limit(
         metadata: &mut HashMap<String, DeviceMetadata>,
@@ -206,7 +219,7 @@ impl Storage {
         entry.speed_limit_kbps = limit_kbps;
     }
 
-    /// Actualiza el historial de peticiones del dispositivo por su MAC
+    /// Updates device DNS request history by MAC
     pub fn update_device_requests(
         metadata: &mut HashMap<String, DeviceMetadata>,
         mac: &str,

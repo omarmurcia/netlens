@@ -5,11 +5,11 @@ use crate::security_audit::SecurityCheckId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Los 10 idiomas más hablados del mundo (por número total de hablantes)
+/// The 10 most spoken languages in the world (by total speaker count)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Language {
-    #[default]
     Spanish,
+    #[default]
     English,
     Chinese,
     Hindi,
@@ -3134,7 +3134,7 @@ impl Translations {
         }
     }
 
-    // Funcionalidades de Auditoría, Historial, Wi-Fi y UPnP
+    // Audit, History, Wi-Fi, and UPnP Features
     pub fn security_audit_btn(lang: Language) -> &'static str {
         match lang {
             Language::Spanish => "🛡️ Auditoría",
@@ -3195,7 +3195,7 @@ impl Translations {
         }
     }
 
-    // --- Notificaciones del Sistema y Configuración Parametrizable ---
+    // --- System Notifications and Parameterizable Settings ---
 
     pub fn notif_settings_title(lang: Language) -> &'static str {
         match lang {
@@ -3662,7 +3662,7 @@ impl Translations {
         }
     }
 
-    // --- Almacenamiento USB y NAS del Router ---
+    // --- Router USB Storage and NAS ---
 
     pub fn storage_btn_header(lang: Language) -> &'static str {
         match lang {
@@ -4129,7 +4129,7 @@ impl Translations {
         }
     }
 
-    // --- Tooltips en los 10 Idiomas Oficiales ---
+    // --- Tooltips across 10 Official Languages ---
 
     pub fn tip_settings(lang: Language) -> &'static str {
         match lang {
@@ -4758,7 +4758,7 @@ impl Translations {
     }
 
     // ==========================================
-    // Auditoría de Seguridad (Security Audit)
+    // Security Audit
     // ==========================================
 
     pub fn audit_title(lang: Language) -> &'static str {
@@ -5325,7 +5325,7 @@ impl Translations {
     }
 
     // ==========================================
-    // Historial y Cronología de Eventos (Timeline)
+    // Event History and Timeline
     // ==========================================
 
     pub fn timeline_modal_title(lang: Language) -> &'static str {
@@ -5965,7 +5965,7 @@ impl Translations {
     }
 
     // ==========================================
-    // Analizador de Espectro Wi-Fi (Wi-Fi Analyzer)
+    // Wi-Fi Spectrum Analyzer
     // ==========================================
 
     pub fn wifi_modal_title(lang: Language) -> &'static str {
@@ -6268,7 +6268,7 @@ impl Translations {
     }
 
     // ==========================================
-    // Almacenamiento del Router / NAS USB
+    // Router Storage / USB NAS
     // ==========================================
 
     pub fn storage_btn_credentials(lang: Language) -> &'static str {
@@ -6790,7 +6790,7 @@ impl Translations {
     }
 
     // ==========================================
-    // Router Universal UPnP / IGD
+    // Universal Router UPnP / IGD
     // ==========================================
 
     pub fn upnp_modal_title(lang: Language) -> &'static str {

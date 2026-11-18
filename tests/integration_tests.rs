@@ -8,14 +8,14 @@ use std::net::Ipv4Addr;
 
 #[test]
 fn test_is_randomized_mac() {
-    // Direcciones MAC globales conocidas de fabricantes
+    // Known global vendor MAC addresses
     assert!(!Scanner::is_randomized_mac("d8:ec:5e:9c:77:1b")); // Belkin
     assert!(!Scanner::is_randomized_mac("c0:23:8d:66:79:fe")); // Samsung
     assert!(!Scanner::is_randomized_mac("28:92:00:09:72:02")); // Intel
     assert!(!Scanner::is_randomized_mac("fc:3c:d7:d2:b7:f7")); // Tuya
 
-    // Direcciones MAC administradas localmente (LAA) / Aleatorias de privacidad
-    // Bit 1 del primer byte debe ser 1: 0x76 = 0b01110110 (bit 1 es 1)
+    // Locally Administered Addresses (LAA) / Privacy randomized MACs
+    // Bit 1 of first byte must be 1: 0x76 = 0b01110110 (bit 1 is 1)
     assert!(Scanner::is_randomized_mac("76:da:ef:0a:3e:8e")); // Galaxy A25 Randomized
     assert!(Scanner::is_randomized_mac("02:11:22:33:44:55")); // LAA
     assert!(Scanner::is_randomized_mac("fa:16:3e:ab:cd:ef")); // OpenStack / Virtual
@@ -52,11 +52,11 @@ fn test_vendor_lookup() {
 
 #[test]
 fn test_device_categorization() {
-    // 1. Router / Puerta de enlace
+    // 1. Router / Gateway
     let cat_gw = Scanner::categorize_device(true, false, Some("Linksys02323"), "Belkin", &[]);
     assert_eq!(cat_gw, DeviceCategory::Router);
 
-    // 2. Móvil Android
+    // 2. Android Phone
     let cat_phone = Scanner::categorize_device(false, false, Some("Marvin-s-A25"), "Samsung", &[]);
     assert_eq!(cat_phone, DeviceCategory::Smartphone);
 
@@ -64,11 +64,11 @@ fn test_device_categorization() {
     let cat_tv = Scanner::categorize_device(false, false, Some("Samsung"), "Samsung Electronics", &[]);
     assert_eq!(cat_tv, DeviceCategory::SmartTv);
 
-    // 4. Domótica / IoT
+    // 4. Smart Home / IoT
     let cat_iot = Scanner::categorize_device(false, false, Some("smart-plug"), "Tuya Smart Inc.", &[]);
     assert_eq!(cat_iot, DeviceCategory::Iot);
 
-    // 5. Impresora (con puerto 631)
+    // 5. Printer (port 631)
     let ports_print = vec![PortInfo {
         port: 631,
         service: "IPP".to_string(),
@@ -77,11 +77,11 @@ fn test_device_categorization() {
     let cat_printer = Scanner::categorize_device(false, false, Some("office-laser"), "HP Inc.", &ports_print);
     assert_eq!(cat_printer, DeviceCategory::Printer);
 
-    // 6. Ordenador personal
+    // 6. Personal Computer
     let cat_pc = Scanner::categorize_device(false, true, Some("cachyos-x8664"), "Intel", &[]);
     assert_eq!(cat_pc, DeviceCategory::Computer);
 
-    // 7. Consolas de Videojuegos (PlayStation, Xbox, Nintendo, Steam Deck)
+    // 7. Video Game Consoles (PlayStation, Xbox, Nintendo, Steam Deck)
     let cat_ps5 = Scanner::categorize_device(false, false, Some("PS5-Office"), "Sony Interactive Entertainment Inc.", &[]);
     assert_eq!(cat_ps5, DeviceCategory::GamingConsole);
 
@@ -102,7 +102,7 @@ fn test_device_categorization() {
     let cat_port_console = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_psn);
     assert_eq!(cat_port_console, DeviceCategory::GamingConsole);
 
-    // 8. Dispositivos de Streaming (Roku, Chromecast, Fire TV, Apple TV, etc.)
+    // 8. Streaming Devices (Roku, Chromecast, Fire TV, Apple TV, etc.)
     let cat_roku = Scanner::categorize_device(false, false, Some("Roku-Express-4K"), "Roku, Inc.", &[]);
     assert_eq!(cat_roku, DeviceCategory::StreamingDevice);
 
@@ -174,7 +174,7 @@ fn test_export_json_and_csv() {
         subnet_cidr: "192.168.1.0/24".to_string(),
     };
 
-    // Probar exportación a JSON
+    // Test export to JSON
     let json_path = Exporter::export_json(&[sample_device.clone()], &ctx).expect("JSON export failed");
     assert!(json_path.exists());
     let json_content = fs::read_to_string(&json_path).expect("Failed to read JSON");
@@ -183,7 +183,7 @@ fn test_export_json_and_csv() {
     assert!(json_content.contains("Router Principal"));
     let _ = fs::remove_file(json_path);
 
-    // Probar exportación a CSV
+    // Test export to CSV
     let csv_path = Exporter::export_csv(&[sample_device.clone()]).expect("CSV export failed");
     assert!(csv_path.exists());
     let csv_content = fs::read_to_string(&csv_path).expect("Failed to read CSV");
@@ -192,7 +192,7 @@ fn test_export_json_and_csv() {
     assert!(csv_content.contains("Router / Puerta de Enlace"));
     let _ = fs::remove_file(csv_path);
 
-    // Probar guardado en ubicación personalizada elegida por el usuario
+    // Test saving to custom location chosen by user
     let custom_json_path = std::env::temp_dir().join(format!("custom_test_{}", Exporter::generate_json_filename()));
     Exporter::save_json_to_path(&custom_json_path, &[sample_device.clone()], &ctx).expect("Custom JSON save failed");
     assert!(custom_json_path.exists());
@@ -206,11 +206,11 @@ fn test_export_json_and_csv() {
 
 #[test]
 fn test_wol_validation() {
-    // MAC válida
+    // Valid MAC
     let valid_res = Scanner::send_wake_on_lan("d8:ec:5e:9c:77:1b");
     assert!(valid_res.is_ok());
 
-    // MAC con longitud inválida
+    // Invalid length MAC
     let invalid_res = Scanner::send_wake_on_lan("12:34:56");
     assert!(invalid_res.is_err());
 }
@@ -219,7 +219,7 @@ fn test_wol_validation() {
 fn test_telemetry_functions() {
     use netlens::telemetry::Telemetry;
 
-    // 1. Conversión de dBm a porcentaje
+    // 1. dBm to percentage conversion
     assert_eq!(Telemetry::dbm_to_percent(-35), 100);
     assert_eq!(Telemetry::dbm_to_percent(-50), 100);
     assert_eq!(Telemetry::dbm_to_percent(-60), 80);
@@ -227,15 +227,15 @@ fn test_telemetry_functions() {
     assert_eq!(Telemetry::dbm_to_percent(-100), 0);
     assert_eq!(Telemetry::dbm_to_percent(-110), 0);
 
-    // 2. Formato de velocidad
+    // 2. Speed formatting
     assert_eq!(Telemetry::format_speed(500.0), "500 B/s");
     assert_eq!(Telemetry::format_speed(1536.0), "1.5 KB/s");
     assert_eq!(Telemetry::format_speed(2.5 * 1024.0 * 1024.0), "2.50 MB/s");
 
-    // 3. Formato de bytes
+    // 3. Byte formatting
     assert_eq!(Telemetry::format_bytes(50 * 1024 * 1024), "50.0 MB");
 
-    // 4. Muestreo de tráfico
+    // 4. Traffic sampling
     let (rx, tx) = Telemetry::sample_total_traffic();
     assert!(rx > 0 || tx > 0, "Debe haber tráfico de red en el sistema");
 }
@@ -322,13 +322,13 @@ fn test_i18n_top_10_languages() {
             assert!(!short_cat.is_empty(), "Categoría corta {:?} vacía en idioma {:?}", cat, lang);
         }
 
-        // Validar traducciones de puertos y servicios
+        // Validate port and service translations
         for &port in &[21, 22, 23, 25, 53, 80, 443, 445, 631, 8080, 9000] {
             let desc = Translations::port_description(port, lang);
             assert!(!desc.is_empty(), "Descripción de puerto {} vacía en idioma {:?}", port, lang);
         }
 
-        // Validar traducciones del Test de Velocidad de Internet
+        // Validate Internet Speed Test translations
         assert!(!Translations::speed_test_btn(lang).is_empty());
         assert!(!Translations::speed_test_title(lang).is_empty());
         assert!(!Translations::speed_test_subtitle(lang).is_empty());
@@ -689,29 +689,29 @@ fn test_traceroute_output_parsing() {
     let hops = Traceroute::parse_output(sample_output, "8.8.8.8");
     assert_eq!(hops.len(), 4, "Debe haber 4 saltos distintos");
 
-    // Salto 1
+    // Hop 1
     assert_eq!(hops[0].hop, 1);
     assert_eq!(hops[0].ip.as_deref(), Some("192.168.1.1"));
     assert!(!hops[0].is_timeout);
     assert!(hops[0].latency_ms.is_some());
-    assert_eq!(hops[0].label.as_deref(), Some("Router Local (Gateway)"));
+    assert_eq!(hops[0].label.as_deref(), Some("Local Router (Gateway)"));
 
-    // Salto 2
+    // Hop 2
     assert_eq!(hops[1].hop, 2);
     assert_eq!(hops[1].ip.as_deref(), Some("10.20.0.1"));
     assert!(!hops[1].is_timeout);
     assert_eq!(hops[1].label.as_deref(), Some("Modem / ISP Gateway"));
 
-    // Salto 3
+    // Hop 3
     assert_eq!(hops[2].hop, 3);
     assert!(hops[2].is_timeout);
     assert!(hops[2].ip.is_none());
 
-    // Salto 4
+    // Hop 4
     assert_eq!(hops[3].hop, 4);
     assert_eq!(hops[3].ip.as_deref(), Some("8.8.8.8"));
     assert!(!hops[3].is_timeout);
-    assert_eq!(hops[3].label.as_deref(), Some("Destino Final"));
+    assert_eq!(hops[3].label.as_deref(), Some("Final Destination"));
 }
 
 #[test]
@@ -809,7 +809,7 @@ fn test_autostart_manager_entry_generation() {
     assert!(entry.contains("X-GNOME-Autostart-enabled=true"));
     assert!(entry.contains("X-KDE-autostart-after=panel"));
 
-    // Comprobar rutas con espacios que requieran encomillado
+    // Test paths with spaces requiring quoting
     let spaced_exec = "/home/user/My Apps/netlens";
     let spaced_entry = AutostartManager::generate_desktop_entry(spaced_exec);
     assert!(spaced_entry.contains("Exec=\"/home/user/My Apps/netlens\" --minimized"));
@@ -820,7 +820,7 @@ fn test_autostart_persistent_path_resolution() {
     use netlens::autostart::AutostartManager;
     use std::env;
 
-    // Cuando APPIMAGE apunta a un archivo existente, debe resolver esa ruta fija
+    // When APPIMAGE points to an existing file, it must resolve that fixed path
     let current_dir = env::current_dir().unwrap();
     let cargo_toml = current_dir.join("Cargo.toml");
     unsafe {
@@ -841,7 +841,7 @@ fn test_autostart_set_and_clear() {
     use netlens::autostart::AutostartManager;
     use std::fs;
 
-    // Activar autostart
+    // Enable autostart
     let res = AutostartManager::set_enabled(true);
     assert!(res.is_ok(), "set_enabled(true) should succeed: {:?}", res);
 
@@ -853,11 +853,19 @@ fn test_autostart_set_and_clear() {
     assert!(content.contains("--minimized"));
     assert!(AutostartManager::is_enabled());
 
-    // Desactivar autostart
+    // Disable autostart
     let res_disable = AutostartManager::set_enabled(false);
     assert!(res_disable.is_ok());
     assert!(!path.exists());
     assert!(!AutostartManager::is_enabled());
+
+    // Clean test entry in ~/.local/share/applications/netlens.desktop and icon
+    if let Ok(home) = std::env::var("HOME") {
+        let app_desktop = std::path::PathBuf::from(&home).join(".local/share/applications/netlens.desktop");
+        let _ = fs::remove_file(app_desktop);
+        let app_icon = std::path::PathBuf::from(&home).join(".local/share/icons/hicolor/512x512/apps/netlens.png");
+        let _ = fs::remove_file(app_icon);
+    }
 }
 
 #[test]
@@ -1050,7 +1058,7 @@ fn test_uptime_tracker_and_outages() {
     assert!(ev_fail2.is_some());
     let (evt_type, title, _) = ev_fail2.unwrap();
     assert_eq!(evt_type, NetworkEventType::InternetOutage);
-    assert!(title.contains("Corte de ISP"));
+    assert!(title.contains("ISP") && title.contains("Outage"));
     assert!(!tracker.is_online);
 
     // Recovery probe
@@ -1068,16 +1076,16 @@ fn test_history_manager_and_events() {
 
     let evt = HistoryManager::create_event(
         NetworkEventType::NewDeviceDetected,
-        "Nuevo Equipo".to_string(),
-        "Chromecast detectado en la red".to_string(),
+        "New Device".to_string(),
+        "Chromecast detected on network".to_string(),
         Some(Ipv4Addr::new(192, 168, 1, 55)),
         Some("00:11:22:33:44:55".to_string()),
     );
 
     assert_eq!(evt.event_type, NetworkEventType::NewDeviceDetected);
     assert_eq!(evt.event_type.icon(), "✨");
-    assert_eq!(evt.event_type.label(), "Nuevo Dispositivo");
-    assert_eq!(evt.title, "Nuevo Equipo");
+    assert_eq!(evt.event_type.label(), "New Device");
+    assert_eq!(evt.title, "New Device");
     assert!(evt.details.contains("Chromecast"));
     assert_eq!(evt.ip, Some(Ipv4Addr::new(192, 168, 1, 55)));
 }
@@ -1283,7 +1291,7 @@ fn test_notification_message_formatting_and_content() {
         Some("No está en Lista Blanca"),
     );
     assert!(full_msg.contains("MAC: 00:11:22:33:44:55"));
-    assert!(full_msg.contains("Fabricante: Samsung Electronics"));
+    assert!(full_msg.contains("Vendor: Samsung Electronics"));
 
     // Hiding MAC and Vendor
     settings.show_mac = false;
@@ -1333,11 +1341,11 @@ fn test_unwhitelisted_known_device_reconnection_detection() {
         interface: "eth0".to_string(),
         latency_ms: Some(2.5),
         open_ports: vec![],
-        status: DeviceStatus::Offline, // Estaba desconectado
+        status: DeviceStatus::Offline, // Was disconnected
         first_seen: chrono::Local::now(),
         last_seen: chrono::Local::now(),
         custom_alias: None,
-        is_whitelisted: false, // NO está en la lista blanca
+        is_whitelisted: false, // NOT whitelisted
         is_blocked: false,
         speed_limit_kbps: None,
         connection_type: None,
@@ -1493,7 +1501,7 @@ fn test_fast_disconnection_heartbeat_settings_and_logic() {
     use netlens::notification::NotificationSettings;
     use std::collections::{HashMap, HashSet};
 
-    // 1. Verificación de defaults y serialización de configuración
+    // 1. Verify defaults and configuration serialization
     let settings = NotificationSettings::default();
     assert!(settings.fast_disconnection_heartbeat);
 
@@ -1501,30 +1509,30 @@ fn test_fast_disconnection_heartbeat_settings_and_logic() {
     let deserialized: NotificationSettings = serde_json::from_str(&json).expect("Deserialization failed");
     assert!(deserialized.fast_disconnection_heartbeat);
 
-    // Compatibilidad retroactiva con configuraciones antiguas donde no existía el campo
+    // Backwards compatibility with older configs lacking the field
     let empty_json = "{}";
     let loaded: NotificationSettings = serde_json::from_str(empty_json).expect("Deserialization failed");
     assert!(loaded.fast_disconnection_heartbeat);
 
-    // 2. Simulación de la lógica de Heartbeat Keep-Alive
+    // 2. Simulation of Heartbeat Keep-Alive logic
     let mut missed_heartbeats: HashMap<Ipv4Addr, u32> = HashMap::new();
     let mut active_online_macs: HashSet<String> = HashSet::new();
 
     let test_ip = Ipv4Addr::new(192, 168, 1, 142);
     let test_mac = "76:da:ef:0a:3e:8e".to_string();
 
-    // El dispositivo está inicialmente activo y conectado
+    // Device is initially active and connected
     active_online_macs.insert(test_mac.clone());
     missed_heartbeats.insert(test_ip, 0);
 
-    // Fallo de sondeo 1: no responde
+    // Probe failure 1: no response
     let misses = missed_heartbeats.entry(test_ip).or_insert(0);
     *misses += 1;
     assert_eq!(*misses, 1);
-    // Con 1 solo fallo NO debe marcarse como desconectado (evita falsos positivos por jitter de Wi-Fi)
+    // Single failure must NOT mark as disconnected (avoids false positives from Wi-Fi jitter)
     assert!(active_online_macs.contains(&test_mac));
 
-    // Fallo de sondeo 2 consecutivo: desconexión confirmada (4s + 4s = 8s)
+    // Consecutive failure 2: confirmed disconnection (4s + 4s = 8s)
     let misses = missed_heartbeats.entry(test_ip).or_insert(0);
     *misses += 1;
     assert_eq!(*misses, 2);
@@ -1533,7 +1541,7 @@ fn test_fast_disconnection_heartbeat_settings_and_logic() {
     assert!(was_online);
     assert!(!active_online_macs.contains(&test_mac));
 
-    // Si el equipo responde más adelante, el contador se resetea a 0
+    // If device responds later, counter resets to 0
     missed_heartbeats.insert(test_ip, 0);
     assert_eq!(*missed_heartbeats.get(&test_ip).unwrap(), 0);
 }
@@ -1544,7 +1552,7 @@ fn test_i18n_heartbeat_and_settings_buttons_all_languages() {
     use netlens::notification::{NotificationDetailLevel, NotificationUrgency};
 
     for &lang in Language::ALL {
-        // Botones de estado (activado / desactivado) y badge de prioridad
+        // State buttons (enabled / disabled) and priority badge
         let btn_on = Translations::btn_enabled(lang);
         let btn_off = Translations::btn_disabled(lang);
         let badge = Translations::badge_priority(lang);
@@ -1553,7 +1561,7 @@ fn test_i18n_heartbeat_and_settings_buttons_all_languages() {
         assert!(!btn_off.is_empty(), "btn_disabled vacío para {:?}", lang);
         assert!(!badge.is_empty(), "badge_priority vacío para {:?}", lang);
 
-        // Encabezados de subsecciones en Ajustes
+        // Subsection headers in Settings
         let sec_trig = Translations::notif_section_triggers(lang);
         let sec_behav = Translations::notif_section_behavior(lang);
         let sec_cont = Translations::notif_section_content(lang);
@@ -1562,20 +1570,20 @@ fn test_i18n_heartbeat_and_settings_buttons_all_languages() {
         assert!(!sec_behav.is_empty(), "notif_section_behavior vacío para {:?}", lang);
         assert!(!sec_cont.is_empty(), "notif_section_content vacío para {:?}", lang);
 
-        // Textos del Heartbeat
+        // Heartbeat texts
         let hb_lbl = Translations::notif_heartbeat_label(lang);
         let hb_desc = Translations::notif_heartbeat_desc(lang);
 
         assert!(!hb_lbl.is_empty(), "notif_heartbeat_label vacío para {:?}", lang);
         assert!(!hb_desc.is_empty(), "notif_heartbeat_desc vacío para {:?}", lang);
 
-        // Opciones de urgencia en todos los idiomas
+        // Urgency options in all languages
         for &urgency in NotificationUrgency::ALL {
             let lbl = urgency.label(lang);
             assert!(!lbl.is_empty(), "Urgency label vacío para {:?} en {:?}", urgency, lang);
         }
 
-        // Opciones de nivel de detalle en todos los idiomas
+        // Detail level options in all languages
         for &detail in NotificationDetailLevel::ALL {
             let lbl = detail.label(lang);
             assert!(!lbl.is_empty(), "Detail label vacío para {:?} en {:?}", detail, lang);
@@ -1589,7 +1597,7 @@ fn test_router_storage_share_and_directory_parsing() {
         format_file_size, RouterStorageManager, StorageFileType,
     };
 
-    // 1. Prueba de parseo de recursos compartidos (smbclient -g y estándar)
+    // 1. Test share parsing (smbclient -g and standard)
     let grepable_output = r#"
 Disk|usbdisk|SanDisk Ultra USB 3.0
 Disk|multimedia|Disco Duro Externo 1TB
@@ -1604,7 +1612,7 @@ Printer|print$|Controladores de Impresora
     assert_eq!(shares[0].comment, "SanDisk Ultra USB 3.0");
     assert_eq!(shares[1].name, "multimedia");
 
-    // 2. Prueba de parseo de directorio y bloques de disco de smbclient
+    // 2. Test directory and disk block parsing from smbclient
     let dir_output = r#"
   .                                   D        0  Tue Nov 17 12:00:00 2026
   ..                                  D        0  Tue Nov 17 12:00:00 2026
@@ -1621,10 +1629,10 @@ Printer|print$|Controladores de Impresora
 
     let (files, disk_info) = RouterStorageManager::parse_directory_output(dir_output);
 
-    // . y .. deben haber sido omitidos
+    // . and .. must be omitted
     assert_eq!(files.len(), 7);
 
-    // Las carpetas deben aparecer primero ordenadas alfabéticamente
+    // Folders must appear first sorted alphabetically
     assert!(files[0].is_dir);
     assert_eq!(files[0].name, "Documentos_Trabajo");
     assert_eq!(files[0].file_type, StorageFileType::Folder);
@@ -1633,7 +1641,7 @@ Printer|print$|Controladores de Impresora
     assert_eq!(files[1].name, "Fotos_Vacaciones");
     assert_eq!(files[1].file_type, StorageFileType::Folder);
 
-    // Luego los archivos clasificados por extensión
+    // Then files classified by extension
     let zip_file = files.iter().find(|f| f.name == "backup_sistema.zip").unwrap();
     assert_eq!(zip_file.file_type, StorageFileType::Archive);
     assert_eq!(zip_file.size_bytes, 104857600);
@@ -1651,14 +1659,14 @@ Printer|print$|Controladores de Impresora
     let sh_file = files.iter().find(|f| f.name == "script_mantenimiento.sh").unwrap();
     assert_eq!(sh_file.file_type, StorageFileType::Executable);
 
-    // 3. Verificación de cálculo de espacio en disco
+    // 3. Disk space calculation check
     let disk = disk_info.expect("Información de disco no debe ser None");
     assert_eq!(disk.total_bytes, 48828125 * 4096);
     assert_eq!(disk.free_bytes, 31250000 * 4096);
     assert_eq!(disk.used_bytes(), (48828125 - 31250000) * 4096);
     assert!((disk.used_percent() - 36.0).abs() < 0.1);
 
-    // 4. Verificación de formato de tamaños
+    // 4. Size formatting check
     assert_eq!(format_file_size(500), "500 B");
     assert_eq!(format_file_size(1024), "1.00 KB");
     assert_eq!(format_file_size(1048576), "1.00 MB");
@@ -1669,7 +1677,7 @@ Printer|print$|Controladores de Impresora
 fn test_router_storage_credentials_and_demo() {
     use netlens::router::{RouterStorageManager, StorageCredentials};
 
-    // 1. Comportamiento y serialización de credenciales
+    // 1. Credentials behavior and serialization
     let mut creds = StorageCredentials::default();
     assert!(creds.is_empty());
 
@@ -1684,16 +1692,16 @@ fn test_router_storage_credentials_and_demo() {
     assert_eq!(deser.password, "secreto123");
     assert_eq!(deser.workgroup, "MI_RED");
 
-    // 2. Datos de demostración interactiva
+    // 2. Interactive demo data
     let demo_shares = RouterStorageManager::get_demo_shares();
     assert!(!demo_shares.is_empty());
-    assert_eq!(demo_shares[0].name, "usb_almacenamiento");
+    assert_eq!(demo_shares[0].name, "usb_storage");
 
     let (root_files, root_disk) = RouterStorageManager::get_demo_directory("");
     assert!(!root_files.is_empty());
     assert!(root_disk.is_some());
 
-    let (sub_files, sub_disk) = RouterStorageManager::get_demo_directory("Fotos_Vacaciones");
+    let (sub_files, sub_disk) = RouterStorageManager::get_demo_directory("Vacation_Photos");
     assert!(!sub_files.is_empty());
     assert!(sub_disk.is_some());
 }
@@ -1748,7 +1756,7 @@ async fn test_router_storage_upload_folder_traversal_and_structures() {
     let base_path = std::env::temp_dir().join(format!("netlens_upload_test_{}", now_nanos));
     create_dir_all(&base_path).expect("temp dir creation");
 
-    // Crear estructura local para probar subida recursiva
+    // Create local structure to test recursive upload
     let subfolder = base_path.join("temporada_1");
     create_dir_all(&subfolder).expect("create subfolder");
 
@@ -1760,7 +1768,7 @@ async fn test_router_storage_upload_folder_traversal_and_structures() {
     let mut f2 = File::create(&file2).expect("create file 2");
     writeln!(f2, "Video dummy stream").expect("write file 2");
 
-    // Probar recolección recursiva de archivos reales
+    // Test recursive file collection
     let mut files = Vec::new();
     let res = RouterStorageManager::collect_files_recursive(&base_path, "", &mut files);
     assert!(res.is_ok());
@@ -1769,7 +1777,7 @@ async fn test_router_storage_upload_folder_traversal_and_structures() {
     let total_bytes: u64 = files.iter().map(|f| f.size).sum();
     assert!(total_bytes > 0);
 
-    // Probar inicialización y cálculo de StorageUploadProgress
+    // Test initialization and calculation of StorageUploadProgress
     let progress = StorageUploadProgress {
         is_folder: true,
         title: "Subiendo carpeta: temporada_1 (2 archivos)".to_string(),
@@ -1789,7 +1797,7 @@ async fn test_router_storage_upload_folder_traversal_and_structures() {
     assert!(progress.is_finished);
     assert!(format_file_size(progress.bytes_uploaded).contains('B'));
 
-    // Limpiar directorio temporal
+    // Clean temporary directory
     let _ = remove_dir_all(&base_path);
 }
 
@@ -1797,7 +1805,7 @@ async fn test_router_storage_upload_folder_traversal_and_structures() {
 fn test_router_storage_immediate_delete_update() {
     use netlens::router::{StorageDiskInfo, StorageFileEntry};
 
-    // 1. Simular lista de archivos antes de borrar
+    // 1. Simulate file list before deletion
     let mut files = vec![
         StorageFileEntry::new(
             "Temporada 1".to_string(),
@@ -1829,22 +1837,22 @@ fn test_router_storage_immediate_delete_update() {
 
     let mut selected_file = Some(files[1].clone());
 
-    // 2. Simular borrado inmediato del archivo "pelicula.mkv"
+    // 2. Simulate immediate deletion of file "pelicula.mkv"
     let file_to_delete = "pelicula.mkv";
     let removed_entry = files.iter().find(|f| f.name == file_to_delete).cloned();
 
-    // Actualización inmediata de lista
+    // Immediate list update
     files.retain(|f| f.name != file_to_delete);
     assert_eq!(files.len(), 2);
     assert!(files.iter().all(|f| f.name != "pelicula.mkv"));
 
-    // Actualización inmediata de ventana de propiedades
+    // Immediate properties window update
     if selected_file.as_ref().map(|f| f.name == file_to_delete).unwrap_or(false) {
         selected_file = None;
     }
     assert!(selected_file.is_none());
 
-    // Actualización inmediata de capacidad de disco
+    // Immediate disk capacity update
     if let (Some(entry), Some(disk)) = (&removed_entry, &mut disk_info) {
         if !entry.is_dir {
             disk.free_bytes = (disk.free_bytes + entry.size_bytes).min(disk.total_bytes);
@@ -1853,14 +1861,14 @@ fn test_router_storage_immediate_delete_update() {
 
     assert_eq!(disk_info.unwrap().free_bytes, 20_500_000_000);
 
-    // 3. Simular borrado inmediato de carpeta "Temporada 1"
+    // 3. Simulate immediate deletion of folder "Temporada 1"
     let folder_to_delete = "Temporada 1";
     let removed_folder_entry = files.iter().find(|f| f.name == folder_to_delete).cloned();
     files.retain(|f| f.name != folder_to_delete);
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].name, "notas.txt");
 
-    // Actualización de capacidad al borrar una carpeta
+    // Capacity update on deleting folder
     let freed_folder_bytes = 1_850_000_000u64;
     if let (Some(_entry), Some(disk)) = (&removed_folder_entry, &mut disk_info) {
         disk.free_bytes = (disk.free_bytes + freed_folder_bytes).min(disk.total_bytes);
@@ -1868,12 +1876,12 @@ fn test_router_storage_immediate_delete_update() {
     assert_eq!(disk_info.unwrap().free_bytes, 22_350_000_000);
     assert!(disk_info.unwrap().used_percent() < 83.0);
 
-    // 4. Protección contra respuestas desactualizadas / en caché del router
-    // Si el router devuelve una respuesta con free_bytes menor al valor tras el borrado,
-    // el sistema preserva el espacio libre actualizado más alto.
+    // 4. Protection against stale/cached responses from router
+    // If router returns a response with free_bytes lower than post-deletion value,
+    // system preserves the higher updated free space.
     let stale_router_disk_info = StorageDiskInfo {
         total_bytes: 120_000_000_000,
-        free_bytes: 20_000_000_000, // Valor desactualizado antes del borrado
+        free_bytes: 20_000_000_000, // Stale value before deletion
     };
 
     let mut preserved_disk = stale_router_disk_info;
@@ -1890,15 +1898,15 @@ fn test_gaming_console_support_and_i18n() {
     use netlens::i18n::{Language, Translations};
     use netlens::model::DeviceCategory;
 
-    // Verificar variante, icono y nombre por defecto
+    // Verify variant, icon, and default name
     let cat = DeviceCategory::GamingConsole;
     assert_eq!(cat.icon(), "🎮");
     assert_eq!(cat.display_name(), "Consola de Videojuegos");
 
-    // Verificar presencia en DeviceCategory::all()
+    // Verify presence in DeviceCategory::all()
     assert!(DeviceCategory::all().contains(&DeviceCategory::GamingConsole));
 
-    // Verificar traducciones en los 10 idiomas soportados
+    // Verify translations in all 10 supported languages
     let langs = [
         Language::Spanish,
         Language::English,
@@ -1926,15 +1934,15 @@ fn test_streaming_device_support_and_i18n() {
     use netlens::i18n::{Language, Translations};
     use netlens::model::DeviceCategory;
 
-    // Verificar variante, icono y nombre por defecto
+    // Verify variant, icon, and default name
     let cat = DeviceCategory::StreamingDevice;
     assert_eq!(cat.icon(), "🎬");
     assert_eq!(cat.display_name(), "Dispositivo de Streaming");
 
-    // Verificar presencia en DeviceCategory::all()
+    // Verify presence in DeviceCategory::all()
     assert!(DeviceCategory::all().contains(&DeviceCategory::StreamingDevice));
 
-    // Verificar traducciones en los 10 idiomas soportados
+    // Verify translations in all 10 supported languages
     let langs = [
         Language::Spanish,
         Language::English,
@@ -1966,14 +1974,14 @@ fn test_router_storage_upload_and_delete_accounting() {
         free_bytes: 20_000_000_000,
     };
 
-    // Subida de un archivo de 2 GB
+    // Uploading a 2 GB file
     let uploaded_bytes = 2_000_000_000u64;
     disk.free_bytes = disk.free_bytes.saturating_sub(uploaded_bytes);
     assert_eq!(disk.free_bytes, 18_000_000_000);
     assert_eq!(disk.used_bytes(), 102_000_000_000);
     assert!((disk.used_percent() - 85.0).abs() < 0.1);
 
-    // Borrado de un archivo de 5 GB
+    // Deleting a 5 GB file
     let deleted_bytes = 5_000_000_000u64;
     disk.free_bytes = (disk.free_bytes + deleted_bytes).min(disk.total_bytes);
     assert_eq!(disk.free_bytes, 23_000_000_000);
@@ -1989,7 +1997,7 @@ async fn test_view_storage_details_does_not_panic() {
     let (mut app, _) = App::new();
     app.is_storage_explorer_open = true;
 
-    // Probar con un archivo
+    // Test with a file
     let file_entry = StorageFileEntry::new(
         "Notas_Router.txt".to_string(),
         false,
@@ -2003,7 +2011,7 @@ async fn test_view_storage_details_does_not_panic() {
         let _element = app.view(win_id);
     }
 
-    // Probar con un directorio
+    // Test with a directory
     let dir_entry = StorageFileEntry::new(
         "Fotos_Vacaciones".to_string(),
         true,
@@ -2043,7 +2051,7 @@ async fn test_storage_disk_info_cache_protection_and_delete_update() {
     );
     app.storage_files = vec![file_to_del.clone()];
 
-    // 1. Solicitar borrado y confirmar
+    // 1. Request deletion and confirm
     let _ = app.update(Message::StorageRequestDeleteFile {
         path: "Grandes_Videos.mp4".to_string(),
         is_dir: false,
@@ -2051,16 +2059,16 @@ async fn test_storage_disk_info_cache_protection_and_delete_update() {
     });
     let _ = app.update(Message::StorageConfirmDeleteFile);
 
-    // 2. Comprobar actualización optimista
+    // 2. Check optimistic update
     assert!(app.storage_files.is_empty(), "El archivo debe haber sido removido de la lista");
     assert_eq!(app.storage_last_freed, Some(2_000_000_000));
     let curr_free = app.storage_disk_info.unwrap().free_bytes;
     assert_eq!(curr_free, 22_000_000_000, "El espacio libre debe reflejar los 2 GB liberados");
 
-    // 3. Simular que el router responde con una respuesta desactualizada (stale cache: 20 GB en lugar de 22 GB)
+    // 3. Simulate router responding with stale cached response (20 GB instead of 22 GB)
     let stale_router_disk = StorageDiskInfo {
         total_bytes: 120_000_000_000,
-        free_bytes: 20_000_000_000, // Respuesta obsoleta del router
+        free_bytes: 20_000_000_000, // Stale router response
     };
     let _ = app.update(Message::StorageDirectoryLoaded(Ok((vec![], Some(stale_router_disk)))));
     assert_eq!(
@@ -2069,7 +2077,7 @@ async fn test_storage_disk_info_cache_protection_and_delete_update() {
         "El espacio libre no debe retroceder ante una respuesta obsoleta del router"
     );
 
-    // 4. Simular que el router responde con una respuesta actualizada con aún más espacio liberado (23 GB)
+    // 4. Simulate router responding with updated response with even more freed space (23 GB)
     let newer_router_disk = StorageDiskInfo {
         total_bytes: 120_000_000_000,
         free_bytes: 23_000_000_000,
@@ -2170,7 +2178,7 @@ fn test_long_file_name_truncation_logic() {
     assert_eq!(display_name.chars().count(), 38);
     assert_eq!(&display_name[..10], "DEFIANCE (");
 
-    // Probar cadena corta
+    // Test short string
     let short_name = "Season 1 (2013)";
     let char_count_short = short_name.chars().count();
     let display_short = if char_count_short > max_len {
@@ -2237,7 +2245,7 @@ fn test_all_modals_translations_in_all_10_languages() {
     ];
 
     for &lang in &all_languages {
-        // 1. Auditoría de Seguridad
+        // 1. Security Audit
         assert!(!Translations::audit_title(lang).is_empty());
         assert!(!Translations::audit_subtitle(lang).is_empty());
         assert!(!Translations::audit_not_run(lang).is_empty());
@@ -2257,7 +2265,7 @@ fn test_all_modals_translations_in_all_10_languages() {
             assert!(!Translations::audit_check_recommendation(cid, lang).is_empty());
         }
 
-        // 2. Historial de Eventos
+        // 2. Event History
         assert!(!Translations::timeline_modal_title(lang).is_empty());
         assert!(!Translations::timeline_modal_desc(lang).is_empty());
         assert!(!Translations::timeline_online(lang).is_empty());
@@ -2274,13 +2282,13 @@ fn test_all_modals_translations_in_all_10_languages() {
             assert!(!Translations::event_details(evt, "TV Sala (192.168.1.50) ya no responde en la red local.", lang).is_empty());
         }
 
-        // Peticiones de dispositivos (Device Requests History)
+        // Device Requests History
         assert!(!Translations::device_requests_title(lang).is_empty());
         assert!(!Translations::device_requests_simulate_btn(lang).is_empty());
         assert!(!Translations::device_requests_empty(lang).is_empty());
         assert!(!Translations::device_requests_cleared_notif(lang).is_empty());
 
-        // 3. Analizador Wi-Fi
+        // 3. Wi-Fi Analyzer
         assert!(!Translations::wifi_modal_title(lang).is_empty());
         assert!(!Translations::wifi_modal_desc(lang).is_empty());
         assert!(!Translations::wifi_scan_btn(true, lang).is_empty());
@@ -2299,7 +2307,7 @@ fn test_all_modals_translations_in_all_10_languages() {
         assert!(!Translations::wifi_badge_current(lang).is_empty());
         assert!(!Translations::wifi_prompt_scan(lang).is_empty());
 
-        // 4. Almacenamiento Router (USB / NAS)
+        // 4. Router Storage (USB / NAS)
         assert!(!Translations::storage_btn_credentials(lang).is_empty());
         assert!(!Translations::storage_creds_user_placeholder(lang).is_empty());
         assert!(!Translations::storage_creds_pass_placeholder(lang).is_empty());

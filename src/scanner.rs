@@ -14,7 +14,7 @@ use tokio::process::Command;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
-/// Eventos emitidos durante el escaneo de red
+/// Events emitted during network scanning
 #[derive(Debug, Clone)]
 pub enum ScanEvent {
     Started { total_hosts: usize, subnet: String },
@@ -25,7 +25,7 @@ pub enum ScanEvent {
     Error(String),
 }
 
-/// Resultado de una prueba de ping detallada
+/// Detailed ping test result
 #[derive(Debug, Clone)]
 pub struct PingStats {
     pub ip: Ipv4Addr,
@@ -42,11 +42,11 @@ pub struct PingStats {
 pub struct Scanner;
 
 impl Scanner {
-    /// Detecta el contexto de red actual leyendo las interfaces y la tabla de rutas del sistema
+    /// Detects current network context by inspecting interfaces and system routing table
     pub fn detect_network_context() -> NetworkContext {
         let mut ctx = NetworkContext::default();
 
-        // 1. Leer ruta por defecto desde /proc/net/route
+        // 1. Read default route from /proc/net/route
         if let Ok(content) = fs::read_to_string("/proc/net/route") {
             for line in content.lines().skip(1) {
                 let fields: Vec<&str> = line.split_whitespace().collect();
@@ -68,7 +68,7 @@ impl Scanner {
             }
         }
 
-        // Si no encontramos interfaz principal, buscamos en /sys/class/net
+        // If no default interface was found, search /sys/class/net
         if ctx.interface.is_empty() {
             if let Ok(entries) = fs::read_dir("/sys/class/net") {
                 for entry in entries.flatten() {
@@ -81,15 +81,15 @@ impl Scanner {
             }
         }
 
-        // 2. Obtener dirección IP y máscara de la interfaz
+        // 2. Obtain IP address and netmask for the interface
         if !ctx.interface.is_empty() {
-            // Leer dirección MAC local
+            // Read local MAC address
             let mac_path = format!("/sys/class/net/{}/address", ctx.interface);
             if let Ok(mac_str) = fs::read_to_string(&mac_path) {
                 ctx.local_mac = Some(mac_str.trim().to_lowercase());
             }
 
-            // Consultar dirección IP asignada con comando 'ip'
+            // Query assigned IP address using 'ip' command
             if let Ok(output) = std::process::Command::new("ip")
                 .args(["-4", "-o", "addr", "show", &ctx.interface])
                 .output()
@@ -114,7 +114,7 @@ impl Scanner {
             }
         }
 
-        // Si no se pudo determinar subnet, fallback a 192.168.1.0/24
+        // If subnet could not be determined, fallback to 192.168.1.0/24
         if ctx.subnet_cidr.is_empty() {
             if let Some(ip) = ctx.local_ip {
                 let o = ip.octets();
@@ -130,19 +130,19 @@ impl Scanner {
         ctx
     }
 
-    /// Comprueba si la dirección MAC es privada o administrada localmente (IEEE LAA)
+    /// Checks if a MAC address is private / locally administered (IEEE LAA)
     pub fn is_randomized_mac(mac: &str) -> bool {
         let clean = mac.replace([':', '-'], "");
         if clean.len() >= 2 {
             if let Ok(first_byte) = u8::from_str_radix(&clean[0..2], 16) {
-                // El bit 1 del byte 0 indica si es Locally Administered Address (LAA)
+                // Bit 1 of byte 0 indicates Locally Administered Address (LAA)
                 return (first_byte & 0x02) != 0;
             }
         }
         false
     }
 
-    /// Busca el fabricante en la base de datos OUI de IEEE
+    /// Looks up the manufacturer in the IEEE OUI database
     pub fn lookup_vendor(oui_db: Option<&Oui>, mac: &str) -> String {
         if let Some(db) = oui_db {
             if let Ok(Some(entry)) = db.lookup_by_mac(mac) {
@@ -152,7 +152,7 @@ impl Scanner {
             }
         }
 
-        // Búsquedas adicionales para prefijos conocidos de fabricantes populares
+        // Additional lookups for well-known popular vendor prefixes
         let clean = mac.replace([':', '-'], "").to_uppercase();
         if clean.len() >= 6 {
             let prefix = &clean[0..6];
@@ -172,13 +172,13 @@ impl Scanner {
         }
 
         if Self::is_randomized_mac(mac) {
-            "Dirección Privada / Aleatoria".to_string()
+            "Private / Randomized Address".to_string()
         } else {
-            "Desconocido".to_string()
+            "Unknown".to_string()
         }
     }
 
-    /// Clasifica el tipo de dispositivo en función del nombre de host, puertos abiertos y fabricante
+    /// Categorizes device type based on hostname, open ports, and manufacturer
     pub fn categorize_device(
         is_gateway: bool,
         is_current_host: bool,
@@ -210,7 +210,7 @@ impl Scanner {
             return DeviceCategory::Router;
         }
 
-        // Dispositivos de Streaming (Roku, Chromecast, Fire TV, Apple TV, Android TV Box, Nvidia Shield)
+        // Streaming Devices (Roku, Chromecast, Fire TV, Apple TV, Android TV Box, Nvidia Shield)
         if host_lower.contains("chromecast")
             || host_lower.contains("roku")
             || host_lower.contains("firetv")
@@ -234,7 +234,7 @@ impl Scanner {
             return DeviceCategory::StreamingDevice;
         }
 
-        // Smart TVs (Televisores Inteligentes)
+        // Smart TVs
         if host_lower.contains("tv")
             || host_lower.contains("bravia")
             || host_lower.contains("webos")
@@ -249,7 +249,7 @@ impl Scanner {
             return DeviceCategory::SmartTv;
         }
 
-        // Consolas de Videojuegos (PlayStation, Xbox, Nintendo, Steam Deck, etc.)
+        // Video Game Consoles (PlayStation, Xbox, Nintendo, Steam Deck, etc.)
         if host_lower.contains("playstation")
             || host_lower.contains("ps5")
             || host_lower.contains("ps4")
@@ -294,7 +294,7 @@ impl Scanner {
             return DeviceCategory::Smartphone;
         }
 
-        // Domótica / IoT
+        // Home Automation / IoT
         if vendor_lower.contains("tuya")
             || vendor_lower.contains("espressif")
             || vendor_lower.contains("sonoff")
@@ -310,7 +310,7 @@ impl Scanner {
             return DeviceCategory::Iot;
         }
 
-        // Impresoras
+        // Printers
         if open_port_nums.contains(&631)
             || open_port_nums.contains(&9100)
             || host_lower.contains("printer")
@@ -325,7 +325,7 @@ impl Scanner {
             return DeviceCategory::Printer;
         }
 
-        // Servidores / NAS
+        // Servers / NAS
         if open_port_nums.contains(&5000)
             || open_port_nums.contains(&5001)
             || open_port_nums.contains(&9000)
@@ -340,7 +340,7 @@ impl Scanner {
             return DeviceCategory::Server;
         }
 
-        // Ordenadores / Estaciones de trabajo
+        // Computers / Workstations
         if is_current_host
             || open_port_nums.contains(&22)
             || open_port_nums.contains(&445)
@@ -364,7 +364,7 @@ impl Scanner {
         DeviceCategory::Unknown
     }
 
-    /// Realiza un escaneo asíncrono completo y emite eventos en tiempo real
+    /// Performs a full asynchronous scan and emits real-time events
     pub async fn execute_scan(
         ctx: NetworkContext,
         oui_db: Option<Arc<Oui>>,
@@ -383,7 +383,7 @@ impl Scanner {
             subnet: format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2]),
         });
 
-        // 1. Sweep rápido de paquetes ICMP y TCP para poblar la caché ARP del kernel
+        // 1. Fast sweep with ICMP/TCP packets to populate kernel ARP cache
         let semaphore = Arc::new(Semaphore::new(45));
         let mut tasks = Vec::with_capacity(total_hosts);
 
@@ -393,7 +393,7 @@ impl Scanner {
 
             tasks.push(tokio::spawn(async move {
                 let _permit = sem_clone.acquire().await;
-                // Envío de ping de 1 paquete con timeout estricto de 500ms
+                // Send single-packet ping with strict 500ms timeout
                 let _ = Command::new("ping")
                     .args(["-c", "1", "-W", "1", &target_ip.to_string()])
                     .stdout(std::process::Stdio::null())
@@ -403,7 +403,7 @@ impl Scanner {
             }));
         }
 
-        // Esperar a que finalicen las pruebas de conectividad básica
+        // Wait for basic connectivity probes to finish
         for (idx, task) in tasks.into_iter().enumerate() {
             let _ = task.await;
             if (idx + 1) % 15 == 0 || idx + 1 == total_hosts {
@@ -414,10 +414,10 @@ impl Scanner {
             }
         }
 
-        // Breve pausa para permitir que el kernel asiente las respuestas ARP
+        // Brief delay allowing the kernel to commit ARP responses
         tokio::time::sleep(Duration::from_millis(250)).await;
 
-        // 2. Leer la tabla ARP del kernel (/proc/net/arp)
+        // 2. Read kernel ARP table (/proc/net/arp)
         let mut discovered_ips: Vec<(Ipv4Addr, String, String)> = Vec::new();
         let mut seen_ips = HashSet::new();
 
@@ -430,7 +430,7 @@ impl Scanner {
                     let mac_str = parts[3];
                     let iface_str = parts[5];
 
-                    // Flags 0x2 significa completado/alcanzable
+                    // Flags 0x2 means completed/reachable
                     if (flags == "0x2" || flags == "2")
                         && mac_str != "00:00:00:00:00:00"
                         && !mac_str.is_empty()
@@ -445,7 +445,7 @@ impl Scanner {
             }
         }
 
-        // Asegurarnos de que el gateway esté presente
+        // Ensure gateway is present
         if let Some(gw_ip) = ctx.gateway_ip {
             if !seen_ips.contains(&gw_ip) {
                 let mac = ctx.gateway_mac.clone().unwrap_or_else(|| "d8:ec:5e:9c:77:1b".to_string());
@@ -454,7 +454,7 @@ impl Scanner {
             }
         }
 
-        // Asegurarnos de que el equipo actual esté presente
+        // Ensure current host is present
         if let Some(local_ip) = ctx.local_ip {
             if !seen_ips.contains(&local_ip) {
                 let mac = ctx.local_mac.clone().unwrap_or_else(|| "00:00:00:00:00:00".to_string());
@@ -463,10 +463,10 @@ impl Scanner {
             }
         }
 
-        // Ordenar IPs de menor a mayor
+        // Sort IPs in ascending order
         discovered_ips.sort_by_key(|&(ip, _, _)| ip);
 
-        // 3. Enriquecer datos para cada host descubierto (resolución inversa, puertos, latencia)
+        // 3. Enrich data for each discovered host (reverse DNS, ports, latency)
         let total_found = discovered_ips.len();
         let mut enrich_tasks = Vec::new();
 
@@ -476,14 +476,14 @@ impl Scanner {
             let oui_ref = oui_db.clone();
 
             enrich_tasks.push(tokio::spawn(async move {
-                // Latencia
+                // Latency
                 let latency_ms = if is_current {
                     Some(0.05)
                 } else {
                     Self::measure_ping_latency(ip).await
                 };
 
-                // Hostname mediante DNS inverso
+                // Hostname via reverse DNS
                 let hostname = tokio::task::spawn_blocking(move || {
                     let addr = IpAddr::V4(ip);
                     dns_lookup::lookup_addr(&addr).ok()
@@ -492,7 +492,7 @@ impl Scanner {
                 .ok()
                 .flatten();
 
-                // Descubrimiento avanzado de identidad local (mDNS, NetBIOS, SSDP)
+                // Advanced local identity discovery (mDNS, NetBIOS, SSDP)
                 let discovery = crate::discovery::Discovery::probe(ip).await;
                 let final_hostname = discovery.hostname.or(hostname);
                 let model_name = discovery.model_or_friendly_name;
@@ -502,7 +502,7 @@ impl Scanner {
                 let is_randomized = Self::is_randomized_mac(&mac);
                 let vendor = Self::lookup_vendor(oui_ref.as_deref(), &mac);
 
-                // Puertos comunes rápidos
+                // Common quick ports
                 let open_ports = Self::quick_probe_ports(ip).await;
                 for p in &open_ports {
                     if !discovered_services.iter().any(|s| s.contains(&p.service)) {
@@ -510,7 +510,7 @@ impl Scanner {
                     }
                 }
 
-                // Clasificación
+                // Categorization
                 let category = Self::categorize_device(
                     is_gateway,
                     is_current,
@@ -522,18 +522,18 @@ impl Scanner {
                 let now = Local::now();
                 let mut initial_requests = Vec::new();
 
-                // 1. Peticiones de servicios descubiertos (mDNS / SSDP)
+                // 1. Requests from discovered services (mDNS / SSDP)
                 for svc in &discovered_services {
                     let (cat, proto) = if svc.contains("AirPlay") {
                         ("Streaming / Apple AirPlay", "mDNS")
                     } else if svc.contains("Cast") {
                         ("Streaming / Google Cast", "mDNS")
                     } else if svc.contains("Samba") || svc.contains("SMB") {
-                        ("Archivos / SMB", "NetBIOS / mDNS")
+                        ("Files / SMB", "NetBIOS / mDNS")
                     } else if svc.contains("Printer") || svc.contains("Impresora") {
-                        ("Servicio de Impresión", "mDNS / IPP")
+                        ("Print Service", "mDNS / IPP")
                     } else {
-                        ("Servicio Local", "mDNS / SSDP")
+                        ("Local Service", "mDNS / SSDP")
                     };
                     initial_requests.push(crate::model::DeviceRequestEntry {
                         timestamp: now,
@@ -543,17 +543,17 @@ impl Scanner {
                     });
                 }
 
-                // 2. Consulta DNS por nombre de host si se resolvió
+                // 2. DNS query for resolved hostname
                 if let Some(host) = &final_hostname {
                     initial_requests.push(crate::model::DeviceRequestEntry {
                         timestamp: now,
                         query: format!("{}.lan", host),
-                        category: "Resolución DNS Local".to_string(),
+                        category: "Local DNS Resolution".to_string(),
                         protocol: "DNS PTR".to_string(),
                     });
                 }
 
-                // 3. Peticiones típicas basadas en tipo de dispositivo
+                // 3. Typical requests based on device type
                 match category {
                     DeviceCategory::Smartphone => {
                         let domain = if vendor.to_lowercase().contains("apple") {
@@ -564,7 +564,7 @@ impl Scanner {
                         initial_requests.push(crate::model::DeviceRequestEntry {
                             timestamp: now,
                             query: domain.to_string(),
-                            category: "Verificación de Conectividad".to_string(),
+                            category: "Connectivity Check".to_string(),
                             protocol: "DNS A".to_string(),
                         });
                     }
@@ -586,7 +586,7 @@ impl Scanner {
                         initial_requests.push(crate::model::DeviceRequestEntry {
                             timestamp: now,
                             query: "api-global.netflix.com".to_string(),
-                            category: "Dispositivo de Streaming".to_string(),
+                            category: "Streaming Device".to_string(),
                             protocol: "DNS A".to_string(),
                         });
                         initial_requests.push(crate::model::DeviceRequestEntry {
@@ -607,7 +607,7 @@ impl Scanner {
                         initial_requests.push(crate::model::DeviceRequestEntry {
                             timestamp: now,
                             query: query.to_string(),
-                            category: "Juegos en Línea / Consola".to_string(),
+                            category: "Online Gaming / Console".to_string(),
                             protocol: "DNS A".to_string(),
                         });
                     }
@@ -615,7 +615,7 @@ impl Scanner {
                         initial_requests.push(crate::model::DeviceRequestEntry {
                             timestamp: now,
                             query: "www.google.com".to_string(),
-                            category: "Búsqueda Web / HTTP".to_string(),
+                            category: "Web Search / HTTP".to_string(),
                             protocol: "DNS A".to_string(),
                         });
                     }
@@ -623,7 +623,7 @@ impl Scanner {
                         initial_requests.push(crate::model::DeviceRequestEntry {
                             timestamp: now,
                             query: "router.linksys.com".to_string(),
-                            category: "Puerta de Enlace / Admin".to_string(),
+                            category: "Gateway / Admin".to_string(),
                             protocol: "DNS / Gateway".to_string(),
                         });
                     }
@@ -659,7 +659,7 @@ impl Scanner {
             }));
         }
 
-        // Recoger dispositivos y enviarlos en tiempo real
+        // Collect devices and send in real time
         for task in enrich_tasks {
             if let Ok(device) = task.await {
                 let _ = sender.unbounded_send(ScanEvent::HostFound(device));
@@ -673,7 +673,7 @@ impl Scanner {
         });
     }
 
-    /// Mide la latencia RTT ejecutando un ping individual
+    /// Measures RTT latency by executing an individual ping
     pub async fn measure_ping_latency(ip: Ipv4Addr) -> Option<f32> {
         let output = Command::new("ping")
             .args(["-c", "1", "-W", "1", &ip.to_string()])
@@ -701,7 +701,7 @@ impl Scanner {
         None
     }
 
-    /// Sondeo rápido de puertos clave para fingerprinting básico
+    /// Fast probe on key ports for basic fingerprinting
     pub async fn quick_probe_ports(ip: Ipv4Addr) -> Vec<PortInfo> {
         let candidate_ports = [22, 53, 80, 443, 445, 631, 8008, 8080];
         let mut results = Vec::new();
@@ -721,7 +721,7 @@ impl Scanner {
         results
     }
 
-    /// Escaneo profundo de puertos para un dispositivo específico
+    /// Deep port scan for a specific target device
     pub async fn deep_port_scan(ip: Ipv4Addr) -> Vec<PortInfo> {
         let target_ports = [
             21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 548, 554, 631, 993, 995, 1433,
@@ -765,13 +765,13 @@ impl Scanner {
         found
     }
 
-    /// Ejecuta una prueba de ping de 4 paquetes y extrae estadísticas completas
+    /// Executes a 4-packet ping test and extracts complete statistics
     pub async fn ping_test_detailed(ip: Ipv4Addr) -> Result<PingStats, String> {
         let output = Command::new("ping")
             .args(["-c", "4", "-W", "1", &ip.to_string()])
             .output()
             .await
-            .map_err(|e| format!("Error al ejecutar ping: {}", e))?;
+            .map_err(|e| format!("Error executing ping: {}", e))?;
 
         let text = String::from_utf8_lossy(&output.stdout).to_string();
         let mut transmitted = 4;
@@ -826,20 +826,20 @@ impl Scanner {
         })
     }
 
-    /// Envía un paquete mágico Wake-on-LAN (WoL) para encender un equipo remotamente
+    /// Sends a Wake-on-LAN (WoL) magic packet to remotely wake a computer
     pub fn send_wake_on_lan(mac_str: &str) -> Result<(), String> {
         let clean = mac_str.replace([':', '-'], "");
         if clean.len() != 12 {
-            return Err("Dirección MAC no válida (debe tener 12 dígitos hexadecimales)".to_string());
+            return Err("Invalid MAC address (must be 12 hexadecimal characters)".to_string());
         }
 
         let mut mac_bytes = [0u8; 6];
         for i in 0..6 {
             mac_bytes[i] = u8::from_str_radix(&clean[i * 2..i * 2 + 2], 16)
-                .map_err(|_| "Carácter hexadecimal no válido en la MAC")?;
+                .map_err(|_| "Invalid hexadecimal character in MAC address")?;
         }
 
-        // Construir paquete mágico: 6 bytes de 0xFF seguidos de 16 repeticiones de la MAC
+        // Construct magic packet: 6 bytes of 0xFF followed by 16 repetitions of MAC
         let mut packet = Vec::with_capacity(102);
         packet.extend_from_slice(&[0xFF; 6]);
         for _ in 0..16 {
@@ -847,15 +847,15 @@ impl Scanner {
         }
 
         let socket = std::net::UdpSocket::bind("0.0.0.0:0")
-            .map_err(|e| format!("Error al enlazar socket UDP: {}", e))?;
+            .map_err(|e| format!("Error binding UDP socket: {}", e))?;
         socket
             .set_broadcast(true)
-            .map_err(|e| format!("Error al habilitar broadcast: {}", e))?;
+            .map_err(|e| format!("Error enabling broadcast: {}", e))?;
 
-        // Enviar tanto a broadcast universal como a puerto estándar 9 y 7
+        // Send to universal broadcast as well as standard ports 9 and 7
         socket
             .send_to(&packet, "255.255.255.255:9")
-            .map_err(|e| format!("Error al enviar paquete WoL: {}", e))?;
+            .map_err(|e| format!("Error sending WoL packet: {}", e))?;
         let _ = socket.send_to(&packet, "255.255.255.255:7");
 
         Ok(())
