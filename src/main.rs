@@ -20,6 +20,7 @@ mod tray;
 mod uptime;
 mod widget;
 mod wifi_analyzer;
+mod updater;
 
 use app::App;
 use iced::futures::StreamExt;

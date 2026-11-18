@@ -21,6 +21,7 @@ use crate::tray::{spawn_tray, NetLensTray, TrayAction, TrayState};
 use crate::uptime::UptimeTracker;
 use crate::widget::Sparkline;
 use crate::wifi_analyzer::{WifiAnalyzer, WifiAnalyzerReport};
+use crate::updater::{UpdateChecker, UpdateStatus};
 use iced::futures::channel::mpsc;
 use iced::futures::StreamExt;
 use iced::widget::canvas::Canvas;
@@ -260,6 +261,8 @@ pub struct App {
     pub logo_handle: iced::widget::image::Handle,
     pub is_settings_open: bool,
     pub is_about_open: bool,
+    pub update_status: UpdateStatus,
+    pub is_update_modal_open: bool,
     pub is_speed_test_open: bool,
     pub speed_test_stage: SpeedTestStage,
     pub speed_test_ping: Option<f32>,
@@ -468,6 +471,10 @@ pub enum Message {
     OpenAbout,
     CloseAbout,
     OpenExternalUrl(String),
+    CheckForUpdates,
+    UpdateStatusReceived(UpdateStatus),
+    OpenUpdateModal,
+    CloseUpdateModal,
     LanguageChanged(Language),
     ThemeChanged(Theme),
     AutoScanIntervalChanged(u32),
@@ -712,6 +719,8 @@ impl App {
             logo_handle,
             is_settings_open: false,
             is_about_open: false,
+            update_status: UpdateStatus::Idle,
+            is_update_modal_open: false,
             is_speed_test_open: false,
             speed_test_stage,
             speed_test_ping,
@@ -745,6 +754,7 @@ impl App {
                 device_count: initial_device_count,
                 is_scanning: false,
                 gateway_ip: initial_gateway_ip,
+                language,
             })),
             tray_handle: Arc::new(Mutex::new(None)),
             network_events: saved.network_events,
@@ -805,7 +815,12 @@ impl App {
             ])
         };
 
-        (app, initial_task)
+        let update_task = Task::future(async {
+            let status = UpdateChecker::check_for_updates().await;
+            Message::UpdateStatusReceived(status)
+        });
+
+        (app, Task::batch(vec![initial_task, update_task]))
     }
 
     /// Entry point for iced::daemon infrastructure
@@ -819,6 +834,7 @@ impl App {
             s.device_count = self.devices.len();
             s.is_scanning = self.is_scanning;
             s.gateway_ip = self.network.gateway_ip.map(|g| g.to_string());
+            s.language = self.language;
         }
         if let Ok(lock) = self.tray_handle.lock() {
             if let Some(h) = lock.as_ref() {
@@ -1034,8 +1050,32 @@ impl App {
                 Task::none()
             }
 
+            Message::CheckForUpdates => {
+                self.update_status = UpdateStatus::Checking;
+                Task::future(async {
+                    let status = UpdateChecker::check_for_updates().await;
+                    Message::UpdateStatusReceived(status)
+                })
+            }
+
+            Message::UpdateStatusReceived(status) => {
+                self.update_status = status;
+                Task::none()
+            }
+
+            Message::OpenUpdateModal => {
+                self.is_update_modal_open = true;
+                Task::none()
+            }
+
+            Message::CloseUpdateModal => {
+                self.is_update_modal_open = false;
+                Task::none()
+            }
+
             Message::LanguageChanged(lang) => {
                 self.language = lang;
+                self.sync_tray_state();
                 self.save_state();
                 let notif_msg = match lang {
                     Language::Spanish => format!("Idioma cambiado a {}", lang.native_name()),
@@ -3595,17 +3635,21 @@ impl App {
             }
 
             Message::CopyToClipboard(text_to_copy, label) => {
-                let notif_msg = match self.language {
-                    Language::Spanish => format!("{} copiado al portapapeles.", label),
-                    Language::English => format!("{} copied to clipboard.", label),
-                    Language::Chinese => format!("{} 已复制到剪贴板。", label),
-                    Language::Hindi => format!("{} क्लिपबोर्ड पर कॉपी किया गया।", label),
-                    Language::Arabic => format!("تم نسخ {} إلى الحافظة.", label),
-                    Language::French => format!("{} copié dans le presse-papiers.", label),
-                    Language::Bengali => format!("{} ক্লিপবোর্ডে কপি করা হয়েছে।", label),
-                    Language::Portuguese => format!("{} copiado para a área de transferência.", label),
-                    Language::Russian => format!("{} скопировано в буфер обмена.", label),
-                    Language::Urdu => format!("{} کلپ بورڈ پر کاپی ہو گیا۔", label),
+                let notif_msg = if text_to_copy.contains("install-repo.sh") {
+                    Translations::update_copied_notif(self.language).to_string()
+                } else {
+                    match self.language {
+                        Language::Spanish => format!("{} copiado al portapapeles.", label),
+                        Language::English => format!("{} copied to clipboard.", label),
+                        Language::Chinese => format!("{} 已复制到剪贴板。", label),
+                        Language::Hindi => format!("{} क्लिपबोर्ड पर कॉपी किया गया।", label),
+                        Language::Arabic => format!("تم نسخ {} إلى الحافظة.", label),
+                        Language::French => format!("{} copié dans le presse-papiers.", label),
+                        Language::Bengali => format!("{} ক্লিপবোর্ডে কপি করা হয়েছে।", label),
+                        Language::Portuguese => format!("{} copiado para a área de transferência.", label),
+                        Language::Russian => format!("{} скопировано в буфер обмена.", label),
+                        Language::Urdu => format!("{} کلپ بورڈ پر کاپی ہو گیا۔", label),
+                    }
                 };
                 self.notification = Some((notif_msg, true));
                 iced::clipboard::write(text_to_copy)
@@ -3716,6 +3760,20 @@ impl App {
         if self.is_about_open {
             content = content.push(
                 container(center(self.view_about_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
+        // If update modal open, show update instructions modal view
+        if self.is_update_modal_open {
+            content = content.push(
+                container(center(self.view_update_modal()))
                     .width(Length::Fill)
                     .height(Length::Fill)
             );
@@ -4008,13 +4066,31 @@ impl App {
         .spacing(6)
         .align_y(Alignment::Center);
 
-        let header_top_bar = row![
+        let mut top_bar = row![
             title_col,
             space::horizontal(),
-            top_right_actions,
         ]
-        .align_y(Alignment::Center)
-        .width(Length::Fill);
+        .align_y(Alignment::Center);
+
+        if let UpdateStatus::UpdateAvailable { ref remote_version, remote_pkgrel, .. } = self.update_status {
+            top_bar = top_bar.push(
+                button(
+                    row![
+                        text("🚀").size(12),
+                        text(format!("{} (v{}-{})", Translations::update_available(self.language), remote_version, remote_pkgrel))
+                            .size(11),
+                    ]
+                    .spacing(5)
+                    .align_y(Alignment::Center)
+                )
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([5, 10]))
+                .on_press(Message::OpenUpdateModal)
+            ).push(space::horizontal());
+        }
+
+        top_bar = top_bar.push(top_right_actions);
+        let header_top_bar = top_bar.width(Length::Fill);
 
         // 2. Modular navigation toolbar (Tools Bar)
         // Redesigned dedicated bar so buttons never overflow when resizing window
@@ -4719,6 +4795,69 @@ impl App {
             .width(68)
             .height(68);
 
+        let update_status_element: Element<'_, Message> = match &self.update_status {
+            UpdateStatus::Checking => container(
+                text(Translations::checking_updates(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            )
+            .padding(Padding::from([3, 8]))
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_muted()))
+            .into(),
+            UpdateStatus::UpdateAvailable {
+                remote_version,
+                remote_pkgrel,
+                ..
+            } => row![
+                container(
+                    row![
+                        text("🚀").size(10),
+                        text(format!(
+                            "{}: v{}-{}",
+                            Translations::update_available(self.language),
+                            remote_version,
+                            remote_pkgrel
+                        ))
+                        .size(10)
+                        .color(CustomStyles::accent_cyan()),
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center),
+                )
+                .padding(Padding::from([3, 8]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
+                button(text(Translations::update_btn(self.language)).size(10))
+                    .style(|_, _| CustomStyles::primary_button())
+                    .padding(Padding::from([3, 8]))
+                    .on_press(Message::OpenUpdateModal),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into(),
+            UpdateStatus::UpToDate | UpdateStatus::Idle | UpdateStatus::CheckFailed => container(
+                row![
+                    text("✓").size(10).color(CustomStyles::accent_emerald()),
+                    text(Translations::update_latest_version(self.language))
+                        .size(10)
+                        .color(CustomStyles::accent_emerald()),
+                ]
+                .spacing(4)
+                .align_y(Alignment::Center),
+            )
+            .padding(Padding::from([3, 8]))
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
+            .into(),
+        };
+
+        let check_updates_btn = self.tip(
+            button(text("🔄").size(10))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([2, 5]))
+                .on_press(Message::CheckForUpdates),
+            Translations::check_for_updates(self.language),
+            tooltip::Position::Top,
+        );
+
         let app_info = column![
             row![
                 text("NetLens").size(24).color(CustomStyles::accent_cyan()),
@@ -4730,6 +4869,12 @@ impl App {
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(35, 20, 50), CustomStyles::accent_purple())),
             ]
             .spacing(10)
+            .align_y(Alignment::Center),
+            row![
+                update_status_element,
+                check_updates_btn,
+            ]
+            .spacing(8)
             .align_y(Alignment::Center),
             text(Translations::app_subtitle(self.language))
                 .size(12)
@@ -4895,6 +5040,114 @@ impl App {
         container(content)
             .padding(22)
             .width(760)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
+            .into()
+    }
+
+    /// Modal: Software Update Available Dialog with 1-line installer command and changelog
+    fn view_update_modal(&self) -> Element<'_, Message> {
+        let (ver, rel, changelog, url) = match &self.update_status {
+            UpdateStatus::UpdateAvailable {
+                remote_version,
+                remote_pkgrel,
+                changelog,
+                url,
+            } => (
+                remote_version.as_str(),
+                *remote_pkgrel,
+                changelog.as_deref().unwrap_or(""),
+                url.as_str(),
+            ),
+            _ => ("0.1.0", 2, "", "https://omarmurcia.github.io/netlens-repo"),
+        };
+
+        let title_row = row![
+            text(Translations::update_modal_title(self.language))
+                .size(20)
+                .color(CustomStyles::accent_cyan()),
+            space::horizontal(),
+            self.tip(
+                button(text("✕").size(14))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([2, 8]))
+                    .on_press(Message::CloseUpdateModal),
+                Translations::tip_close(self.language),
+                tooltip::Position::Left,
+            ),
+        ]
+        .align_y(Alignment::Center);
+
+        let version_banner = container(
+            row![
+                column![
+                    text(format!("NetLens v{}-{}", ver, rel))
+                        .size(16)
+                        .color(CustomStyles::accent_cyan()),
+                    text(if changelog.is_empty() {
+                        Translations::app_subtitle(self.language).to_string()
+                    } else {
+                        changelog.to_string()
+                    })
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
+                ]
+                .width(Length::Fill),
+                button(text(format!("🌐 {}", Translations::about_web_portal(self.language))).size(11))
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([4, 10]))
+                    .on_press(Message::OpenExternalUrl(url.to_string())),
+            ]
+            .align_y(Alignment::Center)
+        )
+        .padding(14)
+        .style(|_| CustomStyles::card_highlighted());
+
+        let cmd_str = "curl -sSL https://omarmurcia.github.io/netlens-repo/install-repo.sh | bash";
+        let cmd_box = container(
+            row![
+                text(cmd_str).size(12).color(CustomStyles::accent_emerald()),
+                space::horizontal(),
+                button(text(format!("📋 {}", Translations::update_copy_command(self.language))).size(11))
+                    .style(|_, _| CustomStyles::primary_button())
+                    .padding(Padding::from([5, 12]))
+                    .on_press(Message::CopyToClipboard(
+                        cmd_str.to_string(),
+                        Translations::update_copy_command(self.language).to_string(),
+                    )),
+            ]
+            .align_y(Alignment::Center)
+        )
+        .padding(12)
+        .style(|_| CustomStyles::card_container());
+
+        let instructions_col = column![
+            text(Translations::update_instructions(self.language))
+                .size(12)
+                .color(CustomStyles::text_primary()),
+            cmd_box,
+        ]
+        .spacing(8);
+
+        let footer_row = row![
+            space::horizontal(),
+            button(text(Translations::close(self.language)).size(12))
+                .style(|_, _| CustomStyles::secondary_button())
+                .padding(Padding::from([6, 18]))
+                .on_press(Message::CloseUpdateModal),
+        ]
+        .align_y(Alignment::Center);
+
+        let layout = column![
+            title_row,
+            version_banner,
+            instructions_col,
+            footer_row,
+        ]
+        .spacing(14);
+
+        container(layout)
+            .padding(24)
+            .width(660)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }

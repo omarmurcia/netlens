@@ -1,3 +1,4 @@
+use crate::i18n::{Language, Translations};
 use ksni::{menu::*, Category, Handle, Icon, MenuItem, Status, ToolTip, Tray, TrayMethods};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::broadcast;
@@ -50,6 +51,7 @@ pub struct TrayState {
     pub device_count: usize,
     pub is_scanning: bool,
     pub gateway_ip: Option<String>,
+    pub language: Language,
 }
 
 pub struct NetLensTray {
@@ -87,22 +89,22 @@ impl Tray for NetLensTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        let (count, scanning, gw) = {
+        let (count, scanning, gw, lang) = {
             let s = self.state.lock().unwrap();
-            (s.device_count, s.is_scanning, s.gateway_ip.clone())
+            (s.device_count, s.is_scanning, s.gateway_ip.clone(), s.language)
         };
         let desc = if scanning {
-            "Escaneando red local...".to_string()
+            Translations::tray_tooltip_scanning(lang).to_string()
         } else if let Some(gw_ip) = gw {
-            format!("{} dispositivos activos\nPuerta de enlace: {}", count, gw_ip)
+            Translations::tray_tooltip_with_gw(count, &gw_ip, lang)
         } else {
-            format!("{} dispositivos activos", count)
+            Translations::tray_tooltip_devices(count, lang)
         };
 
         ToolTip {
             icon_name: "netlens".to_string(),
             icon_pixmap: self.icon_pixmap(),
-            title: "NetLens - Monitor de Red Local".to_string(),
+            title: Translations::tray_tooltip_title(lang).to_string(),
             description: desc,
         }
     }
@@ -112,20 +114,20 @@ impl Tray for NetLensTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        let (count, is_scanning) = {
+        let (count, is_scanning, lang) = {
             let s = self.state.lock().unwrap();
-            (s.device_count, s.is_scanning)
+            (s.device_count, s.is_scanning, s.language)
         };
 
         let status_text = if is_scanning {
-            "⏳ Escaneando red...".to_string()
+            Translations::tray_menu_scanning(lang).to_string()
         } else {
-            format!("📊 Dispositivos activos: {}", count)
+            Translations::tray_menu_devices(count, lang)
         };
 
         vec![
             StandardItem {
-                label: "👁️ Abrir NetLens".into(),
+                label: Translations::tray_menu_open(lang).into(),
                 activate: Box::new(|_| {
                     send_tray_action(TrayAction::RestoreWindow);
                 }),
@@ -134,7 +136,7 @@ impl Tray for NetLensTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "⚡ Escanear Red Ahora".into(),
+                label: Translations::tray_menu_scan_now(lang).into(),
                 enabled: !is_scanning,
                 activate: Box::new(|_| {
                     send_tray_action(TrayAction::TriggerScan);
@@ -150,7 +152,7 @@ impl Tray for NetLensTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "🚪 Salir de NetLens".into(),
+                label: Translations::tray_menu_exit(lang).into(),
                 activate: Box::new(|_| {
                     send_tray_action(TrayAction::Exit);
                 }),

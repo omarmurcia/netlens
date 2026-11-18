@@ -902,15 +902,16 @@ fn test_system_tray_and_icons() {
     let win_icon = get_window_icon();
     assert!(win_icon.is_some(), "Window icon should load successfully");
 
-    // Test NetLensTray structure
+    // Test NetLensTray structure with Spanish language
     let state = Arc::new(Mutex::new(TrayState {
         device_count: 5,
         is_scanning: false,
         gateway_ip: Some("192.168.1.1".to_string()),
+        language: netlens::i18n::Language::Spanish,
     }));
 
     let tray = NetLensTray {
-        state,
+        state: Arc::clone(&state),
         icon_cache: Some(tray_icon.clone()),
     };
 
@@ -927,6 +928,12 @@ fn test_system_tray_and_icons() {
 
     let menu = tray.menu();
     assert!(menu.len() >= 4, "Debe tener opciones de abrir, escanear, estado y salir");
+
+    // Test dynamic language switch in System Tray to English
+    state.lock().unwrap().language = netlens::i18n::Language::English;
+    let tip_en = tray.tool_tip();
+    assert!(tip_en.description.contains("5 active devices"));
+    assert!(tip_en.description.contains("Gateway: 192.168.1.1"));
 }
 
 #[test]
@@ -2381,6 +2388,28 @@ fn test_all_modals_translations_in_all_10_languages() {
         assert!(!Translations::about_license(lang).is_empty());
         assert!(!Translations::about_open_in_browser(lang).is_empty());
         assert!(!Translations::about_copy_url(lang).is_empty());
+
+        // 7. System Tray Translations
+        assert!(!Translations::tray_tooltip_title(lang).is_empty());
+        assert!(!Translations::tray_tooltip_scanning(lang).is_empty());
+        assert!(!Translations::tray_tooltip_with_gw(5, "192.168.1.1", lang).is_empty());
+        assert!(!Translations::tray_tooltip_devices(5, lang).is_empty());
+        assert!(!Translations::tray_menu_open(lang).is_empty());
+        assert!(!Translations::tray_menu_scan_now(lang).is_empty());
+        assert!(!Translations::tray_menu_scanning(lang).is_empty());
+        assert!(!Translations::tray_menu_devices(5, lang).is_empty());
+        assert!(!Translations::tray_menu_exit(lang).is_empty());
+
+        // 8. Version Updates Translations
+        assert!(!Translations::update_latest_version(lang).is_empty());
+        assert!(!Translations::update_available(lang).is_empty());
+        assert!(!Translations::update_btn(lang).is_empty());
+        assert!(!Translations::check_for_updates(lang).is_empty());
+        assert!(!Translations::checking_updates(lang).is_empty());
+        assert!(!Translations::update_modal_title(lang).is_empty());
+        assert!(!Translations::update_instructions(lang).is_empty());
+        assert!(!Translations::update_copy_command(lang).is_empty());
+        assert!(!Translations::update_copied_notif(lang).is_empty());
     }
 }
 
@@ -2401,4 +2430,24 @@ fn test_about_modal_dialog_and_author_info() {
         assert_eq!(Translations::about_tech_specs(lang).is_empty(), false);
         assert_eq!(Translations::about_license(lang).is_empty(), false);
     }
+}
+
+#[test]
+fn test_updater_semver_comparison_and_logic() {
+    use netlens::updater::UpdateChecker;
+
+    // Remote is higher version
+    assert!(UpdateChecker::is_newer("0.1.1", 1, "0.1.0", 2));
+    assert!(UpdateChecker::is_newer("0.2.0", 1, "0.1.0", 2));
+    assert!(UpdateChecker::is_newer("1.0.0", 1, "0.1.0", 2));
+
+    // Remote is same version but higher pkgrel
+    assert!(UpdateChecker::is_newer("0.1.0", 3, "0.1.0", 2));
+
+    // Remote is identical version and pkgrel
+    assert!(!UpdateChecker::is_newer("0.1.0", 2, "0.1.0", 2));
+
+    // Remote is older version or older pkgrel
+    assert!(!UpdateChecker::is_newer("0.1.0", 1, "0.1.0", 2));
+    assert!(!UpdateChecker::is_newer("0.0.9", 5, "0.1.0", 2));
 }

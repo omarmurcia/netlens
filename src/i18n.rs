@@ -7392,6 +7392,278 @@ impl Translations {
             Language::Urdu => "کاپی",
         }
     }
+
+    // System Tray & Context Menu
+    pub fn tray_tooltip_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "NetLens - Monitor de Red Local",
+            Language::English => "NetLens - Local Network Monitor",
+            Language::Chinese => "NetLens - 本地局域网监控器",
+            Language::Hindi => "NetLens - स्थानीय नेटवर्क मॉनिटर",
+            Language::Arabic => "NetLens - مراقب الشبكة المحلية",
+            Language::French => "NetLens - Moniteur de Réseau Local",
+            Language::Bengali => "NetLens - লোকাল নেটওয়ার্ক মনিটর",
+            Language::Portuguese => "NetLens - Monitor de Rede Local",
+            Language::Russian => "NetLens - Монитор локальной сети",
+            Language::Urdu => "NetLens - مقامی نیٹ ورک مانیٹر",
+        }
+    }
+
+    pub fn tray_tooltip_scanning(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Escaneando red local...",
+            Language::English => "Scanning local network...",
+            Language::Chinese => "正在扫描局域网...",
+            Language::Hindi => "स्थानीय नेटवर्क स्कैन हो रहा है...",
+            Language::Arabic => "جاري فحص الشبكة المحلية...",
+            Language::French => "Scan du réseau local en cours...",
+            Language::Bengali => "লোকাল নেটওয়ার্ক স্ক্যান হচ্ছে...",
+            Language::Portuguese => "Escaneando rede local...",
+            Language::Russian => "Сканирование локальной сети...",
+            Language::Urdu => "مقامی نیٹ ورک اسکین ہو رہا ہے...",
+        }
+    }
+
+    pub fn tray_tooltip_with_gw(count: usize, gw: &str, lang: Language) -> String {
+        match lang {
+            Language::Spanish => format!("{} dispositivos activos\nPuerta de enlace: {}", count, gw),
+            Language::English => format!("{} active devices\nGateway: {}", count, gw),
+            Language::Chinese => format!("{} 个在线设备\n网关: {}", count, gw),
+            Language::Hindi => format!("{} सक्रिय डिवाइस\nगेटवे: {}", count, gw),
+            Language::Arabic => format!("{} جهاز نشط\nالبوابة: {}", count, gw),
+            Language::French => format!("{} appareils actifs\nPasserelle : {}", count, gw),
+            Language::Bengali => format!("{}টি সক্রিয় ডিভাইস\nগেটওয়ে: {}", count, gw),
+            Language::Portuguese => format!("{} dispositivos ativos\nGateway: {}", count, gw),
+            Language::Russian => format!("{} активных устройств\nШлюз: {}", count, gw),
+            Language::Urdu => format!("{} فعال آلات\nگیٹ وے: {}", count, gw),
+        }
+    }
+
+    pub fn tray_tooltip_devices(count: usize, lang: Language) -> String {
+        match lang {
+            Language::Spanish => format!("{} dispositivos activos", count),
+            Language::English => format!("{} active devices", count),
+            Language::Chinese => format!("{} 个在线设备", count),
+            Language::Hindi => format!("{} सक्रिय डिवाइस", count),
+            Language::Arabic => format!("{} جهاز نشط", count),
+            Language::French => format!("{} appareils actifs", count),
+            Language::Bengali => format!("{}টি সক্রিয় ডিভাইস", count),
+            Language::Portuguese => format!("{} dispositivos ativos", count),
+            Language::Russian => format!("{} активных устройств", count),
+            Language::Urdu => format!("{} فعال آلات", count),
+        }
+    }
+
+    pub fn tray_menu_open(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "👁️ Abrir NetLens",
+            Language::English => "👁️ Open NetLens",
+            Language::Chinese => "👁️ 打开 NetLens",
+            Language::Hindi => "👁️ NetLens खोलें",
+            Language::Arabic => "👁️ فتح NetLens",
+            Language::French => "👁️ Ouvrir NetLens",
+            Language::Bengali => "👁️ NetLens খুলুন",
+            Language::Portuguese => "👁️ Abrir NetLens",
+            Language::Russian => "👁️ Открыть NetLens",
+            Language::Urdu => "👁️ NetLens کھولیں",
+        }
+    }
+
+    pub fn tray_menu_scan_now(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⚡ Escanear Red Ahora",
+            Language::English => "⚡ Scan Network Now",
+            Language::Chinese => "⚡ 立即扫描网络",
+            Language::Hindi => "⚡ अभी नेटवर्क स्कैन करें",
+            Language::Arabic => "⚡ فحص الشبكة الآن",
+            Language::French => "⚡ Scanner le réseau maintenant",
+            Language::Bengali => "⚡ এখনই নেটওয়ার্ক স্ক্যান করুন",
+            Language::Portuguese => "⚡ Escanear Rede Agora",
+            Language::Russian => "⚡ Сканировать сеть сейчас",
+            Language::Urdu => "⚡ ابھی نیٹ ورک اسکین کریں",
+        }
+    }
+
+    pub fn tray_menu_scanning(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⏳ Escaneando red...",
+            Language::English => "⏳ Scanning network...",
+            Language::Chinese => "⏳ 正在扫描网络...",
+            Language::Hindi => "⏳ नेटवर्क स्कैनिंग जारी है...",
+            Language::Arabic => "⏳ جاري فحص الشبكة...",
+            Language::French => "⏳ Scan du réseau en cours...",
+            Language::Bengali => "⏳ নেটওয়ার্ক স্ক্যান হচ্ছে...",
+            Language::Portuguese => "⏳ Escaneando rede...",
+            Language::Russian => "⏳ Сканирование сети...",
+            Language::Urdu => "⏳ نیٹ ورک اسکیننگ جاری ہے...",
+        }
+    }
+
+    pub fn tray_menu_devices(count: usize, lang: Language) -> String {
+        match lang {
+            Language::Spanish => format!("📊 Dispositivos activos: {}", count),
+            Language::English => format!("📊 Active devices: {}", count),
+            Language::Chinese => format!("📊 在线设备数: {}", count),
+            Language::Hindi => format!("📊 सक्रिय डिवाइस: {}", count),
+            Language::Arabic => format!("📊 الأجهزة النشطة: {}", count),
+            Language::French => format!("📊 Appareils actifs : {}", count),
+            Language::Bengali => format!("📊 সক্রিয় ডিভাইস: {}", count),
+            Language::Portuguese => format!("📊 Dispositivos ativos: {}", count),
+            Language::Russian => format!("📊 Активных устройств: {}", count),
+            Language::Urdu => format!("📊 فعال آلات: {}", count),
+        }
+    }
+
+    pub fn tray_menu_exit(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🚪 Salir de NetLens",
+            Language::English => "🚪 Quit NetLens",
+            Language::Chinese => "🚪 退出 NetLens",
+            Language::Hindi => "🚪 NetLens से बाहर निकलें",
+            Language::Arabic => "🚪 خروج من NetLens",
+            Language::French => "🚪 Quitter NetLens",
+            Language::Bengali => "🚪 NetLens প্রস্থান করুন",
+            Language::Portuguese => "🚪 Sair do NetLens",
+            Language::Russian => "🚪 Выйти из NetLens",
+            Language::Urdu => "🚪 NetLens بند کریں",
+        }
+    }
+
+    // Version Check & Updates
+    pub fn update_latest_version(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Estás usando la última versión",
+            Language::English => "You are using the latest version",
+            Language::Chinese => "您正在使用最新版本",
+            Language::Hindi => "आप नवीनतम संस्करण का उपयोग कर रहे हैं",
+            Language::Arabic => "أنت تستخدم أحدث إصدار",
+            Language::French => "Vous utilisez la dernière version",
+            Language::Bengali => "আপনি সর্বশেষ সংস্করণটি ব্যবহার করছেন",
+            Language::Portuguese => "Você está usando a versão mais recente",
+            Language::Russian => "Вы используете последнюю версию",
+            Language::Urdu => "آپ تازہ ترین ورژن استعمال کر رہے ہیں",
+        }
+    }
+
+    pub fn update_available(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Actualización disponible",
+            Language::English => "Update available",
+            Language::Chinese => "发现新版本",
+            Language::Hindi => "अपडेट उपलब्ध है",
+            Language::Arabic => "تحديث متاح",
+            Language::French => "Mise à jour disponible",
+            Language::Bengali => "আপডেট উপলব্ধ",
+            Language::Portuguese => "Atualização disponível",
+            Language::Russian => "Доступно обновление",
+            Language::Urdu => "اپ ڈیٹ دستیاب ہے",
+        }
+    }
+
+    pub fn update_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Actualizar",
+            Language::English => "Update",
+            Language::Chinese => "更新",
+            Language::Hindi => "अपडेट करें",
+            Language::Arabic => "تحديث",
+            Language::French => "Mettre à jour",
+            Language::Bengali => "আপডেট করুন",
+            Language::Portuguese => "Atualizar",
+            Language::Russian => "Обновить",
+            Language::Urdu => "اپ ڈیٹ کریں",
+        }
+    }
+
+    pub fn check_for_updates(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Comprobar actualizaciones",
+            Language::English => "Check for updates",
+            Language::Chinese => "检查更新",
+            Language::Hindi => "अपडेट की जाँच करें",
+            Language::Arabic => "التحقق من التحديثات",
+            Language::French => "Vérifier les mises à jour",
+            Language::Bengali => "আপডেট পরীক্ষা করুন",
+            Language::Portuguese => "Verificar atualizações",
+            Language::Russian => "Проверить обновления",
+            Language::Urdu => "اپ ڈیٹس چیک کریں",
+        }
+    }
+
+    pub fn checking_updates(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Comprobando actualizaciones...",
+            Language::English => "Checking for updates...",
+            Language::Chinese => "正在检查更新...",
+            Language::Hindi => "अपडेट जाँचे जा रहे हैं...",
+            Language::Arabic => "جاري التحقق من التحديثات...",
+            Language::French => "Vérification des mises à jour...",
+            Language::Bengali => "আপডেট পরীক্ষা করা হচ্ছে...",
+            Language::Portuguese => "Verificando atualizações...",
+            Language::Russian => "Проверка обновлений...",
+            Language::Urdu => "اپ ڈیٹس چیک ہو رہی ہیں...",
+        }
+    }
+
+    pub fn update_modal_title(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Nueva Actualización Disponible",
+            Language::English => "New Update Available",
+            Language::Chinese => "发现新版本可用",
+            Language::Hindi => "नया अपडेट उपलब्ध है",
+            Language::Arabic => "يتوفر إصدار جديد",
+            Language::French => "Nouvelle version disponible",
+            Language::Bengali => "নতুন আপডেট উপলব্ধ",
+            Language::Portuguese => "Nova Versão Disponível",
+            Language::Russian => "Доступна новая версия",
+            Language::Urdu => "نیا اپ ڈیٹ دستیاب ہے",
+        }
+    }
+
+    pub fn update_instructions(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Para actualizar NetLens a la última versión, ejecuta el siguiente comando en tu terminal:",
+            Language::English => "To update NetLens to the latest version, run the following command in your terminal:",
+            Language::Chinese => "要将 NetLens 更新至最新版本，请在终端中运行以下命令：",
+            Language::Hindi => "NetLens को नवीनतम संस्करण में अपडेट करने के लिए, अपने टर्मिनल में यह कमांड चलाएं:",
+            Language::Arabic => "لتحديث NetLens إلى أحدث إصدار، قم بتشغيل الأمر التالي في سطر الأوامر:",
+            Language::French => "Pour mettre à jour NetLens vers la dernière version, exécutez la commande suivante dans votre terminal :",
+            Language::Bengali => "NetLens সর্বশেষ সংস্করণে আপডেট করতে, আপনার টার্মিনালে নিম্নলিখিত কমান্ডটি চালান:",
+            Language::Portuguese => "Para atualizar o NetLens para a versão mais recente, execute o seguinte comando no terminal:",
+            Language::Russian => "Чтобы обновить NetLens до последней версии, выполните следующую команду в терминале:",
+            Language::Urdu => "NetLens کو تازہ ترین ورژن میں اپ ڈیٹ کرنے کے لیے، اپنے ٹرمینل میں درج ذیل کمانڈ چلائیں:",
+        }
+    }
+
+    pub fn update_copy_command(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Copiar Comando",
+            Language::English => "Copy Command",
+            Language::Chinese => "复制命令",
+            Language::Hindi => "कमांड कॉपी करें",
+            Language::Arabic => "نسخ الأمر",
+            Language::French => "Copier la commande",
+            Language::Bengali => "কমান্ড কপি করুন",
+            Language::Portuguese => "Copiar Comando",
+            Language::Russian => "Скопировать команду",
+            Language::Urdu => "کمانڈ کاپی کریں",
+        }
+    }
+
+    pub fn update_copied_notif(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Comando de actualización copiado al portapapeles.",
+            Language::English => "Update command copied to clipboard.",
+            Language::Chinese => "更新命令已复制到剪贴板。",
+            Language::Hindi => "अपडेट कमांड क्लिपबोर्ड पर कॉपी किया गया।",
+            Language::Arabic => "تم نسخ أمر التحديث إلى الحافظة.",
+            Language::French => "Commande de mise à jour copiée dans le presse-papiers.",
+            Language::Bengali => "আপডেট কমান্ড ক্লিপবোর্ডে কপি করা হয়েছে।",
+            Language::Portuguese => "Comando de actualización copiado para a área de transferência.",
+            Language::Russian => "Команда обновления скопирована в буфер обмена.",
+            Language::Urdu => "اپ ڈیٹ کمانڈ کلپ بورڈ پر کاپی ہو گئی۔",
+        }
+    }
 }
 
 fn extract_target_prefix<'a>(original: &'a str, patterns: &[&str]) -> &'a str {
