@@ -4716,7 +4716,7 @@ impl App {
             row![
                 column![
                     text(Translations::about_modal_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
-                    text("Omar Murcia • MIT License • v0.1.0").size(11).color(CustomStyles::text_muted()),
+                    text(format!("Omar Murcia • MIT License • v{}", env!("CARGO_PKG_VERSION"))).size(11).color(CustomStyles::text_muted()),
                 ]
                 .width(Length::Fill),
                 button(text(Translations::about_btn(self.language)).size(11))
@@ -4861,7 +4861,7 @@ impl App {
         let app_info = column![
             row![
                 text("NetLens").size(24).color(CustomStyles::accent_cyan()),
-                container(text("v0.1.0-2").size(11).color(CustomStyles::accent_emerald()))
+                container(text(format!("v{}-{}", env!("CARGO_PKG_VERSION"), UpdateChecker::CURRENT_PKGREL)).size(11).color(CustomStyles::accent_emerald()))
                     .padding(Padding::from([3, 9]))
                     .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
                 container(text("CachyOS / Arch Linux").size(10).color(CustomStyles::accent_purple()))
@@ -5058,7 +5058,7 @@ impl App {
                 changelog.as_deref().unwrap_or(""),
                 url.as_str(),
             ),
-            _ => ("0.1.0", 2, "", "https://omarmurcia.github.io/netlens-repo"),
+            _ => (UpdateChecker::CURRENT_VERSION, UpdateChecker::CURRENT_PKGREL, "", "https://omarmurcia.github.io/netlens-repo"),
         };
 
         let title_row = row![

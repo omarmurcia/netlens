@@ -1,7 +1,7 @@
 # Maintainer: Omar Murcia <ing.omarmurcia@gmail.com>
 pkgname=netlens
-pkgver=0.1.0
-pkgrel=2
+pkgver=0.2.0
+pkgrel=1
 pkgdesc="Modern visual local network explorer and monitor with Wi-Fi analysis and router storage management"
 arch=('x86_64')
 url="https://github.com/omarmurcia/netlens"

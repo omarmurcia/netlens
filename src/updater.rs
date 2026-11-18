@@ -29,7 +29,7 @@ impl UpdateChecker {
     pub const REMOTE_VERSION_URL: &'static str =
         "https://omarmurcia.github.io/netlens-repo/version.json";
     pub const CURRENT_VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    pub const CURRENT_PKGREL: u32 = 2;
+    pub const CURRENT_PKGREL: u32 = 1;
 
     /// Asynchronously queries GitHub Pages for the latest published version
     pub async fn check_for_updates() -> UpdateStatus {
