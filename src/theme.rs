@@ -34,6 +34,10 @@ impl CustomStyles {
         Color::from_rgb8(168, 85, 247) // Purple 500
     }
 
+    pub fn accent_red() -> Color {
+        Color::from_rgb8(239, 68, 68) // Red 500
+    }
+
     pub fn text_primary() -> Color {
         Color::from_rgb8(248, 250, 252)
     }

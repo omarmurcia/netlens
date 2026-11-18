@@ -7664,6 +7664,111 @@ impl Translations {
             Language::Urdu => "اپ ڈیٹ کمانڈ کلپ بورڈ پر کاپی ہو گئی۔",
         }
     }
+
+    pub fn update_now_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🚀 Actualizar Ahora (Automático)",
+            Language::English => "🚀 Update Now (Automatic)",
+            Language::Chinese => "🚀 立即更新 (自动)",
+            Language::Hindi => "🚀 अभी अपडेट करें (स्वचालित)",
+            Language::Arabic => "🚀 التحديث الآن (تلقائي)",
+            Language::French => "🚀 Mettre à jour maintenant (Automatique)",
+            Language::Bengali => "🚀 এখনই আপডেট করুন (স্বয়ংক্রিয়)",
+            Language::Portuguese => "🚀 Atualizar Agora (Automático)",
+            Language::Russian => "🚀 Обновить сейчас (Автоматически)",
+            Language::Urdu => "🚀 ابھی اپ ڈیٹ کریں (خودکار)",
+        }
+    }
+
+    pub fn update_in_terminal_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "💻 Abrir en Terminal",
+            Language::English => "💻 Open in Terminal",
+            Language::Chinese => "💻 在终端中打开",
+            Language::Hindi => "💻 टर्मिनल में खोलें",
+            Language::Arabic => "💻 فتح في الطرفية",
+            Language::French => "💻 Ouvrir dans le terminal",
+            Language::Bengali => "💻 টার্মিনালে খুলুন",
+            Language::Portuguese => "💻 Abrir no Terminal",
+            Language::Russian => "💻 Открыть в терминале",
+            Language::Urdu => "💻 ٹرمینل میں کھولیں",
+        }
+    }
+
+    pub fn update_authorizing_and_installing(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "⏳ Solicitando autorización e instalando actualización en segundo plano...",
+            Language::English => "⏳ Requesting authorization and installing update in background...",
+            Language::Chinese => "⏳ 正在请求授权并在后台安装更新...",
+            Language::Hindi => "⏳ प्राधिकरण का अनुरोध किया जा रहा है और पृष्ठभूमि में अपडेट इंस्टॉल हो रहा है...",
+            Language::Arabic => "⏳ جاري طلب المصادقة وتثبيت التحديث في الخلفية...",
+            Language::French => "⏳ Demande d'autorisation et installation de la mise à jour en arrière-plan...",
+            Language::Bengali => "⏳ অনুমোদন অনুরোধ করা হচ্ছে এবং পটভূমিতে আপডেট ইনস্টল করা হচ্ছে...",
+            Language::Portuguese => "⏳ Solicitando autorização e instalando atualização em segundo plano...",
+            Language::Russian => "⏳ Запрос авторизации и установка обновления в фоновом режиме...",
+            Language::Urdu => "⏳ اجازت کی درخواست کی جا رہی ہے اور پس منظر میں اپ ڈیٹ انسٹال ہو رہی ہے...",
+        }
+    }
+
+    pub fn update_success_banner(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "✅ ¡Actualización completada con éxito!",
+            Language::English => "✅ Update completed successfully!",
+            Language::Chinese => "✅ 更新已成功完成！",
+            Language::Hindi => "✅ अपडेट सफलतापूर्वक पूरा हुआ!",
+            Language::Arabic => "✅ اكتمل التحديث بنجاح!",
+            Language::French => "✅ Mise à jour terminée avec succès !",
+            Language::Bengali => "✅ আপডেট সফলভাবে সম্পন্ন হয়েছে!",
+            Language::Portuguese => "✅ Atualização concluída com sucesso!",
+            Language::Russian => "✅ Обновление успешно завершено!",
+            Language::Urdu => "✅ اپ ڈیٹ کامیابی سے مکمل ہو گئی!",
+        }
+    }
+
+    pub fn update_restart_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "🔄 Reiniciar NetLens Ahora",
+            Language::English => "🔄 Restart NetLens Now",
+            Language::Chinese => "🔄 立即重启 NetLens",
+            Language::Hindi => "🔄 NetLens को अभी पुनः प्रारंभ करें",
+            Language::Arabic => "🔄 إعادة تشغيل NetLens الآن",
+            Language::French => "🔄 Redémarrer NetLens maintenant",
+            Language::Bengali => "🔄 NetLens এখনই রিস্টার্ট করুন",
+            Language::Portuguese => "🔄 Reiniciar NetLens Agora",
+            Language::Russian => "🔄 Перезапустить NetLens сейчас",
+            Language::Urdu => "🔄 NetLens ابھی دوبارہ شروع کریں",
+        }
+    }
+
+    pub fn update_failed_banner(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Error en la actualización:",
+            Language::English => "Update failed:",
+            Language::Chinese => "更新失败：",
+            Language::Hindi => "अपडेट विफल रहा:",
+            Language::Arabic => "فشل التحديث:",
+            Language::French => "Échec de la mise à jour :",
+            Language::Bengali => "আপডেট ব্যর্থ হয়েছে:",
+            Language::Portuguese => "Falha na atualização:",
+            Language::Russian => "Ошибка обновления:",
+            Language::Urdu => "اپ ڈیٹ ناکام ہو گئی:",
+        }
+    }
+
+    pub fn update_retry_btn(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Reintentar",
+            Language::English => "Retry",
+            Language::Chinese => "重试",
+            Language::Hindi => "पुनः प्रयास करें",
+            Language::Arabic => "إعادة المحاولة",
+            Language::French => "Réessayer",
+            Language::Bengali => "পুনরায় চেষ্টা করুন",
+            Language::Portuguese => "Tentar novamente",
+            Language::Russian => "Повторить",
+            Language::Urdu => "دوبارہ کوشش کریں",
+        }
+    }
 }
 
 fn extract_target_prefix<'a>(original: &'a str, patterns: &[&str]) -> &'a str {

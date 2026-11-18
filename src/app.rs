@@ -21,7 +21,7 @@ use crate::tray::{spawn_tray, NetLensTray, TrayAction, TrayState};
 use crate::uptime::UptimeTracker;
 use crate::widget::Sparkline;
 use crate::wifi_analyzer::{WifiAnalyzer, WifiAnalyzerReport};
-use crate::updater::{UpdateChecker, UpdateStatus};
+use crate::updater::{InAppUpdateProgress, UpdateChecker, UpdateStatus};
 use iced::futures::channel::mpsc;
 use iced::futures::StreamExt;
 use iced::widget::canvas::Canvas;
@@ -262,6 +262,7 @@ pub struct App {
     pub is_settings_open: bool,
     pub is_about_open: bool,
     pub update_status: UpdateStatus,
+    pub update_progress: InAppUpdateProgress,
     pub is_update_modal_open: bool,
     pub is_speed_test_open: bool,
     pub speed_test_stage: SpeedTestStage,
@@ -475,6 +476,10 @@ pub enum Message {
     UpdateStatusReceived(UpdateStatus),
     OpenUpdateModal,
     CloseUpdateModal,
+    StartInAppUpdate,
+    InAppUpdateResult(Result<String, String>),
+    OpenTerminalUpdater,
+    RestartNetLens,
     LanguageChanged(Language),
     ThemeChanged(Theme),
     AutoScanIntervalChanged(u32),
@@ -720,6 +725,7 @@ impl App {
             is_settings_open: false,
             is_about_open: false,
             update_status: UpdateStatus::Idle,
+            update_progress: InAppUpdateProgress::Idle,
             is_update_modal_open: false,
             is_speed_test_open: false,
             speed_test_stage,
@@ -1070,6 +1076,40 @@ impl App {
 
             Message::CloseUpdateModal => {
                 self.is_update_modal_open = false;
+                Task::none()
+            }
+
+            Message::StartInAppUpdate => {
+                self.update_progress = InAppUpdateProgress::AuthorizingAndInstalling;
+                Task::future(async {
+                    let res = UpdateChecker::apply_update_in_app().await;
+                    Message::InAppUpdateResult(res)
+                })
+            }
+
+            Message::InAppUpdateResult(result) => {
+                match result {
+                    Ok(msg) => {
+                        self.update_progress = InAppUpdateProgress::Success;
+                        self.notification = Some((msg, true));
+                    }
+                    Err(err) => {
+                        self.update_progress = InAppUpdateProgress::Failed(err.clone());
+                        self.notification = Some((err, false));
+                    }
+                }
+                Task::none()
+            }
+
+            Message::OpenTerminalUpdater => {
+                if let Err(e) = UpdateChecker::launch_terminal_updater() {
+                    self.notification = Some((e, false));
+                }
+                Task::none()
+            }
+
+            Message::RestartNetLens => {
+                UpdateChecker::restart_application();
                 Task::none()
             }
 
@@ -5102,6 +5142,126 @@ impl App {
         .padding(14)
         .style(|_| CustomStyles::card_highlighted());
 
+        let in_app_action_box: Element<'_, Message> = match &self.update_progress {
+            InAppUpdateProgress::Idle => container(
+                row![
+                    column![
+                        text(Translations::update_now_btn(self.language))
+                            .size(13)
+                            .color(CustomStyles::accent_cyan()),
+                        text(match self.language {
+                            Language::Spanish => "Actualiza automáticamente con 1 clic mediante la autenticación del sistema.",
+                            Language::English => "Update automatically in 1 click using system authentication.",
+                            Language::Chinese => "使用系统身份验证一键自动更新。",
+                            Language::Hindi => "सिस्टम प्रमाणीकरण का उपयोग करके 1-क्लिक में स्वचालित रूप से अपडेट करें।",
+                            Language::Arabic => "تحديث تلقائي بنقرة واحدة باستخدام مصادقة النظام.",
+                            Language::French => "Mise à jour automatique en 1 clic via l'authentification système.",
+                            Language::Bengali => "সিস্টেম প্রমাণীকরণ ব্যবহার করে ১-ক্লিকে স্বয়ংক্রিয়ভাবে আপডেট করুন।",
+                            Language::Portuguese => "Atualize automaticamente em 1 clique usando a autenticação do sistema.",
+                            Language::Russian => "Автоматическое обновление в 1 клик с системной аутентификацией.",
+                            Language::Urdu => "سسٹم کی تصدیق کا استعمال کرتے ہوئے 1 کلک میں خودکار طور پر اپ ڈیٹ کریں۔",
+                        })
+                        .size(11)
+                        .color(CustomStyles::text_muted()),
+                    ]
+                    .width(Length::Fill),
+                    row![
+                        button(text(Translations::update_in_terminal_btn(self.language)).size(11))
+                            .style(|_, _| CustomStyles::secondary_button())
+                            .padding(Padding::from([6, 12]))
+                            .on_press(Message::OpenTerminalUpdater),
+                        button(text(Translations::update_now_btn(self.language)).size(11))
+                            .style(|_, _| CustomStyles::primary_button())
+                            .padding(Padding::from([6, 16]))
+                            .on_press(Message::StartInAppUpdate),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+            )
+            .padding(14)
+            .style(|_| CustomStyles::card_highlighted())
+            .into(),
+
+            InAppUpdateProgress::AuthorizingAndInstalling => container(
+                row![
+                    text("⏳").size(16),
+                    text(Translations::update_authorizing_and_installing(self.language))
+                        .size(12)
+                        .color(CustomStyles::accent_cyan()),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+            )
+            .padding(14)
+            .style(|_| CustomStyles::card_container())
+            .into(),
+
+            InAppUpdateProgress::Success => container(
+                row![
+                    column![
+                        text(Translations::update_success_banner(self.language))
+                            .size(13)
+                            .color(CustomStyles::accent_emerald()),
+                        text(match self.language {
+                            Language::Spanish => "La nueva versión está instalada y lista para iniciarse.",
+                            Language::English => "The new version is installed and ready to launch.",
+                            Language::Chinese => "新版本已安装并可启动。",
+                            Language::Hindi => "नया संस्करण स्थापित हो गया है और लॉन्च के लिए तैयार है।",
+                            Language::Arabic => "الإصدار الجديد مثبت وجاهز للتشغيل.",
+                            Language::French => "La nouvelle version est installée et prête à être lancée.",
+                            Language::Bengali => "নতুন সংস্করণটি ইনস্টল করা হয়েছে এবং চালু করার জন্য প্রস্তুত।",
+                            Language::Portuguese => "A nova versão está instalada e pronta para iniciar.",
+                            Language::Russian => "Новая версия установлена и готова к запуску.",
+                            Language::Urdu => "نیا ورژن انسٹال ہو چکا ہے اور چلانے کے لیے تیار ہے۔",
+                        })
+                        .size(11)
+                        .color(CustomStyles::text_secondary()),
+                    ]
+                    .width(Length::Fill),
+                    button(text(Translations::update_restart_btn(self.language)).size(11))
+                        .style(|_, _| CustomStyles::primary_button())
+                        .padding(Padding::from([6, 16]))
+                        .on_press(Message::RestartNetLens),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+            )
+            .padding(14)
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
+            .into(),
+
+            InAppUpdateProgress::Failed(err) => container(
+                row![
+                    column![
+                        text(format!("{} {}", Translations::update_failed_banner(self.language), err))
+                            .size(12)
+                            .color(CustomStyles::accent_red()),
+                    ]
+                    .width(Length::Fill),
+                    row![
+                        button(text(Translations::update_in_terminal_btn(self.language)).size(11))
+                            .style(|_, _| CustomStyles::secondary_button())
+                            .padding(Padding::from([6, 12]))
+                            .on_press(Message::OpenTerminalUpdater),
+                        button(text(format!("🔄 {}", Translations::update_retry_btn(self.language))).size(11))
+                            .style(|_, _| CustomStyles::primary_button())
+                            .padding(Padding::from([6, 14]))
+                            .on_press(Message::StartInAppUpdate),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+            )
+            .padding(14)
+            .style(|_| CustomStyles::card_container())
+            .into(),
+        };
+
         let cmd_str = "curl -sSL https://omarmurcia.github.io/netlens-repo/install-repo.sh | bash";
         let cmd_box = container(
             row![
@@ -5140,6 +5300,7 @@ impl App {
         let layout = column![
             title_row,
             version_banner,
+            in_app_action_box,
             instructions_col,
             footer_row,
         ]
@@ -5147,7 +5308,7 @@ impl App {
 
         container(layout)
             .padding(24)
-            .width(660)
+            .width(720)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }

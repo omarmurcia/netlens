@@ -2451,6 +2451,13 @@ fn test_all_modals_translations_in_all_10_languages() {
         assert!(!Translations::update_instructions(lang).is_empty());
         assert!(!Translations::update_copy_command(lang).is_empty());
         assert!(!Translations::update_copied_notif(lang).is_empty());
+        assert!(!Translations::update_now_btn(lang).is_empty());
+        assert!(!Translations::update_in_terminal_btn(lang).is_empty());
+        assert!(!Translations::update_authorizing_and_installing(lang).is_empty());
+        assert!(!Translations::update_success_banner(lang).is_empty());
+        assert!(!Translations::update_restart_btn(lang).is_empty());
+        assert!(!Translations::update_failed_banner(lang).is_empty());
+        assert!(!Translations::update_retry_btn(lang).is_empty());
     }
 }
 
@@ -2491,4 +2498,19 @@ fn test_updater_semver_comparison_and_logic() {
     // Remote is older version or older pkgrel
     assert!(!UpdateChecker::is_newer("0.1.0", 1, "0.1.0", 2));
     assert!(!UpdateChecker::is_newer("0.0.9", 5, "0.1.0", 2));
+}
+
+#[test]
+fn test_in_app_update_progress_states() {
+    use netlens::updater::InAppUpdateProgress;
+
+    let p1 = InAppUpdateProgress::Idle;
+    let p2 = InAppUpdateProgress::AuthorizingAndInstalling;
+    let p3 = InAppUpdateProgress::Success;
+    let p4 = InAppUpdateProgress::Failed("Auth error".to_string());
+
+    assert_eq!(p1, InAppUpdateProgress::Idle);
+    assert_ne!(p1, p2);
+    assert_ne!(p2, p3);
+    assert_eq!(p4, InAppUpdateProgress::Failed("Auth error".to_string()));
 }
