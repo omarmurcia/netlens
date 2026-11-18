@@ -8,12 +8,29 @@ pub struct AutostartManager;
 impl AutostartManager {
     /// Gets the path to the autostart desktop entry in user's home (~/.config/autostart/netlens.desktop)
     pub fn autostart_file_path() -> Option<PathBuf> {
-        let home = env::var("HOME").ok()?;
-        Some(PathBuf::from(home).join(".config").join("autostart").join("netlens.desktop"))
+        let base_dir = if let Ok(xdg_config) = env::var("XDG_CONFIG_HOME") {
+            let p = PathBuf::from(xdg_config);
+            if !p.as_os_str().is_empty() {
+                p
+            } else if let Ok(home) = env::var("HOME") {
+                PathBuf::from(home).join(".config")
+            } else {
+                return None;
+            }
+        } else if let Ok(home) = env::var("HOME") {
+            PathBuf::from(home).join(".config")
+        } else {
+            return None;
+        };
+        Some(base_dir.join("autostart").join("netlens.desktop"))
     }
 
     /// Ensures the official 512x512 application icon is present in ~/.local/share/icons/...
     pub fn ensure_icon_installed() -> Option<PathBuf> {
+        let system_icon = PathBuf::from("/usr/share/icons/hicolor/512x512/apps/netlens.png");
+        if system_icon.exists() {
+            return Some(system_icon);
+        }
         let home = env::var("HOME").ok()?;
         let icon_dir = PathBuf::from(&home).join(".local/share/icons/hicolor/512x512/apps");
         let icon_path = icon_dir.join("netlens.png");
@@ -81,13 +98,19 @@ impl AutostartManager {
             }
         }
 
-        // 2. Check current process executable path
+        // 2. Prioritize official system package installation (/usr/bin/netlens)
+        let system_bin = PathBuf::from("/usr/bin/netlens");
+        if system_bin.exists() {
+            return Ok(system_bin);
+        }
+
+        // 3. Check current process executable path
         let current_exe = env::current_exe()
             .map_err(|e| format!("Could not determine executable path: {}", e))?;
 
         let exe_str = current_exe.to_string_lossy();
 
-        // 3. If running from a temporary mount in /tmp without AppImage env vars
+        // 4. If running from a temporary mount in /tmp without AppImage env vars
         if exe_str.starts_with("/tmp/.mount_") {
             if let Ok(home) = env::var("HOME") {
                 let candidates = [
@@ -103,6 +126,23 @@ impl AutostartManager {
                 }
             }
             return Err("NetLens is running from a temporary mount point and permanent AppImage path was not found.".to_string());
+        }
+
+        // 5. If running inside target/ (cargo run, tests) or test runners, NEVER use the target/test binary!
+        if exe_str.contains("/target/") || exe_str.contains("integration_tests") {
+            if let Ok(which_out) = std::process::Command::new("which").arg("netlens").output() {
+                if which_out.status.success() {
+                    let path_str = String::from_utf8_lossy(&which_out.stdout).trim().to_string();
+                    if !path_str.is_empty() {
+                        let p = PathBuf::from(path_str);
+                        if p.exists() {
+                            return Ok(p);
+                        }
+                    }
+                }
+            }
+            // Safest fallback for Linux system installation
+            return Ok(PathBuf::from("/usr/bin/netlens"));
         }
 
         Ok(current_exe)
@@ -121,6 +161,10 @@ impl AutostartManager {
         if let Ok(content) = fs::read_to_string(&path) {
             // If pointing to a dead /tmp temporary path, it is not a valid autostart
             if content.contains("/tmp/.mount_") {
+                return false;
+            }
+            // If pointing to a test runner or build target, it is not a valid autostart
+            if content.contains("/target/") || content.contains("integration_tests") {
                 return false;
             }
             // If explicitly disabled by desktop manager
@@ -224,7 +268,10 @@ impl AutostartManager {
                 if !path.exists() {
                     true
                 } else if let Ok(content) = fs::read_to_string(&path) {
-                    content.contains("/tmp/.mount_") || !Self::is_enabled()
+                    content.contains("/tmp/.mount_")
+                        || content.contains("/target/")
+                        || content.contains("integration_tests")
+                        || !Self::is_enabled()
                 } else {
                     true
                 }

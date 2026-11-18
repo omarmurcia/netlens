@@ -841,15 +841,24 @@ fn test_autostart_set_and_clear() {
     use netlens::autostart::AutostartManager;
     use std::fs;
 
+    let temp_dir = std::env::temp_dir().join(format!("netlens_test_autostart_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let _ = fs::create_dir_all(&temp_dir);
+    let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+    }
+
     // Enable autostart
     let res = AutostartManager::set_enabled(true);
     assert!(res.is_ok(), "set_enabled(true) should succeed: {:?}", res);
 
     let path = AutostartManager::autostart_file_path().unwrap();
-    assert!(path.exists(), "Autostart desktop file should exist");
+    assert!(path.exists(), "Autostart desktop file should exist in temp config dir");
+    assert!(path.starts_with(&temp_dir));
 
     let content = fs::read_to_string(&path).unwrap();
     assert!(!content.contains("/tmp/.mount_"), "Must NEVER contain temporary mount paths");
+    assert!(!content.contains("integration_tests"), "Must NEVER point to test runner");
     assert!(content.contains("--minimized"));
     assert!(AutostartManager::is_enabled());
 
@@ -859,13 +868,15 @@ fn test_autostart_set_and_clear() {
     assert!(!path.exists());
     assert!(!AutostartManager::is_enabled());
 
-    // Clean test entry in ~/.local/share/applications/netlens.desktop and icon
-    if let Ok(home) = std::env::var("HOME") {
-        let app_desktop = std::path::PathBuf::from(&home).join(".local/share/applications/netlens.desktop");
-        let _ = fs::remove_file(app_desktop);
-        let app_icon = std::path::PathBuf::from(&home).join(".local/share/icons/hicolor/512x512/apps/netlens.png");
-        let _ = fs::remove_file(app_icon);
+    // Restore XDG_CONFIG_HOME and clean temp_dir
+    unsafe {
+        if let Some(orig) = orig_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", orig);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
     }
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
@@ -2001,6 +2012,13 @@ async fn test_view_storage_details_does_not_panic() {
     use netlens::app::{App, Message};
     use netlens::router::storage::StorageFileEntry;
 
+    let temp_dir = std::env::temp_dir().join(format!("netlens_test_view_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+    }
+
     let (mut app, _) = App::new();
     app.is_storage_explorer_open = true;
 
@@ -2030,12 +2048,27 @@ async fn test_view_storage_details_does_not_panic() {
     {
         let _element2 = app.view(win_id);
     }
+
+    unsafe {
+        if let Some(orig) = orig_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", orig);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
 }
 
 #[tokio::test]
 async fn test_storage_disk_info_cache_protection_and_delete_update() {
     use netlens::app::{App, Message};
     use netlens::router::storage::{StorageDiskInfo, StorageFileEntry};
+
+    let temp_dir = std::env::temp_dir().join(format!("netlens_test_view_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let orig_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+    }
 
     let (mut app, _) = App::new();
     app.is_storage_explorer_open = true;
@@ -2095,6 +2128,14 @@ async fn test_storage_disk_info_cache_protection_and_delete_update() {
         23_000_000_000,
         "El espacio libre debe actualizarse con el valor superior reportado por el router"
     );
+
+    unsafe {
+        if let Some(orig) = orig_xdg {
+            std::env::set_var("XDG_CONFIG_HOME", orig);
+        } else {
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
 }
 
 #[test]
