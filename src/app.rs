@@ -29,7 +29,7 @@ use iced::widget::{
     button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, tooltip, Column,
 };
-use iced::{Alignment, Color, Element, Length, Padding, Size, Subscription, Task, Theme};
+use iced::{alignment, Alignment, Color, Element, Length, Padding, Size, Subscription, Task, Theme};
 use crate::oui::Oui;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
@@ -4605,9 +4605,16 @@ impl App {
                 row![
                     row![
                         text(Translations::notif_trigger_unwhitelisted_reconnect(self.language)).size(11).color(Color::from_rgb8(245, 158, 11)),
-                        container(text(Translations::badge_priority(self.language)).size(9).color(Color::WHITE))
-                            .padding(Padding::from([1, 6]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(180, 83, 9), Color::WHITE)),
+                        container(
+                            text(Translations::badge_priority(self.language))
+                                .size(9)
+                                .color(Color::WHITE)
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([1, 6]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(180, 83, 9), Color::WHITE)),
                     ].spacing(6).width(Length::Fill).align_y(Alignment::Center),
                     trigger_btn(self.notification_settings.notify_known_unwhitelisted_reconnect, Message::ToggleNotifyKnownUnwhitelisted(!self.notification_settings.notify_known_unwhitelisted_reconnect)),
                 ].align_y(Alignment::Center),
@@ -4859,8 +4866,11 @@ impl App {
             UpdateStatus::Checking => container(
                 text(Translations::checking_updates(self.language))
                     .size(10)
-                    .color(CustomStyles::text_muted()),
+                    .color(CustomStyles::text_muted())
+                    .align_x(alignment::Horizontal::Center)
+                    .align_y(alignment::Vertical::Center),
             )
+            .center(Length::Shrink)
             .padding(Padding::from([3, 8]))
             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_muted()))
             .into(),
@@ -4871,7 +4881,7 @@ impl App {
             } => row![
                 container(
                     row![
-                        text("🚀").size(10),
+                        text("🚀").size(10).align_y(alignment::Vertical::Center),
                         text(format!(
                             "{}: v{}-{}",
                             Translations::update_available(self.language),
@@ -4879,38 +4889,50 @@ impl App {
                             remote_pkgrel
                         ))
                         .size(10)
-                        .color(CustomStyles::accent_cyan()),
+                        .color(CustomStyles::accent_cyan())
+                        .align_y(alignment::Vertical::Center),
                     ]
                     .spacing(4)
                     .align_y(Alignment::Center),
                 )
+                .center(Length::Shrink)
                 .padding(Padding::from([3, 8]))
                 .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
-                button(text(Translations::update_btn(self.language)).size(10))
-                    .style(|_, _| CustomStyles::primary_button())
-                    .padding(Padding::from([3, 8]))
-                    .on_press(Message::OpenUpdateModal),
+                button(
+                    container(
+                        text(Translations::update_btn(self.language))
+                            .size(10)
+                            .align_x(alignment::Horizontal::Center)
+                            .align_y(alignment::Vertical::Center),
+                    )
+                    .center(Length::Shrink),
+                )
+                .style(|_, _| CustomStyles::primary_button())
+                .padding(Padding::from([3, 8]))
+                .on_press(Message::OpenUpdateModal),
             ]
             .spacing(6)
             .align_y(Alignment::Center)
             .into(),
             UpdateStatus::UpToDate | UpdateStatus::Idle | UpdateStatus::CheckFailed => container(
                 row![
-                    text("✓").size(10).color(CustomStyles::accent_emerald()),
+                    text("✓").size(10).color(CustomStyles::accent_emerald()).align_y(alignment::Vertical::Center),
                     text(Translations::update_latest_version(self.language))
                         .size(10)
-                        .color(CustomStyles::accent_emerald()),
+                        .color(CustomStyles::accent_emerald())
+                        .align_y(alignment::Vertical::Center),
                 ]
                 .spacing(4)
                 .align_y(Alignment::Center),
             )
+            .center(Length::Shrink)
             .padding(Padding::from([3, 8]))
             .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
             .into(),
         };
 
         let check_updates_btn = self.tip(
-            button(text("🔄").size(10))
+            button(text("🔄").size(10).align_x(alignment::Horizontal::Center).align_y(alignment::Vertical::Center))
                 .style(|_, _| CustomStyles::secondary_button())
                 .padding(Padding::from([2, 5]))
                 .on_press(Message::CheckForUpdates),
@@ -4921,12 +4943,26 @@ impl App {
         let app_info = column![
             row![
                 text("NetLens").size(24).color(CustomStyles::accent_cyan()),
-                container(text(format!("v{}-{}", env!("CARGO_PKG_VERSION"), UpdateChecker::CURRENT_PKGREL)).size(11).color(CustomStyles::accent_emerald()))
-                    .padding(Padding::from([3, 9]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
-                container(text("CachyOS / Arch Linux").size(10).color(CustomStyles::accent_purple()))
-                    .padding(Padding::from([3, 9]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(35, 20, 50), CustomStyles::accent_purple())),
+                container(
+                    text(format!("v{}-{}", env!("CARGO_PKG_VERSION"), UpdateChecker::CURRENT_PKGREL))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald())
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([3, 9]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
+                container(
+                    text("CachyOS / Arch Linux")
+                        .size(10)
+                        .color(CustomStyles::accent_purple())
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([3, 9]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(35, 20, 50), CustomStyles::accent_purple())),
             ]
             .spacing(10)
             .align_y(Alignment::Center),
@@ -5771,36 +5807,65 @@ impl App {
         });
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
-        let all_btn = button(text(Translations::all_filter(self.language)).size(12))
+        let all_btn = button(
+            container(
+                text(Translations::all_filter(self.language))
+                    .size(12)
+                    .align_x(alignment::Horizontal::Center)
+                    .align_y(alignment::Vertical::Center),
+            )
+            .center(Length::Shrink),
+        )
+        .style(move |_, _| {
+            if is_all_active {
+                CustomStyles::filter_pill_active()
+            } else {
+                CustomStyles::filter_pill_inactive()
+            }
+        })
+        .padding(Padding::from([4, 10]))
+        .on_press(Message::CategorySelected(None));
+        category_pills = category_pills.push(
+            self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
+        );
+
+        // Only display category pills for device types currently detected in the network
+        let mut visible_categories: Vec<DeviceCategory> = Vec::new();
+        for d in &self.devices {
+            if d.category != DeviceCategory::Unknown && !visible_categories.contains(&d.category) {
+                visible_categories.push(d.category);
+            }
+        }
+        if let Some(sel) = self.selected_category {
+            if sel != DeviceCategory::Unknown && !visible_categories.contains(&sel) {
+                visible_categories.push(sel);
+            }
+        }
+        visible_categories.sort_by_key(|c| {
+            DeviceCategory::all().iter().position(|x| x == c).unwrap_or(99)
+        });
+
+        for cat in visible_categories {
+            let is_active = self.selected_category == Some(cat);
+            let label = Translations::category_short_name(cat, self.language);
+            let cat_btn = button(
+                container(
+                    text(label)
+                        .size(12)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink),
+            )
             .style(move |_, _| {
-                if is_all_active {
+                if is_active {
                     CustomStyles::filter_pill_active()
                 } else {
                     CustomStyles::filter_pill_inactive()
                 }
             })
             .padding(Padding::from([4, 10]))
-            .on_press(Message::CategorySelected(None));
-        category_pills = category_pills.push(
-            self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
-        );
-
-        for &cat in DeviceCategory::all() {
-            if cat == DeviceCategory::Unknown {
-                continue;
-            }
-            let is_active = self.selected_category == Some(cat);
-            let label = Translations::category_short_name(cat, self.language);
-            let cat_btn = button(text(label).size(12))
-                .style(move |_, _| {
-                    if is_active {
-                        CustomStyles::filter_pill_active()
-                    } else {
-                        CustomStyles::filter_pill_inactive()
-                    }
-                })
-                .padding(Padding::from([4, 8]))
-                .on_press(Message::CategorySelected(Some(cat)));
+            .on_press(Message::CategorySelected(Some(cat)));
             category_pills = category_pills.push(
                 self.tip(cat_btn, Translations::tip_filter_category(cat, self.language), tooltip::Position::Bottom)
             );
@@ -5814,36 +5879,52 @@ impl App {
         let is_blocked_active = self.security_filter == SecurityFilter::Blocked;
 
         if whitelist_count > 0 || is_whitelist_active {
-            let wl_btn = button(text(format!("🛡️ {} ({})", Translations::filter_whitelist(self.language), whitelist_count)).size(11))
-                .style(move |_, _| {
-                    if is_whitelist_active {
-                        CustomStyles::filter_pill_active()
-                    } else {
-                        CustomStyles::filter_pill_inactive()
-                    }
-                })
-                .padding(Padding::from([4, 8]))
-                .on_press(Message::SecurityFilterChanged(
-                    if is_whitelist_active { SecurityFilter::All } else { SecurityFilter::Whitelist }
-                ));
+            let wl_btn = button(
+                container(
+                    text(format!("🛡️ {} ({})", Translations::filter_whitelist(self.language), whitelist_count))
+                        .size(11)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink),
+            )
+            .style(move |_, _| {
+                if is_whitelist_active {
+                    CustomStyles::filter_pill_active()
+                } else {
+                    CustomStyles::filter_pill_inactive()
+                }
+            })
+            .padding(Padding::from([4, 10]))
+            .on_press(Message::SecurityFilterChanged(
+                if is_whitelist_active { SecurityFilter::All } else { SecurityFilter::Whitelist }
+            ));
             category_pills = category_pills.push(
                 self.tip(wl_btn, Translations::tip_filter_whitelist(self.language), tooltip::Position::Bottom)
             );
         }
 
         if blocked_count > 0 || is_blocked_active {
-            let blk_btn = button(text(format!("🚫 {} ({})", Translations::filter_blocked(self.language), blocked_count)).size(11))
-                .style(move |_, _| {
-                    if is_blocked_active {
-                        CustomStyles::filter_pill_active()
-                    } else {
-                        CustomStyles::filter_pill_inactive()
-                    }
-                })
-                .padding(Padding::from([4, 8]))
-                .on_press(Message::SecurityFilterChanged(
-                    if is_blocked_active { SecurityFilter::All } else { SecurityFilter::Blocked }
-                ));
+            let blk_btn = button(
+                container(
+                    text(format!("🚫 {} ({})", Translations::filter_blocked(self.language), blocked_count))
+                        .size(11)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink),
+            )
+            .style(move |_, _| {
+                if is_blocked_active {
+                    CustomStyles::filter_pill_active()
+                } else {
+                    CustomStyles::filter_pill_inactive()
+                }
+            })
+            .padding(Padding::from([4, 10]))
+            .on_press(Message::SecurityFilterChanged(
+                if is_blocked_active { SecurityFilter::All } else { SecurityFilter::Blocked }
+            ));
             category_pills = category_pills.push(
                 self.tip(blk_btn, Translations::tip_filter_blocked(self.language), tooltip::Position::Bottom)
             );
@@ -5961,37 +6042,72 @@ impl App {
 
         if device.is_blocked {
             role_tags = role_tags.push(
-                container(text(Translations::badge_blocked(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([1, 5]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE)),
+                container(
+                    text(Translations::badge_blocked(self.language))
+                        .size(9)
+                        .color(Color::WHITE)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 6]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE)),
             );
         } else if device.is_whitelisted {
             role_tags = role_tags.push(
-                container(text(Translations::badge_whitelisted(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([1, 5]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(16, 120, 70), Color::WHITE)),
+                container(
+                    text(Translations::badge_whitelisted(self.language))
+                        .size(9)
+                        .color(Color::WHITE)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 6]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(16, 120, 70), Color::WHITE)),
             );
         }
 
         if device.is_gateway {
             role_tags = role_tags.push(
-                container(text(Translations::badge_router(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([1, 5]))
-                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_cyan(), Color::WHITE)),
+                container(
+                    text(Translations::badge_router(self.language))
+                        .size(9)
+                        .color(Color::WHITE)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 6]))
+                .style(|_| CustomStyles::badge_pill(CustomStyles::accent_cyan(), Color::WHITE)),
             );
         }
         if device.is_current_host {
             role_tags = role_tags.push(
-                container(text(Translations::badge_local_host(self.language)).size(9).color(Color::WHITE))
-                    .padding(Padding::from([1, 5]))
-                    .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
+                container(
+                    text(Translations::badge_local_host(self.language))
+                        .size(9)
+                        .color(Color::WHITE)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 6]))
+                .style(|_| CustomStyles::badge_pill(CustomStyles::accent_purple(), Color::WHITE)),
             );
         }
         if device.is_randomized_mac {
             role_tags = role_tags.push(
-                container(text(Translations::badge_privacy(self.language)).size(9).color(CustomStyles::accent_amber()))
-                    .padding(Padding::from([1, 5]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
+                container(
+                    text(Translations::badge_privacy(self.language))
+                        .size(9)
+                        .color(CustomStyles::accent_amber())
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 6]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(69, 45, 12), CustomStyles::accent_amber())),
             );
         }
 
@@ -6014,20 +6130,27 @@ impl App {
 
         let latency_widget = container(
             row![
-                text("🟢").size(8),
-                text(lat_str).size(11).color(quality_color),
-                text(format!("({})", quality_label)).size(10).color(CustomStyles::text_muted()),
+                text("🟢").size(8).align_y(alignment::Vertical::Center),
+                text(lat_str).size(11).color(quality_color).align_y(alignment::Vertical::Center),
+                text(format!("({})", quality_label)).size(10).color(CustomStyles::text_muted()).align_y(alignment::Vertical::Center),
             ]
             .spacing(4)
             .align_y(Alignment::Center),
         )
+        .center(Length::Shrink)
         .padding(Padding::from([2, 6]))
         .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(18, 25, 38), quality_color));
 
         // Details button
         let btn_details = self.tip(
             button(
-                text(Translations::details_btn(self.language)).size(11),
+                container(
+                    text(Translations::details_btn(self.language))
+                        .size(11)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink),
             )
             .style(move |_, _| {
                 if is_selected {
@@ -6059,41 +6182,59 @@ impl App {
         // 1. IP with copy button
         let ip_pill = container(
             row![
-                text("IP: ").size(10).color(CustomStyles::text_muted()),
-                text(device.ip.to_string()).size(11).color(CustomStyles::text_primary()),
+                text("IP: ").size(10).color(CustomStyles::text_muted()).align_y(alignment::Vertical::Center),
+                text(device.ip.to_string()).size(11).color(CustomStyles::text_primary()).align_y(alignment::Vertical::Center),
                 self.tip(
-                    button(text("📋").size(9))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([1, 3]))
-                        .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
+                    button(
+                        container(
+                            text("📋")
+                                .size(9)
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink),
+                    )
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([1, 4]))
+                    .on_press(Message::CopyToClipboard(device.ip.to_string(), "IP".to_string())),
                     Translations::tip_copy_ip(self.language),
                     tooltip::Position::Top,
                 ),
             ]
-            .spacing(2)
+            .spacing(3)
             .align_y(Alignment::Center),
         )
-        .padding(Padding::from([2, 6]))
+        .center(Length::Shrink)
+        .padding(Padding::from([2, 7]))
         .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_primary()));
 
         // 2. MAC with copy button
         let mac_pill = container(
             row![
-                text("MAC: ").size(10).color(CustomStyles::text_muted()),
-                text(&device.mac).size(10).color(CustomStyles::text_secondary()),
+                text("MAC: ").size(10).color(CustomStyles::text_muted()).align_y(alignment::Vertical::Center),
+                text(&device.mac).size(10).color(CustomStyles::text_secondary()).align_y(alignment::Vertical::Center),
                 self.tip(
-                    button(text("📋").size(9))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([1, 3]))
-                        .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
+                    button(
+                        container(
+                            text("📋")
+                                .size(9)
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink),
+                    )
+                    .style(|_, _| CustomStyles::secondary_button())
+                    .padding(Padding::from([1, 4]))
+                    .on_press(Message::CopyToClipboard(device.mac.clone(), "MAC".to_string())),
                     Translations::tip_copy_mac(self.language),
                     tooltip::Position::Top,
                 ),
             ]
-            .spacing(2)
+            .spacing(3)
             .align_y(Alignment::Center),
         )
-        .padding(Padding::from([2, 6]))
+        .center(Length::Shrink)
+        .padding(Padding::from([2, 7]))
         .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::text_secondary()));
 
         // 3. Category
@@ -6102,9 +6243,16 @@ impl App {
             .next()
             .unwrap_or("")
             .trim();
-        let cat_pill = container(text(cat_label).size(10).color(CustomStyles::accent_cyan()))
-            .padding(Padding::from([2, 6]))
-            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan()));
+        let cat_pill = container(
+            text(cat_label)
+                .size(10)
+                .color(CustomStyles::accent_cyan())
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center),
+        )
+        .center(Length::Shrink)
+        .padding(Padding::from([2, 7]))
+        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan()));
 
         // 4. Vendor
         let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
@@ -6119,9 +6267,16 @@ impl App {
         } else {
             vendor_str
         };
-        let vendor_pill = container(text(vendor_truncated).size(10).color(CustomStyles::text_secondary()))
-            .padding(Padding::from([2, 6]))
-            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_secondary()));
+        let vendor_pill = container(
+            text(vendor_truncated)
+                .size(10)
+                .color(CustomStyles::text_secondary())
+                .align_x(alignment::Horizontal::Center)
+                .align_y(alignment::Vertical::Center),
+        )
+        .center(Length::Shrink)
+        .padding(Padding::from([2, 7]))
+        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_secondary()));
 
         let mut bottom_row = row![
             ip_pill,
@@ -6146,18 +6301,32 @@ impl App {
             };
 
             bottom_row = bottom_row.push(
-                container(text(top_label).size(10).color(top_color))
-                    .padding(Padding::from([2, 6]))
-                    .style(move |_| CustomStyles::badge_pill(top_bg, top_color)),
+                container(
+                    text(top_label)
+                        .size(10)
+                        .color(top_color)
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([2, 7]))
+                .style(move |_| CustomStyles::badge_pill(top_bg, top_color)),
             );
         }
 
         // Detected ports/services (max 2 on card to avoid clutter)
         for p in device.open_ports.iter().take(2) {
             bottom_row = bottom_row.push(
-                container(text(format!("{}: {}", p.port, p.service)).size(9).color(CustomStyles::accent_cyan()))
-                    .padding(Padding::from([1, 4]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
+                container(
+                    text(format!("{}: {}", p.port, p.service))
+                        .size(9)
+                        .color(CustomStyles::accent_cyan())
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center),
+                )
+                .center(Length::Shrink)
+                .padding(Padding::from([1, 5]))
+                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 40, 60), CustomStyles::accent_cyan())),
             );
         }
 
@@ -6546,9 +6715,16 @@ impl App {
             for p in &self.deep_ports {
                 port_list = port_list.push(
                     row![
-                        container(text(format!("TCP {}", p.port)).size(9).color(CustomStyles::accent_cyan()))
-                            .padding(Padding::from([1, 4]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
+                        container(
+                            text(format!("TCP {}", p.port))
+                                .size(9)
+                                .color(CustomStyles::accent_cyan())
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([1, 5]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
                         text(&p.service).size(11).color(CustomStyles::text_primary()),
                         text(format!("({})", Translations::port_description(p.port, self.language))).size(10).color(CustomStyles::text_muted()),
                     ]
@@ -6637,9 +6813,16 @@ impl App {
 
                 hops_col = hops_col.push(
                     row![
-                        container(text(format!("#{}", h.hop)).size(9).color(CustomStyles::accent_cyan()))
-                            .padding(Padding::from([1, 4]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
+                        container(
+                            text(format!("#{}", h.hop))
+                                .size(9)
+                                .color(CustomStyles::accent_cyan())
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([1, 5]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
                         text(ip_str).size(10).color(CustomStyles::text_primary()).width(190),
                         space::horizontal(),
                         text(latency_str).size(10).color(color),
@@ -6672,9 +6855,16 @@ impl App {
         let req_count = device.request_history.len();
         let mut req_header = row![
             text(Translations::device_requests_title(self.language)).size(12).color(CustomStyles::accent_cyan()),
-            container(text(format!("{}", req_count)).size(9).color(CustomStyles::accent_cyan()))
-                .padding(Padding::from([1, 5]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
+            container(
+                text(format!("{}", req_count))
+                    .size(9)
+                    .color(CustomStyles::accent_cyan())
+                    .align_x(alignment::Horizontal::Center)
+                    .align_y(alignment::Vertical::Center),
+            )
+            .center(Length::Shrink)
+            .padding(Padding::from([1, 6]))
+            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 50), CustomStyles::accent_cyan())),
             space::horizontal(),
             button(text(Translations::device_requests_simulate_btn(self.language)).size(10))
                 .style(|_, _| CustomStyles::secondary_button())
@@ -6725,12 +6915,26 @@ impl App {
                     column![
                         row![
                             text(time_str).size(9).color(CustomStyles::text_muted()),
-                            container(text(&entry.protocol).size(8).color(CustomStyles::accent_cyan()))
-                                .padding(Padding::from([1, 4]))
-                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::accent_cyan())),
-                            container(text(&entry.category).size(8).color(cat_badge_color))
-                                .padding(Padding::from([1, 4]))
-                                .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(20, 30, 45), cat_badge_color)),
+                            container(
+                                text(&entry.protocol)
+                                    .size(8)
+                                    .color(CustomStyles::accent_cyan())
+                                    .align_x(alignment::Horizontal::Center)
+                                    .align_y(alignment::Vertical::Center),
+                            )
+                            .center(Length::Shrink)
+                            .padding(Padding::from([1, 5]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 25, 40), CustomStyles::accent_cyan())),
+                            container(
+                                text(&entry.category)
+                                    .size(8)
+                                    .color(cat_badge_color)
+                                    .align_x(alignment::Horizontal::Center)
+                                    .align_y(alignment::Vertical::Center),
+                            )
+                            .center(Length::Shrink)
+                            .padding(Padding::from([1, 5]))
+                            .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(20, 30, 45), cat_badge_color)),
                         ]
                         .spacing(5)
                         .align_y(Alignment::Center),
@@ -6996,9 +7200,16 @@ impl App {
                     let mut chunk_row = row![].spacing(6).align_y(Alignment::Center);
                     for d in chunk {
                         chunk_row = chunk_row.push(
-                            container(text(d).size(10).color(CustomStyles::accent_amber()))
-                                .padding(Padding::from([3, 8]))
-                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())),
+                            container(
+                                text(d)
+                                    .size(10)
+                                    .color(CustomStyles::accent_amber())
+                                    .align_x(alignment::Horizontal::Center)
+                                    .align_y(alignment::Vertical::Center),
+                            )
+                            .center(Length::Shrink)
+                            .padding(Padding::from([3, 8]))
+                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())),
                         );
                     }
                     dev_col = dev_col.push(chunk_row);
@@ -7147,9 +7358,16 @@ impl App {
 
                 if let Some(ip) = evt.ip {
                     meta_row = meta_row.push(
-                        container(text(ip.to_string()).size(9).color(CustomStyles::accent_cyan()))
-                            .padding(Padding::from([1, 4]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
+                        container(
+                            text(ip.to_string())
+                                .size(9)
+                                .color(CustomStyles::accent_cyan())
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([1, 5]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
                     );
                 }
 
@@ -7325,16 +7543,30 @@ impl App {
 
                 if is_curr {
                     row_items = row_items.push(
-                        container(text(Translations::wifi_badge_current(self.language)).size(9).color(CustomStyles::accent_emerald()))
-                            .padding(Padding::from([1, 4]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
+                        container(
+                            text(Translations::wifi_badge_current(self.language))
+                                .size(9)
+                                .color(CustomStyles::accent_emerald())
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([1, 5]))
+                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
                     );
                 }
 
                 row_items = row_items.push(
-                    container(text(format!("Ch {} ({})", net.channel, freq_label)).size(10).color(CustomStyles::accent_cyan()))
-                        .padding(Padding::from([2, 6]))
-                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
+                    container(
+                        text(format!("Ch {} ({})", net.channel, freq_label))
+                            .size(10)
+                            .color(CustomStyles::accent_cyan())
+                            .align_x(alignment::Horizontal::Center)
+                            .align_y(alignment::Vertical::Center),
+                    )
+                    .center(Length::Shrink)
+                    .padding(Padding::from([2, 6]))
+                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
                 );
 
                 row_items = row_items.push(
@@ -7536,13 +7768,27 @@ impl App {
                             .spacing(2)
                             .width(Length::Fill),
                             if is_critical {
-                                container(text(Translations::upnp_badge_wan_risk(self.language)).size(9).color(Color::WHITE))
-                                    .padding(Padding::from([2, 6]))
-                                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE))
+                                container(
+                                    text(Translations::upnp_badge_wan_risk(self.language))
+                                        .size(9)
+                                        .color(Color::WHITE)
+                                        .align_x(alignment::Horizontal::Center)
+                                        .align_y(alignment::Vertical::Center),
+                                )
+                                .center(Length::Shrink)
+                                .padding(Padding::from([2, 6]))
+                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(185, 28, 28), Color::WHITE))
                             } else {
-                                container(text(if m.enabled { Translations::upnp_badge_active(self.language) } else { Translations::upnp_badge_inactive(self.language) }).size(9).color(CustomStyles::accent_emerald()))
-                                    .padding(Padding::from([2, 6]))
-                                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
+                                container(
+                                    text(if m.enabled { Translations::upnp_badge_active(self.language) } else { Translations::upnp_badge_inactive(self.language) })
+                                        .size(9)
+                                        .color(CustomStyles::accent_emerald())
+                                        .align_x(alignment::Horizontal::Center)
+                                        .align_y(alignment::Vertical::Center),
+                                )
+                                .center(Length::Shrink)
+                                .padding(Padding::from([2, 6]))
+                                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
                             },
                         ]
                         .align_y(Alignment::Center)
