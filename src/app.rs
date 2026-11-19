@@ -1013,6 +1013,7 @@ impl App {
             Message::OpenSettings => {
                 self.is_settings_open = true;
                 self.is_about_open = false;
+                self.is_update_modal_open = false;
                 Task::none()
             }
 
@@ -1024,6 +1025,7 @@ impl App {
             Message::OpenAbout => {
                 self.is_about_open = true;
                 self.is_settings_open = false;
+                self.is_update_modal_open = false;
                 self.is_speed_test_open = false;
                 self.is_timeline_open = false;
                 self.is_audit_open = false;
@@ -1071,11 +1073,20 @@ impl App {
 
             Message::OpenUpdateModal => {
                 self.is_update_modal_open = true;
+                self.is_about_open = false;
+                self.is_settings_open = false;
+                self.is_speed_test_open = false;
+                self.is_timeline_open = false;
+                self.is_audit_open = false;
+                self.is_wifi_analyzer_open = false;
+                self.is_upnp_open = false;
+                self.is_storage_explorer_open = false;
                 Task::none()
             }
 
             Message::CloseUpdateModal => {
                 self.is_update_modal_open = false;
+                self.update_progress = InAppUpdateProgress::Idle;
                 Task::none()
             }
 
@@ -3791,6 +3802,20 @@ impl App {
             content = content.push(self.view_notification(msg, *is_success));
         }
 
+        // If update modal open, show update instructions modal view (top priority overlay)
+        if self.is_update_modal_open {
+            content = content.push(
+                container(center(self.view_update_modal()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+            );
+
+            return container(content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
+        }
+
         // If settings open, show configuration view
         if self.is_settings_open {
             content = content.push(
@@ -3809,20 +3834,6 @@ impl App {
         if self.is_about_open {
             content = content.push(
                 container(center(self.view_about_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If update modal open, show update instructions modal view
-        if self.is_update_modal_open {
-            content = content.push(
-                container(center(self.view_update_modal()))
                     .width(Length::Fill)
                     .height(Length::Fill)
             );
