@@ -3098,9 +3098,18 @@ impl App {
                     let (sample_q, sample_cat, sample_proto) = match dev.category {
                         DeviceCategory::SmartTv => ("api-global.netflix.com", "Streaming Video", "DNS A"),
                         DeviceCategory::Smartphone => ("www.instagram.com", "Red Social", "HTTPS SNI"),
+                        DeviceCategory::Tablet => ("mesu.apple.com", "Tablet Sync / OS", "DNS A"),
                         DeviceCategory::Computer => ("github.com", "Desarrollo / Web", "DNS A"),
                         DeviceCategory::StreamingDevice => ("api-global.netflix.com", "Streaming / Video Player", "DNS A"),
                         DeviceCategory::GamingConsole => ("auth.api.sonyentertainmentnetwork.com", "Red de Consola / Gaming", "DNS A"),
+                        DeviceCategory::SmartSpeaker => ("msmetrics.ws.sonos.com", "Audio Streaming / Voice", "HTTPS / TLS"),
+                        DeviceCategory::SecurityCamera => ("api.ring.com", "Video Cloud Stream", "RTSP / TLS"),
+                        DeviceCategory::StorageNas => ("checkip.synology.com", "Almacenamiento / Backup", "HTTPS"),
+                        DeviceCategory::Server => ("registry-1.docker.io", "Servidor / Contenedores", "HTTPS"),
+                        DeviceCategory::Printer => ("epsonconnect.com", "Servicio de Impresión", "IPP / DNS"),
+                        DeviceCategory::Wearable => ("gateway.icloud.com", "Salud / Notificaciones", "HTTPS"),
+                        DeviceCategory::NetworkBridge => ("tplinkwifi.net", "Extensor / Switch LAN", "DNS A"),
+                        DeviceCategory::Iot => ("mqtt.eclipseprojects.io", "Telemetría IoT", "TCP 1883"),
                         DeviceCategory::Router => ("dns.google", "DNS Resolver", "DNS"),
                         _ => ("connectivitycheck.android.com", "Verificación Red", "DNS A"),
                     };
@@ -5759,15 +5768,35 @@ impl App {
             self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
         );
 
-        for &cat in &[
-            DeviceCategory::Router,
-            DeviceCategory::Smartphone,
-            DeviceCategory::Computer,
-            DeviceCategory::SmartTv,
-            DeviceCategory::StreamingDevice,
-            DeviceCategory::GamingConsole,
-            DeviceCategory::Iot,
-        ] {
+        let mut visible_categories: Vec<DeviceCategory> = Vec::new();
+        for d in &self.devices {
+            if d.category != DeviceCategory::Unknown && !visible_categories.contains(&d.category) {
+                visible_categories.push(d.category);
+            }
+        }
+        if let Some(sel) = self.selected_category {
+            if !visible_categories.contains(&sel) {
+                visible_categories.push(sel);
+            }
+        }
+        if visible_categories.is_empty() {
+            visible_categories = vec![
+                DeviceCategory::Router,
+                DeviceCategory::Smartphone,
+                DeviceCategory::Computer,
+                DeviceCategory::SmartTv,
+                DeviceCategory::StreamingDevice,
+                DeviceCategory::GamingConsole,
+                DeviceCategory::SmartSpeaker,
+                DeviceCategory::SecurityCamera,
+                DeviceCategory::Iot,
+            ];
+        }
+        visible_categories.sort_by_key(|c| {
+            DeviceCategory::all().iter().position(|x| x == c).unwrap_or(99)
+        });
+
+        for cat in visible_categories {
             let is_active = self.selected_category == Some(cat);
             let label = Translations::category_short_name(cat, self.language);
             let cat_btn = button(text(label).size(12))

@@ -122,6 +122,131 @@ fn test_device_categorization() {
     }];
     let cat_cast_port = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_cast);
     assert_eq!(cat_cast_port, DeviceCategory::StreamingDevice);
+
+    // 9. Tablets (iPad, Galaxy Tab, Kindle Fire)
+    let cat_ipad = Scanner::categorize_device(false, false, Some("iPad-de-Omar"), "Apple Inc.", &[]);
+    assert_eq!(cat_ipad, DeviceCategory::Tablet);
+
+    let cat_tab = Scanner::categorize_device(false, false, Some("Galaxy-Tab-S8"), "Samsung Electronics", &[]);
+    assert_eq!(cat_tab, DeviceCategory::Tablet);
+
+    let cat_kindle = Scanner::categorize_device(false, false, Some("Kindle-Fire-HD8"), "Amazon", &[]);
+    assert_eq!(cat_kindle, DeviceCategory::Tablet);
+
+    // 10. Smart Speakers & Audio (Sonos, Echo/Alexa, HomePod, Nest Audio)
+    let cat_sonos = Scanner::categorize_device(false, false, Some("Sonos-One-LivingRoom"), "Sonos Inc.", &[]);
+    assert_eq!(cat_sonos, DeviceCategory::SmartSpeaker);
+
+    let cat_echo = Scanner::categorize_device(false, false, Some("Echo-Dot-Kitchen"), "Amazon Technologies Inc.", &[]);
+    assert_eq!(cat_echo, DeviceCategory::SmartSpeaker);
+
+    let cat_homepod = Scanner::categorize_device(false, false, Some("HomePod-Mini"), "Apple Inc.", &[]);
+    assert_eq!(cat_homepod, DeviceCategory::SmartSpeaker);
+
+    let ports_sonos = vec![PortInfo {
+        port: 1400,
+        service: "Sonos".to_string(),
+        description: "Sonos Control Port".to_string(),
+    }];
+    let cat_sonos_port = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_sonos);
+    assert_eq!(cat_sonos_port, DeviceCategory::SmartSpeaker);
+
+    // 11. Security Cameras / Surveillance / NVR
+    let cat_ring = Scanner::categorize_device(false, false, Some("Ring-Doorbell-Pro"), "Ring LLC", &[]);
+    assert_eq!(cat_ring, DeviceCategory::SecurityCamera);
+
+    let cat_reolink = Scanner::categorize_device(false, false, Some("Reolink-Driveway"), "Reolink", &[]);
+    assert_eq!(cat_reolink, DeviceCategory::SecurityCamera);
+
+    let cat_hik = Scanner::categorize_device(false, false, Some("Hikvision-NVR"), "Hikvision", &[]);
+    assert_eq!(cat_hik, DeviceCategory::SecurityCamera);
+
+    let ports_rtsp = vec![PortInfo {
+        port: 554,
+        service: "RTSP".to_string(),
+        description: "Real Time Streaming Protocol".to_string(),
+    }];
+    let cat_rtsp_cam = Scanner::categorize_device(false, false, None, "Generic Vendor", &ports_rtsp);
+    assert_eq!(cat_rtsp_cam, DeviceCategory::SecurityCamera);
+
+    // 12. Storage NAS (Synology, QNAP, TrueNAS, Unraid)
+    let cat_synology = Scanner::categorize_device(false, false, Some("Synology-DS920"), "Synology Incorporated", &[]);
+    assert_eq!(cat_synology, DeviceCategory::StorageNas);
+
+    let cat_qnap = Scanner::categorize_device(false, false, Some("QNAP-TS453D"), "QNAP Systems", &[]);
+    assert_eq!(cat_qnap, DeviceCategory::StorageNas);
+
+    let cat_truenas = Scanner::categorize_device(false, false, Some("truenas-vault"), "Unknown", &[]);
+    assert_eq!(cat_truenas, DeviceCategory::StorageNas);
+
+    let ports_nas = vec![PortInfo {
+        port: 5000,
+        service: "Synology-DSM".to_string(),
+        description: "Synology Management Web UI".to_string(),
+    }];
+    let cat_nas_port = Scanner::categorize_device(false, false, None, "Unknown Vendor", &ports_nas);
+    assert_eq!(cat_nas_port, DeviceCategory::StorageNas);
+
+    // 13. Dedicated Servers & Homelab
+    let cat_proxmox = Scanner::categorize_device(false, false, Some("proxmox-pve-01"), "Intel", &[]);
+    assert_eq!(cat_proxmox, DeviceCategory::Server);
+
+    let cat_docker = Scanner::categorize_device(false, false, Some("docker-homelab"), "Unknown", &[]);
+    assert_eq!(cat_docker, DeviceCategory::Server);
+
+    let cat_pihole = Scanner::categorize_device(false, false, Some("pihole"), "Raspberry Pi Trading Ltd", &[]);
+    assert_eq!(cat_pihole, DeviceCategory::Server);
+
+    // 14. Wearables (Apple Watch, Garmin, Fitbit, Galaxy Watch)
+    let cat_apple_watch = Scanner::categorize_device(false, false, Some("Omars-Apple-Watch"), "Apple Inc.", &[]);
+    assert_eq!(cat_apple_watch, DeviceCategory::Wearable);
+
+    let cat_garmin = Scanner::categorize_device(false, false, Some("Garmin-Forerunner"), "Garmin International", &[]);
+    assert_eq!(cat_garmin, DeviceCategory::Wearable);
+
+    // 15. Network Bridges / Extenders / Managed Switches
+    let cat_extender = Scanner::categorize_device(false, false, Some("TP-Link-Extender-RE305"), "TP-Link Corporation", &[]);
+    assert_eq!(cat_extender, DeviceCategory::NetworkBridge);
+
+    let cat_repeater = Scanner::categorize_device(false, false, Some("Wifi-Repeater-Living"), "Netgear", &[]);
+    assert_eq!(cat_repeater, DeviceCategory::NetworkBridge);
+
+    let cat_switch_net = Scanner::categorize_device(false, false, Some("unifi-switch-8p"), "Ubiquiti Inc.", &[]);
+    assert_eq!(cat_switch_net, DeviceCategory::NetworkBridge);
+
+    // 16. Multi-layer fingerprinting: DIAL/HTTP banners and mDNS service discovery
+    let cat_adv_cast = Scanner::categorize_device_advanced(
+        false,
+        false,
+        None,
+        "Unknown (Randomized)",
+        &[],
+        &["Google Cast".to_string(), "_googlecast._tcp.local".to_string()],
+        Some("Chromecast with Google TV"),
+    );
+    assert_eq!(cat_adv_cast, DeviceCategory::StreamingDevice);
+
+    let cat_adv_speaker = Scanner::categorize_device_advanced(
+        false,
+        false,
+        None,
+        "Unknown (Randomized)",
+        &[],
+        &["Spotify Connect".to_string()],
+        Some("Bose SoundTouch 10"),
+    );
+    assert_eq!(cat_adv_speaker, DeviceCategory::SmartSpeaker);
+
+    let cat_adv_cam = Scanner::categorize_device_advanced(
+        false,
+        false,
+        None,
+        "Unknown (Randomized)",
+        &[],
+        &["_onvif._tcp.local".to_string()],
+        Some("Hikvision Dome Camera"),
+    );
+    assert_eq!(cat_adv_cam, DeviceCategory::SecurityCamera);
 }
 
 #[test]
@@ -320,6 +445,8 @@ fn test_i18n_top_10_languages() {
             assert!(!cat_str.is_empty(), "Categoría {:?} vacía en idioma {:?}", cat, lang);
             let short_cat = Translations::category_short_name(cat, lang);
             assert!(!short_cat.is_empty(), "Categoría corta {:?} vacía en idioma {:?}", cat, lang);
+            let tip = Translations::tip_filter_category(cat, lang);
+            assert!(!tip.is_empty(), "Tooltip de categoría {:?} vacío en idioma {:?}", cat, lang);
         }
 
         // Validate port and service translations
@@ -2180,16 +2307,8 @@ fn test_all_tooltips_translated_in_all_languages() {
         assert!(!Translations::tip_filter_blocked(lang).is_empty());
         assert!(!Translations::tip_port_scan(lang).is_empty());
 
-        for &cat in &[
-            DeviceCategory::Router,
-            DeviceCategory::Smartphone,
-            DeviceCategory::Computer,
-            DeviceCategory::SmartTv,
-            DeviceCategory::StreamingDevice,
-            DeviceCategory::GamingConsole,
-            DeviceCategory::Iot,
-        ] {
-            assert!(!Translations::tip_filter_category(cat, lang).is_empty());
+        for &cat in DeviceCategory::all() {
+            assert!(!Translations::tip_filter_category(cat, lang).is_empty(), "Tip for {:?} in {:?}", cat, lang);
         }
     }
 }
@@ -2570,4 +2689,49 @@ async fn test_single_instance_lifecycle_and_secondary_detection() {
         }
     }
     let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_all_16_device_categories_coverage_and_serde_compatibility() {
+    use netlens::i18n::{Language, Translations};
+    use netlens::model::DeviceCategory;
+
+    let all_cats = DeviceCategory::all();
+    assert_eq!(all_cats.len(), 16, "Must define exactly 16 granular device categories");
+
+    for &cat in all_cats {
+        assert!(!cat.icon().is_empty(), "Icon missing for category {:?}", cat);
+        assert!(!cat.display_name().is_empty(), "Display name missing for category {:?}", cat);
+
+        for &lang in Language::ALL {
+            let name = Translations::category_name(cat, lang);
+            let short = Translations::category_short_name(cat, lang);
+            let tip = Translations::tip_filter_category(cat, lang);
+
+            assert!(!name.is_empty(), "category_name empty for {:?} in {:?}", cat, lang);
+            assert!(!short.is_empty(), "category_short_name empty for {:?} in {:?}", cat, lang);
+            assert!(!tip.is_empty(), "tip_filter_category empty for {:?} in {:?}", cat, lang);
+            assert!(short.contains(cat.icon()), "category_short_name must include icon for {:?} in {:?}", cat, lang);
+        }
+    }
+
+    // Verify serde backwards compatibility aliases
+    let legacy_smart_home: DeviceCategory = serde_json::from_str("\"SmartHomeIot\"").unwrap();
+    assert_eq!(legacy_smart_home, DeviceCategory::Iot);
+
+    let legacy_smart_home_alt: DeviceCategory = serde_json::from_str("\"SmartHome\"").unwrap();
+    assert_eq!(legacy_smart_home_alt, DeviceCategory::Iot);
+
+    let legacy_nas: DeviceCategory = serde_json::from_str("\"Nas\"").unwrap();
+    assert_eq!(legacy_nas, DeviceCategory::StorageNas);
+
+    let legacy_storage: DeviceCategory = serde_json::from_str("\"Storage\"").unwrap();
+    assert_eq!(legacy_storage, DeviceCategory::StorageNas);
+
+    // Verify round-trip serialization for new categories
+    for &cat in all_cats {
+        let serialized = serde_json::to_string(&cat).unwrap();
+        let deserialized: DeviceCategory = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, cat);
+    }
 }

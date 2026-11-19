@@ -1,9 +1,10 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
-use tokio::net::UdpSocket;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpStream, UdpSocket};
 use tokio::time::timeout;
 
-/// Discovered identity information via local network protocols (mDNS, NetBIOS, SSDP)
+/// Discovered identity information via local network protocols (mDNS, NetBIOS, SSDP, HTTP/DIAL)
 #[derive(Debug, Clone, Default)]
 pub struct DiscoveredIdentity {
     pub model_or_friendly_name: Option<String>,
@@ -14,39 +15,62 @@ pub struct DiscoveredIdentity {
 pub struct Discovery;
 
 impl Discovery {
-    /// Attempts to enrich device identity by querying mDNS, NetBIOS, and SSDP
+    /// Attempts to enrich device identity by querying NetBIOS, mDNS, SSDP/UPnP, and HTTP/DIAL
     pub async fn probe(ip: Ipv4Addr) -> DiscoveredIdentity {
         let mut identity = DiscoveredIdentity::default();
 
         // 1. Attempt NetBIOS Name Service query (UDP 137)
-        if let Ok(Ok(Some(netbios_name))) = timeout(Duration::from_millis(350), Self::probe_netbios(ip)).await {
+        if let Ok(Ok(Some(netbios_name))) = timeout(Duration::from_millis(300), Self::probe_netbios(ip)).await {
             identity.model_or_friendly_name = Some(netbios_name.clone());
             identity.hostname = Some(netbios_name);
             identity.services.push("NetBIOS / SMB".to_string());
         }
 
-        // 2. Attempt mDNS PTR query (UDP 5353)
-        if let Ok(Ok(Some(mdns_name))) = timeout(Duration::from_millis(350), Self::probe_mdns_ptr(ip)).await {
-            let clean_name = mdns_name.trim_end_matches(".local").replace(".local.", "");
-            if identity.model_or_friendly_name.is_none() {
-                identity.model_or_friendly_name = Some(clean_name.clone());
+        // 2. Attempt mDNS PTR query & service detection (UDP 5353)
+        if let Ok(Ok(Some((mdns_name, mdns_services)))) = timeout(Duration::from_millis(300), Self::probe_mdns_ptr(ip)).await {
+            if let Some(name) = mdns_name {
+                let clean_name = name.trim_end_matches(".local").replace(".local.", "");
+                if identity.model_or_friendly_name.is_none() {
+                    identity.model_or_friendly_name = Some(clean_name.clone());
+                }
+                if identity.hostname.is_none() {
+                    identity.hostname = Some(clean_name);
+                }
             }
-            if identity.hostname.is_none() {
-                identity.hostname = Some(clean_name);
+            for svc in mdns_services {
+                if !identity.services.contains(&svc) {
+                    identity.services.push(svc);
+                }
             }
             if !identity.services.contains(&"mDNS / ZeroConf".to_string()) {
                 identity.services.push("mDNS / ZeroConf".to_string());
             }
         }
 
-        // 3. Attempt SSDP query (UDP 1900)
-        if let Ok(Ok(Some((friendly_name, server_tag)))) = timeout(Duration::from_millis(350), Self::probe_ssdp(ip)).await {
+        // 3. Attempt SSDP / UPnP M-SEARCH query (UDP 1900)
+        if let Ok(Ok(Some((friendly_name, ssdp_services)))) = timeout(Duration::from_millis(300), Self::probe_ssdp(ip)).await {
             if let Some(fname) = friendly_name {
-                identity.model_or_friendly_name = Some(fname);
+                if identity.model_or_friendly_name.is_none() {
+                    identity.model_or_friendly_name = Some(fname);
+                }
             }
-            if let Some(srv) = server_tag {
+            for srv in ssdp_services {
                 if !identity.services.contains(&srv) {
                     identity.services.push(srv);
+                }
+            }
+        }
+
+        // 4. Quick HTTP/DIAL service identification (Port 8008 Google Cast & Port 80 Web titles)
+        if let Ok(Ok(Some((web_name, web_service)))) = timeout(Duration::from_millis(250), Self::probe_http_banner(ip)).await {
+            if let Some(wname) = web_name {
+                if identity.model_or_friendly_name.is_none() {
+                    identity.model_or_friendly_name = Some(wname);
+                }
+            }
+            if let Some(wsvc) = web_service {
+                if !identity.services.contains(&wsvc) {
+                    identity.services.push(wsvc);
                 }
             }
         }
@@ -59,8 +83,6 @@ impl Discovery {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 137);
 
-        // Standard NetBIOS Node Status Request packet (50 bytes)
-        // Query "*" encoded in base32 half-ASCII (RFC 1002)
         #[rustfmt::skip]
         let query: [u8; 50] = [
             0x82, 0x28, // Transaction ID
@@ -69,7 +91,6 @@ impl Discovery {
             0x00, 0x00, // Answer RRs: 0
             0x00, 0x00, // Authority RRs: 0
             0x00, 0x00, // Additional RRs: 0
-            // Query Name: 0x20 (32 bytes)
             0x20,
             0x43, 0x4b, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
             0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
@@ -88,7 +109,6 @@ impl Discovery {
             return Ok(None);
         }
 
-        // In NetBIOS response, number of names starts at byte 56
         let num_names = buf[56] as usize;
         let mut offset = 57;
 
@@ -118,12 +138,11 @@ impl Discovery {
         Ok(None)
     }
 
-    /// Reverse mDNS query (PTR) for <ip-reversed>.in-addr.arpa on UDP 5353
-    async fn probe_mdns_ptr(ip: Ipv4Addr) -> Result<Option<String>, ()> {
+    /// Reverse mDNS query (PTR) on UDP 5353 and service detection
+    async fn probe_mdns_ptr(ip: Ipv4Addr) -> Result<Option<(Option<String>, Vec<String>)>, ()> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 5353);
 
-        // Build reverse name: 1.168.192.in-addr.arpa
         let octets = ip.octets();
         let labels = [
             octets[3].to_string(),
@@ -135,7 +154,6 @@ impl Discovery {
         ];
 
         let mut packet = Vec::with_capacity(64);
-        // Header
         packet.extend_from_slice(&[
             0x12, 0x34, // ID
             0x00, 0x00, // Flags (Standard Query)
@@ -145,30 +163,53 @@ impl Discovery {
             0x00, 0x00, // 0 Addr
         ]);
 
-        // Questions
         for label in &labels {
             packet.push(label.len() as u8);
             packet.extend_from_slice(label.as_bytes());
         }
-        packet.push(0x00); // Terminating null byte
-        packet.extend_from_slice(&[0x00, 0x0c]); // Type: PTR (12)
-        packet.extend_from_slice(&[0x00, 0x01]); // Class: IN (1)
+        packet.push(0x00);
+        packet.extend_from_slice(&[0x00, 0x0c]); // Type: PTR
+        packet.extend_from_slice(&[0x00, 0x01]); // Class: IN
 
         socket.send_to(&packet, target).await.map_err(|_| ())?;
 
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; 1500];
         let (len, from) = socket.recv_from(&mut buf).await.map_err(|_| ())?;
         if from.ip() != std::net::IpAddr::V4(ip) || len < 12 {
             return Ok(None);
         }
 
-        // Search for readable strings ending in .local
         let body = &buf[12..len];
-        if let Some(name) = Self::extract_local_name(body) {
-            return Ok(Some(name));
+        let raw_text = String::from_utf8_lossy(body).to_lowercase();
+        let mut detected_services = Vec::new();
+
+        if raw_text.contains("googlecast") || raw_text.contains("_googlecast") {
+            detected_services.push("Streaming / Google Cast".to_string());
+        }
+        if raw_text.contains("airplay") || raw_text.contains("_airplay") {
+            detected_services.push("Streaming / Apple AirPlay".to_string());
+        }
+        if raw_text.contains("raop") {
+            detected_services.push("Audio / AirPlay (RAOP)".to_string());
+        }
+        if raw_text.contains("ipp") || raw_text.contains("_printer") {
+            detected_services.push("Network Printing (IPP)".to_string());
+        }
+        if raw_text.contains("sonos") {
+            detected_services.push("Smart Audio / Sonos".to_string());
+        }
+        if raw_text.contains("spotify") {
+            detected_services.push("Audio / Spotify Connect".to_string());
+        }
+        if raw_text.contains("hap") || raw_text.contains("homekit") {
+            detected_services.push("Smart Home / HomeKit (HAP)".to_string());
+        }
+        if raw_text.contains("axis-video") || raw_text.contains("onvif") || raw_text.contains("rtsp") {
+            detected_services.push("Security / IP Camera Video".to_string());
         }
 
-        Ok(None)
+        let extracted_name = Self::extract_local_name(body);
+        Ok(Some((extracted_name, detected_services)))
     }
 
     /// Extracts a hostname from DNS bytes ending in .local
@@ -183,7 +224,7 @@ impl Discovery {
     }
 
     /// SSDP M-SEARCH query (UDP 1900)
-    async fn probe_ssdp(ip: Ipv4Addr) -> Result<Option<(Option<String>, Option<String>)>, ()> {
+    async fn probe_ssdp(ip: Ipv4Addr) -> Result<Option<(Option<String>, Vec<String>)>, ()> {
         let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|_| ())?;
         let target = SocketAddrV4::new(ip, 1900);
 
@@ -198,7 +239,7 @@ impl Discovery {
         let response = String::from_utf8_lossy(&buf[..len]);
 
         let mut friendly_name = None;
-        let mut server_tag = None;
+        let mut services = Vec::new();
 
         for line in response.lines() {
             let lower = line.to_lowercase();
@@ -206,14 +247,97 @@ impl Discovery {
                 let parts: Vec<&str> = line.splitn(2, ':').collect();
                 if parts.len() == 2 {
                     let srv = parts[1].trim();
-                    server_tag = Some(srv.to_string());
-                    if friendly_name.is_none() && (srv.contains("UPnP") || srv.contains("Linux") || srv.contains("Windows")) {
-                        friendly_name = Some(srv.to_string());
+                    if srv.contains("Sonos") {
+                        services.push("Smart Audio / Sonos".to_string());
+                        if friendly_name.is_none() {
+                            friendly_name = Some("Sonos Speaker".to_string());
+                        }
+                    } else if srv.contains("Roku") {
+                        services.push("Streaming / Roku".to_string());
+                        if friendly_name.is_none() {
+                            friendly_name = Some("Roku Streaming Device".to_string());
+                        }
+                    } else if srv.contains("Tizen") || srv.contains("WebOS") {
+                        services.push("Smart TV Display".to_string());
+                    }
+                }
+            } else if lower.starts_with("st:") {
+                if lower.contains("dial-multiscreen") {
+                    services.push("Streaming / DIAL (Chromecast/FireTV)".to_string());
+                } else if lower.contains("mediarenderer") {
+                    services.push("UPnP MediaRenderer (Smart TV/Audio)".to_string());
+                } else if lower.contains("zoneplayer") {
+                    services.push("Smart Audio / Sonos ZonePlayer".to_string());
+                } else if lower.contains("digitalsecuritycamera") {
+                    services.push("Security / UPnP Security Camera".to_string());
+                } else if lower.contains("printer") {
+                    services.push("Network Printing / UPnP".to_string());
+                }
+            }
+        }
+
+        Ok(Some((friendly_name, services)))
+    }
+
+    /// Quick HTTP probe for DIAL eureka_info (port 8008) and web titles (port 80)
+    async fn probe_http_banner(ip: Ipv4Addr) -> Result<Option<(Option<String>, Option<String>)>, ()> {
+        // 1. Try Google Cast DIAL info on port 8008
+        let dial_addr = SocketAddrV4::new(ip, 8008);
+        if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(150), TcpStream::connect(dial_addr)).await {
+            let req = b"GET /setup/eureka_info HTTP/1.0\r\nHost: 127.0.0.1:8008\r\nConnection: close\r\n\r\n";
+            if stream.write_all(req).await.is_ok() {
+                let mut buf = [0u8; 1024];
+                if let Ok(Ok(n)) = timeout(Duration::from_millis(150), stream.read(&mut buf)).await {
+                    let body = String::from_utf8_lossy(&buf[..n]);
+                    // Parse "name":"Living Room TV"
+                    if let Some(pos) = body.find("\"name\":\"") {
+                        let rem = &body[pos + 8..];
+                        if let Some(end) = rem.find('"') {
+                            let name = &rem[..end];
+                            if !name.is_empty() {
+                                return Ok(Some((Some(name.to_string()), Some("Streaming / Google Cast".to_string()))));
+                            }
+                        }
+                    }
+                    return Ok(Some((Some("Google Cast Device".to_string()), Some("Streaming / Google Cast".to_string()))));
+                }
+            }
+        }
+
+        // 2. Try HTTP Title on port 80
+        let http_addr = SocketAddrV4::new(ip, 80);
+        if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(150), TcpStream::connect(http_addr)).await {
+            let req = format!("GET / HTTP/1.0\r\nHost: {}\r\nUser-Agent: NetLens/0.2\r\nConnection: close\r\n\r\n", ip);
+            if stream.write_all(req.as_bytes()).await.is_ok() {
+                let mut buf = [0u8; 1500];
+                if let Ok(Ok(n)) = timeout(Duration::from_millis(150), stream.read(&mut buf)).await {
+                    let resp = String::from_utf8_lossy(&buf[..n]);
+                    let resp_lower = resp.to_lowercase();
+
+                    if let Some(start_tag) = resp_lower.find("<title>") {
+                        let title_part = &resp[start_tag + 7..];
+                        if let Some(end_tag) = title_part.to_lowercase().find("</title>") {
+                            let title = title_part[..end_tag].trim();
+                            if !title.is_empty() && title.len() < 50 {
+                                let service = if resp_lower.contains("camera") || resp_lower.contains("hikvision") || resp_lower.contains("reolink") || resp_lower.contains("dahua") {
+                                    Some("Security / IP Camera Web".to_string())
+                                } else if resp_lower.contains("synology") || resp_lower.contains("diskstation") || resp_lower.contains("qnap") || resp_lower.contains("truenas") {
+                                    Some("Storage / NAS Web UI".to_string())
+                                } else if resp_lower.contains("tasmota") || resp_lower.contains("wled") || resp_lower.contains("shelly") {
+                                    Some("Smart Home / IoT Web UI".to_string())
+                                } else if resp_lower.contains("printer") || resp_lower.contains("laserjet") || resp_lower.contains("epson") {
+                                    Some("Printer / Web Admin".to_string())
+                                } else {
+                                    Some("HTTP Web Panel".to_string())
+                                };
+                                return Ok(Some((Some(title.to_string()), service)));
+                            }
+                        }
                     }
                 }
             }
         }
 
-        Ok(Some((friendly_name, server_tag)))
+        Ok(None)
     }
 }
