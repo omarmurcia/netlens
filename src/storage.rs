@@ -29,6 +29,10 @@ fn default_theme() -> String {
     "TokyoNight".to_string()
 }
 
+fn default_auto_scan_interval() -> u32 {
+    30
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     #[serde(default)]
@@ -47,7 +51,7 @@ pub struct AppState {
     pub router_ip: Option<String>,
     #[serde(default)]
     pub router_password: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_auto_scan_interval")]
     pub auto_scan_interval_secs: u32,
     #[serde(default)]
     pub known_macs: Vec<String>,
@@ -74,7 +78,7 @@ impl Default for AppState {
             speed_test_history: Vec::new(),
             router_ip: None,
             router_password: None,
-            auto_scan_interval_secs: 0,
+            auto_scan_interval_secs: 30,
             known_macs: Vec::new(),
             autostart: false,
             minimize_to_tray_on_close: true,

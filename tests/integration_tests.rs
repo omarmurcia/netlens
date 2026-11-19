@@ -921,6 +921,15 @@ fn test_topology_and_auto_scan_state_serde() {
     assert_eq!(state.known_macs[0], "28:44:F4:9F:1B:09");
     assert!(state.autostart);
     assert!(state.minimize_to_tray_on_close);
+
+    // Verify default auto_scan_interval_secs is 30 in clean install / default state
+    let default_state = AppState::default();
+    assert_eq!(default_state.auto_scan_interval_secs, 30);
+
+    // Verify missing field in clean state json deserializes to default 30s
+    let clean_json = r#"{ "devices": [] }"#;
+    let clean_state: AppState = serde_json::from_str(clean_json).expect("deserialize clean app state");
+    assert_eq!(clean_state.auto_scan_interval_secs, 30);
 }
 
 #[test]
