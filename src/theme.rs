@@ -390,6 +390,62 @@ impl CustomStyles {
         }
     }
 
+    /// Discreet, slim horizontal scrollbar that only appears when hovering or dragging over the area
+    pub fn discrete_horizontal_scrollbar_style() -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style {
+        |theme, status| {
+            let scroller_bg = match status {
+                scrollable::Status::Active { .. } => Background::Color(Color::TRANSPARENT),
+                scrollable::Status::Hovered {
+                    is_horizontal_scrollbar_hovered,
+                    is_horizontal_scrollbar_disabled,
+                    ..
+                } => {
+                    if is_horizontal_scrollbar_disabled {
+                        Background::Color(Color::TRANSPARENT)
+                    } else if is_horizontal_scrollbar_hovered {
+                        Background::Color(Color::from_rgba8(56, 189, 248, 0.75))
+                    } else {
+                        Background::Color(Color::from_rgba8(148, 163, 184, 0.35))
+                    }
+                }
+                scrollable::Status::Dragged {
+                    is_horizontal_scrollbar_dragged,
+                    is_horizontal_scrollbar_disabled,
+                    ..
+                } => {
+                    if is_horizontal_scrollbar_disabled {
+                        Background::Color(Color::TRANSPARENT)
+                    } else if is_horizontal_scrollbar_dragged {
+                        Background::Color(Color::from_rgb8(14, 165, 233))
+                    } else {
+                        Background::Color(Color::from_rgba8(148, 163, 184, 0.45))
+                    }
+                }
+            };
+
+            let rail = scrollable::Rail {
+                background: None,
+                border: Border::default(),
+                scroller: scrollable::Scroller {
+                    background: scroller_bg,
+                    border: Border {
+                        radius: 2.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                },
+            };
+
+            scrollable::Style {
+                container: container::Style::default(),
+                vertical_rail: rail,
+                horizontal_rail: rail,
+                gap: None,
+                auto_scroll: scrollable::default(theme, status).auto_scroll,
+            }
+        }
+    }
+
     /// Style for elegant tooltip popup containers
     pub fn tooltip_style() -> container::Style {
         container::Style {

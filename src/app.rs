@@ -5763,7 +5763,12 @@ impl App {
         .width(Length::Fixed(300.0));
 
         // Category compact styled pill buttons in an elegant scrollable horizontal row
-        let mut category_pills = row![].spacing(6).align_y(Alignment::Center).padding(Padding::from([2, 4]));
+        let mut category_pills = row![].spacing(6).align_y(Alignment::Center).padding(Padding {
+            top: 3.0,
+            right: 6.0,
+            bottom: 9.0,
+            left: 4.0,
+        });
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
         let all_btn = button(text(Translations::all_filter(self.language)).size(12))
@@ -5867,11 +5872,11 @@ impl App {
         let category_scroll = scrollable(category_pills)
             .direction(scrollable::Direction::Horizontal(
                 scrollable::Scrollbar::new()
-                    .width(4)
-                    .margin(2)
-                    .scroller_width(6),
+                    .width(3)
+                    .margin(1)
+                    .scroller_width(3),
             ))
-            .style(CustomStyles::scrollbar_style())
+            .style(CustomStyles::discrete_horizontal_scrollbar_style())
             .width(Length::Fill);
 
         row![
