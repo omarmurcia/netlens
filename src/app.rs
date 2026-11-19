@@ -5758,11 +5758,12 @@ impl App {
             &self.search_query,
         )
         .on_input(Message::SearchChanged)
-        .padding(Padding::from([7, 10]))
-        .width(Length::FillPortion(1));
+        .size(13)
+        .padding(Padding::from([8, 12]))
+        .width(Length::Fixed(300.0));
 
-        // Category compact styled pill buttons
-        let mut category_pills = row![].spacing(6).align_y(Alignment::Center);
+        // Category compact styled pill buttons in an elegant scrollable horizontal row
+        let mut category_pills = row![].spacing(6).align_y(Alignment::Center).padding(Padding::from([2, 4]));
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
         let all_btn = button(text(Translations::all_filter(self.language)).size(12))
@@ -5773,41 +5774,16 @@ impl App {
                     CustomStyles::filter_pill_inactive()
                 }
             })
-            .padding(Padding::from([4, 8]))
+            .padding(Padding::from([4, 10]))
             .on_press(Message::CategorySelected(None));
         category_pills = category_pills.push(
             self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
         );
 
-        let mut visible_categories: Vec<DeviceCategory> = Vec::new();
-        for d in &self.devices {
-            if d.category != DeviceCategory::Unknown && !visible_categories.contains(&d.category) {
-                visible_categories.push(d.category);
+        for &cat in DeviceCategory::all() {
+            if cat == DeviceCategory::Unknown {
+                continue;
             }
-        }
-        if let Some(sel) = self.selected_category {
-            if !visible_categories.contains(&sel) {
-                visible_categories.push(sel);
-            }
-        }
-        if visible_categories.is_empty() {
-            visible_categories = vec![
-                DeviceCategory::Router,
-                DeviceCategory::Smartphone,
-                DeviceCategory::Computer,
-                DeviceCategory::SmartTv,
-                DeviceCategory::StreamingDevice,
-                DeviceCategory::GamingConsole,
-                DeviceCategory::SmartSpeaker,
-                DeviceCategory::SecurityCamera,
-                DeviceCategory::Iot,
-            ];
-        }
-        visible_categories.sort_by_key(|c| {
-            DeviceCategory::all().iter().position(|x| x == c).unwrap_or(99)
-        });
-
-        for cat in visible_categories {
             let is_active = self.selected_category == Some(cat);
             let label = Translations::category_short_name(cat, self.language);
             let cat_btn = button(text(label).size(12))
@@ -5888,13 +5864,22 @@ impl App {
             |loc| Message::SortChanged(loc.sort),
         );
 
+        let category_scroll = scrollable(category_pills)
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Scrollbar::new()
+                    .width(4)
+                    .margin(2)
+                    .scroller_width(6),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .width(Length::Fill);
+
         row![
             search_bar,
-            category_pills,
-            space::horizontal(),
+            category_scroll,
             sort_picker,
         ]
-        .spacing(10)
+        .spacing(12)
         .align_y(Alignment::Center)
         .into()
     }
