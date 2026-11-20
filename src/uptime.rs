@@ -52,20 +52,33 @@ impl Default for UptimeTracker {
 }
 
 impl UptimeTracker {
-    /// Checks connectivity to the gateway and the Internet (Cloudflare/Google DNS)
+    /// Checks connectivity to the gateway and the Internet (Cloudflare/Google DNS) concurrently
     pub async fn probe_connectivity(gateway_ip: Option<Ipv4Addr>) -> (bool, bool) {
-        // 1. Probe Gateway (port 80 or 53)
-        let gw_ok = if let Some(gw) = gateway_ip {
-            Self::probe_tcp_quick(gw, 80).await || Self::probe_tcp_quick(gw, 53).await || Self::probe_ping(gw).await
-        } else {
-            false
+        let gw_fut = async {
+            if let Some(gw) = gateway_ip {
+                let (p80, p53) = tokio::join!(
+                    Self::probe_tcp_quick(gw, 80),
+                    Self::probe_tcp_quick(gw, 53),
+                );
+                if p80 || p53 {
+                    true
+                } else {
+                    Self::probe_ping(gw).await
+                }
+            } else {
+                false
+            }
         };
 
-        // 2. Probe external Internet (1.1.1.1 or 8.8.8.8 on DNS port 53)
-        let internet_ok = Self::probe_tcp_quick(Ipv4Addr::new(1, 1, 1, 1), 53).await
-            || Self::probe_tcp_quick(Ipv4Addr::new(8, 8, 8, 8), 53).await;
+        let internet_fut = async {
+            let (cf, gg) = tokio::join!(
+                Self::probe_tcp_quick(Ipv4Addr::new(1, 1, 1, 1), 53),
+                Self::probe_tcp_quick(Ipv4Addr::new(8, 8, 8, 8), 53),
+            );
+            cf || gg
+        };
 
-        (gw_ok, internet_ok)
+        tokio::join!(gw_fut, internet_fut)
     }
 
     /// Quick TCP socket test with 350ms timeout

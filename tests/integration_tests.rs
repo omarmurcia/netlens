@@ -2797,3 +2797,110 @@ fn test_all_16_device_categories_coverage_and_serde_compatibility() {
         assert_eq!(deserialized, cat);
     }
 }
+
+#[test]
+fn test_performance_optimizations_and_bugfixes() {
+    use netlens::app::{App, Message, SortOption};
+    use netlens::storage::{AppState, AppStateRef, Storage};
+    use netlens::telemetry::WifiStatus;
+    use netlens::tray::get_icon_argb;
+    use netlens::widget::CachedSparkline;
+    use std::collections::{HashMap, VecDeque};
+
+    // 1. Wi-Fi band_label ordering (6 GHz must not be shadowed by 5 GHz)
+    let wifi_6e = WifiStatus {
+        frequency_mhz: Some(6115.0),
+        ..Default::default()
+    };
+    assert_eq!(wifi_6e.band_label(), "6 GHz (Wi-Fi 6E)");
+
+    let wifi_5 = WifiStatus {
+        frequency_mhz: Some(5180.0),
+        ..Default::default()
+    };
+    assert_eq!(wifi_5.band_label(), "5 GHz");
+
+    let wifi_24 = WifiStatus {
+        frequency_mhz: Some(2437.0),
+        ..Default::default()
+    };
+    assert_eq!(wifi_24.band_label(), "2.4 GHz");
+
+    // 2. Compact 64x64 tray icon reduces D-Bus pixmap footprint
+    let tray_icon = get_icon_argb().expect("Tray icon should load");
+    assert_eq!(tray_icon.width, 64);
+    assert_eq!(tray_icon.height, 64);
+    assert_eq!(tray_icon.data.len(), 64 * 64 * 4);
+
+    // 3. Zero-clone AppStateRef serializes identically to AppState
+    let meta = HashMap::new();
+    let mac = "aa:bb:cc:dd:ee:ff".to_string();
+    let notif = netlens::notification::NotificationSettings::default();
+    let state_ref = AppStateRef {
+        language: netlens::i18n::Language::Spanish,
+        theme: "TokyoNight",
+        devices: &[],
+        device_metadata: &meta,
+        last_speed_test: None,
+        speed_test_history: &[],
+        router_ip: Some("192.168.1.1"),
+        router_password: None,
+        auto_scan_interval_secs: 30,
+        known_macs: vec![&mac],
+        autostart: false,
+        minimize_to_tray_on_close: true,
+        network_events: &[],
+        notification_settings: &notif,
+        storage_credentials: None,
+    };
+    let json = Storage::serialize_ref(&state_ref).expect("serialize AppStateRef");
+    let decoded: AppState = serde_json::from_str(&json).expect("deserialize as AppState");
+    assert_eq!(decoded.known_macs, vec!["aa:bb:cc:dd:ee:ff"]);
+    assert_eq!(decoded.router_ip.as_deref(), Some("192.168.1.1"));
+
+    // 4. CachedSparkline instantiation with VecDeque and Cache
+    let mut pts = VecDeque::new();
+    pts.push_back(10.0);
+    pts.push_back(25.0);
+    let cache = iced::widget::canvas::Cache::new();
+    let cached = CachedSparkline::new(&pts, iced::Color::WHITE, &cache);
+    assert_eq!(cached.points.len(), 2);
+
+    // 5. UTF-8 multibyte vendor name rendering + cached filtering/sorting do not panic
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (mut app, _) = App::new();
+        let now = Local::now();
+        app.devices.push(Device {
+            ip: Ipv4Addr::new(192, 168, 1, 77),
+            mac: "11:22:33:44:55:66".to_string(),
+            vendor: "ShenZhen Tecnología Avanzada 中文测试设备".to_string(),
+            hostname: Some("test-utf8".to_string()),
+            category: DeviceCategory::Computer,
+            is_randomized_mac: false,
+            is_gateway: false,
+            is_current_host: false,
+            interface: "eth0".to_string(),
+            latency_ms: Some(2.5),
+            open_ports: vec![],
+            status: DeviceStatus::Online,
+            first_seen: now,
+            last_seen: now,
+            custom_alias: None,
+            is_whitelisted: false,
+            is_blocked: false,
+            speed_limit_kbps: None,
+            connection_type: None,
+            wifi_signal_dbm: None,
+            negotiated_mbps: None,
+            model_name: None,
+            discovered_services: vec![],
+            request_history: vec![],
+        });
+        let _ = app.update(Message::SortChanged(SortOption::Vendor));
+        let _ = app.update(Message::SearchChanged("test-utf8".to_string()));
+        assert!(!app.cached_filtered_indices.is_empty());
+        let win_id = iced::window::Id::unique();
+        let _view = app.view(win_id);
+    });
+}

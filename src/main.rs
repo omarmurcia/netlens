@@ -1,47 +1,20 @@
-mod app;
-mod autostart;
-mod discovery;
-mod export;
-mod history;
-mod i18n;
-mod model;
-mod notification;
-mod oui;
-mod realtime_monitor;
-mod router;
-mod scanner;
-mod security_audit;
-mod speedtest;
-mod storage;
-mod telemetry;
-mod theme;
-mod traceroute;
-mod tray;
-mod uptime;
-mod widget;
-mod wifi_analyzer;
-mod updater;
-mod single_instance;
-
-use app::App;
 use iced::futures::StreamExt;
-use oui::Oui;
+use netlens::app::App;
+use netlens::i18n;
+use netlens::oui::Oui;
+use netlens::scanner;
+use netlens::single_instance;
 use std::env;
 use std::sync::Arc;
 
-/// Requests the C library (glibc) to release all freed memory back to the Linux kernel
-#[cfg(target_os = "linux")]
-pub fn trim_memory() {
-    unsafe extern "C" {
-        fn malloc_trim(pad: usize) -> i32;
-    }
-    unsafe {
-        malloc_trim(0);
+fn truncate_chars(s: &str, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let head: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", head)
+    } else {
+        s.to_string()
     }
 }
-
-#[cfg(not(target_os = "linux"))]
-pub fn trim_memory() {}
 
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
@@ -139,16 +112,8 @@ async fn run_cli_scan() {
                     .map(|l| format!("{:.1} ms", l))
                     .unwrap_or_else(|| "-".to_string());
                 let name = dev.display_name();
-                let name_truncated = if name.len() > 23 {
-                    format!("{}...", &name[..20])
-                } else {
-                    name
-                };
-                let vendor_truncated = if dev.vendor.len() > 21 {
-                    format!("{}...", &dev.vendor[..18])
-                } else {
-                    dev.vendor.clone()
-                };
+                let name_truncated = truncate_chars(&name, 23);
+                let vendor_truncated = truncate_chars(&dev.vendor, 21);
 
                 println!(
                     "{:<16} {:<18} {:<24} {:<22} {:<10}",

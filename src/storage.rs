@@ -89,6 +89,26 @@ impl Default for AppState {
     }
 }
 
+/// Borrowed view of `AppState` for zero-clone serialization
+#[derive(Serialize)]
+pub struct AppStateRef<'a> {
+    pub language: Language,
+    pub theme: &'a str,
+    pub devices: &'a [Device],
+    pub device_metadata: &'a HashMap<String, DeviceMetadata>,
+    pub last_speed_test: Option<&'a SpeedTestResult>,
+    pub speed_test_history: &'a [SpeedTestResult],
+    pub router_ip: Option<&'a str>,
+    pub router_password: Option<&'a str>,
+    pub auto_scan_interval_secs: u32,
+    pub known_macs: Vec<&'a String>,
+    pub autostart: bool,
+    pub minimize_to_tray_on_close: bool,
+    pub network_events: &'a [crate::history::NetworkEvent],
+    pub notification_settings: &'a NotificationSettings,
+    pub storage_credentials: Option<&'a crate::router::StorageCredentials>,
+}
+
 pub struct Storage;
 
 impl Storage {
@@ -131,8 +151,8 @@ impl Storage {
         }
     }
 
-    /// Safely writes current state to disk
-    pub fn save(state: &AppState) -> Result<(), String> {
+    /// Writes serialized JSON atomically via temp file + rename to prevent corruption
+    pub fn write_json_atomic(json: &str) -> Result<(), String> {
         let path = Self::get_storage_path();
         if let Some(parent) = path.parent() {
             if !parent.exists() {
@@ -140,13 +160,27 @@ impl Storage {
             }
         }
 
-        let json = serde_json::to_string_pretty(state)
-            .map_err(|e| format!("Error serializing state to JSON: {}", e))?;
+        let tmp_path = path.with_extension("json.tmp");
+        fs::write(&tmp_path, json)
+            .map_err(|e| format!("Error writing temporary state {:?}: {}", tmp_path, e))?;
 
-        fs::write(&path, json)
-            .map_err(|e| format!("Error saving state to {:?}: {}", path, e))?;
+        fs::rename(&tmp_path, &path)
+            .map_err(|e| format!("Error committing state to {:?}: {}", path, e))?;
 
         Ok(())
+    }
+
+    /// Serializes a borrowed state reference without cloning `App` collections
+    pub fn serialize_ref(state: &AppStateRef<'_>) -> Result<String, String> {
+        serde_json::to_string_pretty(state)
+            .map_err(|e| format!("Error serializing state to JSON: {}", e))
+    }
+
+    /// Safely writes current state to disk
+    pub fn save(state: &AppState) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(state)
+            .map_err(|e| format!("Error serializing state to JSON: {}", e))?;
+        Self::write_json_atomic(&json)
     }
 
     /// Applies aliases, categories, and security policies (whitelist/blacklist) to devices by MAC

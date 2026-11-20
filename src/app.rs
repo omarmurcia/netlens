@@ -12,19 +12,19 @@ use crate::router::{
 use crate::scanner::{PingStats, ScanEvent, Scanner};
 use crate::security_audit::{AuditSeverity, SecurityAuditReport, SecurityAuditor};
 use crate::speedtest::{SpeedTest, SpeedTestEvent, SpeedTestResult, SpeedTestStage};
-use crate::storage::{AppState, DeviceMetadata, Storage};
-use crate::telemetry::Telemetry;
+use crate::storage::{AppStateRef, DeviceMetadata, Storage};
+use crate::telemetry::{Telemetry, TelemetrySnapshot};
 use crate::theme::CustomStyles;
 use crate::traceroute::{HopInfo, Traceroute};
 use crate::realtime_monitor::{NeighborAction, RealtimeMonitor};
 use crate::tray::{spawn_tray, NetLensTray, TrayAction, TrayState};
 use crate::uptime::UptimeTracker;
-use crate::widget::Sparkline;
+use crate::widget::CachedSparkline;
 use crate::wifi_analyzer::{WifiAnalyzer, WifiAnalyzerReport};
 use crate::updater::{InAppUpdateProgress, UpdateChecker, UpdateStatus};
 use iced::futures::channel::mpsc;
 use iced::futures::StreamExt;
-use iced::widget::canvas::Canvas;
+use iced::widget::canvas::{Cache, Canvas};
 use iced::widget::{
     button, center, column, container, pick_list, progress_bar, row, scrollable, space, text,
     text_input, tooltip, Column,
@@ -283,10 +283,28 @@ pub struct App {
     pub download_history: VecDeque<f32>,
     pub upload_history: VecDeque<f32>,
     pub ping_history: VecDeque<f32>,
+    pub download_sparkline_cache: Cache,
+    pub upload_sparkline_cache: Cache,
+    pub ping_sparkline_cache: Cache,
 
-    // Periodic Auto-Discovery
+    // Periodic Auto-Discovery & Tick throttling
     pub auto_scan_interval_secs: u32,
     pub last_scan_time: Instant,
+    pub last_uptime_check: Instant,
+    pub telemetry_in_flight: bool,
+    pub telemetry_tick_counter: u64,
+
+    // Debounced async state persistence & tray diffing
+    pub state_dirty: bool,
+    pub last_state_dirty: Option<Instant>,
+    pub persist_tx: std::sync::mpsc::Sender<String>,
+    pub last_tray_snapshot: (usize, bool, Option<String>, Language),
+
+    // Cached device list & filter counts (avoid re-sorting/re-allocating per frame)
+    pub cached_filtered_indices: Vec<usize>,
+    pub cached_visible_categories: Vec<DeviceCategory>,
+    pub cached_whitelist_count: usize,
+    pub cached_blocked_count: usize,
 
     // Intruder detection / Rogue Device Alert
     pub known_macs: HashSet<String>,
@@ -468,8 +486,9 @@ pub enum Message {
         action: String,
     },
 
-    // Periodic timer (1 second for speed and signal telemetry)
+    // Periodic timer (1 second active, 5 seconds in background) & async telemetry
     Tick,
+    TelemetryUpdated(TelemetrySnapshot),
 
     // Settings / Configuration
     OpenSettings,
@@ -600,19 +619,16 @@ async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
         return true;
     }
 
-    // 2. If ping fails (e.g. firewalled devices that drop ICMP but are connected), probe standard TCP ports
-    let tcp_ok = tokio::time::timeout(Duration::from_millis(400), async {
-        for port in [80, 443, 53, 8080, 22] {
-            if tokio::net::TcpStream::connect((ip, port)).await.is_ok() {
-                return true;
-            }
-        }
-        false
-    })
-    .await
-    .unwrap_or(false);
+    // 2. If ping fails (e.g. firewalled devices that drop ICMP but are connected), probe standard TCP ports concurrently
+    let ports = [80u16, 443, 53, 8080, 22];
+    let futs = ports.into_iter().map(|port| async move {
+        tokio::time::timeout(Duration::from_millis(350), tokio::net::TcpStream::connect((ip, port)))
+            .await
+            .map(|res| res.is_ok())
+            .unwrap_or(false)
+    });
 
-    tcp_ok
+    iced::futures::future::join_all(futs).await.into_iter().any(|ok| ok)
 }
 
 /// Default window configuration for NetLens (with official app icon)
@@ -705,6 +721,21 @@ impl App {
             include_bytes!("../assets/netlens.png").as_slice(),
         );
 
+        let (persist_tx, persist_rx) = std::sync::mpsc::channel::<String>();
+        let _ = std::thread::Builder::new()
+            .name("netlens-persist".to_string())
+            .spawn(move || {
+                while let Ok(mut latest_json) = persist_rx.recv() {
+                    // Coalesce bursts so only the latest serialized state is written to disk
+                    while let Ok(newer) = persist_rx.try_recv() {
+                        latest_json = newer;
+                    }
+                    if let Err(e) = Storage::write_json_atomic(&latest_json) {
+                        eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
+                    }
+                }
+            });
+
         let mut app = Self {
             network,
             devices,
@@ -749,8 +780,22 @@ impl App {
             download_history: VecDeque::with_capacity(30),
             upload_history: VecDeque::with_capacity(30),
             ping_history: VecDeque::with_capacity(30),
+            download_sparkline_cache: Cache::new(),
+            upload_sparkline_cache: Cache::new(),
+            ping_sparkline_cache: Cache::new(),
             auto_scan_interval_secs,
             last_scan_time: Instant::now(),
+            last_uptime_check: Instant::now() - Duration::from_secs(5),
+            telemetry_in_flight: false,
+            telemetry_tick_counter: 0,
+            state_dirty: false,
+            last_state_dirty: None,
+            persist_tx,
+            last_tray_snapshot: (initial_device_count, false, initial_gateway_ip.clone(), language),
+            cached_filtered_indices: Vec::new(),
+            cached_visible_categories: Vec::new(),
+            cached_whitelist_count: 0,
+            cached_blocked_count: 0,
             known_macs,
             alerted_macs: HashSet::new(),
             pending_intruder_alert: None,
@@ -813,6 +858,9 @@ impl App {
             router_has_storage: false,
         };
 
+        // Build initial cached device filter/sort/category structures
+        app.rebuild_device_caches();
+
         // Start System Tray StatusNotifierItem service
         spawn_tray(Arc::clone(&app.tray_state), Arc::clone(&app.tray_handle));
 
@@ -841,13 +889,20 @@ impl App {
         Self::new()
     }
 
-    /// Synchronizes current scan state and devices with System Tray
-    pub fn sync_tray_state(&self) {
+    /// Synchronizes current scan state and devices with System Tray (only when changed)
+    pub fn sync_tray_state(&mut self) {
+        let gw_str = self.network.gateway_ip.map(|g| g.to_string());
+        let snapshot = (self.devices.len(), self.is_scanning, gw_str, self.language);
+        if snapshot == self.last_tray_snapshot {
+            return;
+        }
+        self.last_tray_snapshot = snapshot.clone();
+
         if let Ok(mut s) = self.tray_state.lock() {
-            s.device_count = self.devices.len();
-            s.is_scanning = self.is_scanning;
-            s.gateway_ip = self.network.gateway_ip.map(|g| g.to_string());
-            s.language = self.language;
+            s.device_count = snapshot.0;
+            s.is_scanning = snapshot.1;
+            s.gateway_ip = snapshot.2;
+            s.language = snapshot.3;
         }
         if let Ok(lock) = self.tray_handle.lock() {
             if let Some(h) = lock.as_ref() {
@@ -859,45 +914,188 @@ impl App {
         }
     }
 
-    /// Persists current application state to disk
-    pub fn save_state(&self) {
-        let state = AppState {
+    fn serialize_current_state(&self) -> Result<String, String> {
+        let theme_str = theme_to_string(&self.current_theme);
+        let router_pw = if self.router_password_input.trim().is_empty() {
+            None
+        } else {
+            Some(self.router_password_input.as_str())
+        };
+        let known_macs: Vec<&String> = self.known_macs.iter().collect();
+
+        let state_ref = AppStateRef {
             language: self.language,
-            theme: theme_to_string(&self.current_theme).to_string(),
-            devices: self.devices.clone(),
-            device_metadata: self.device_metadata.clone(),
-            last_speed_test: self.speed_test_result.clone(),
-            speed_test_history: self.speed_test_history.clone(),
-            router_ip: Some(self.router_ip_input.clone()),
-            router_password: if self.router_password_input.trim().is_empty() {
-                None
-            } else {
-                Some(self.router_password_input.clone())
-            },
+            theme: theme_str,
+            devices: &self.devices,
+            device_metadata: &self.device_metadata,
+            last_speed_test: self.speed_test_result.as_ref(),
+            speed_test_history: &self.speed_test_history,
+            router_ip: Some(self.router_ip_input.as_str()),
+            router_password: router_pw,
             auto_scan_interval_secs: self.auto_scan_interval_secs,
-            known_macs: self.known_macs.iter().cloned().collect(),
+            known_macs,
             autostart: self.autostart_enabled,
             minimize_to_tray_on_close: self.minimize_on_close,
-            network_events: self.network_events.clone(),
-            notification_settings: self.notification_settings.clone(),
-            storage_credentials: Some(self.storage_credentials.clone()),
+            network_events: &self.network_events,
+            notification_settings: &self.notification_settings,
+            storage_credentials: Some(&self.storage_credentials),
         };
-        if let Err(e) = Storage::save(&state) {
-            eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
+        Storage::serialize_ref(&state_ref)
+    }
+
+    /// Queues an asynchronous, zero-clone state save on the background persistence thread
+    pub fn save_state(&mut self) {
+        self.state_dirty = false;
+        self.last_state_dirty = None;
+        match self.serialize_current_state() {
+            Ok(json) => {
+                if self.persist_tx.send(json).is_err() {
+                    // Fallback if writer thread stopped
+                    if let Err(e) = self.save_state_sync_inner() {
+                        eprintln!("Aviso: No se pudo guardar estado persistente: {}", e);
+                    }
+                }
+            }
+            Err(e) => eprintln!("Aviso: No se pudo serializar estado persistente: {}", e),
         }
     }
 
-    /// Periodic 1-second subscription for measuring upload/download speed, window events, and System Tray
-    pub fn subscription(&self) -> Subscription<Message> {
-        let tick_sub = Subscription::run(|| {
-            iced::futures::stream::unfold(
-                tokio::time::interval(Duration::from_millis(1000)),
-                |mut interval| async move {
-                    interval.tick().await;
-                    Some((Message::Tick, interval))
-                },
-            )
+    fn save_state_sync_inner(&self) -> Result<(), String> {
+        let json = self.serialize_current_state()?;
+        Storage::write_json_atomic(&json)
+    }
+
+    /// Marks state dirty for debounced persistence (used on keystroke inputs)
+    pub fn mark_state_dirty(&mut self) {
+        self.state_dirty = true;
+        self.last_state_dirty = Some(Instant::now());
+    }
+
+    /// Flushes pending state synchronously (for clean process exit)
+    pub fn flush_state_sync(&mut self) {
+        if self.state_dirty {
+            self.state_dirty = false;
+            self.last_state_dirty = None;
+            if let Err(e) = self.save_state_sync_inner() {
+                eprintln!("Aviso: No se pudo guardar estado persistente al salir: {}", e);
+            }
+        }
+    }
+
+    /// Recomputes filtered/sorted device indices, category pills, and security counts once per state change
+    pub fn rebuild_device_caches(&mut self) {
+        // 1. Single-pass metadata counts & visible categories
+        self.cached_visible_categories.clear();
+        self.cached_whitelist_count = 0;
+        self.cached_blocked_count = 0;
+
+        for d in &self.devices {
+            if d.is_whitelisted {
+                self.cached_whitelist_count += 1;
+            }
+            if d.is_blocked {
+                self.cached_blocked_count += 1;
+            }
+            if d.category != DeviceCategory::Unknown && !self.cached_visible_categories.contains(&d.category) {
+                self.cached_visible_categories.push(d.category);
+            }
+        }
+        if let Some(sel) = self.selected_category {
+            if sel != DeviceCategory::Unknown && !self.cached_visible_categories.contains(&sel) {
+                self.cached_visible_categories.push(sel);
+            }
+        }
+        self.cached_visible_categories.sort_by_key(|c| {
+            DeviceCategory::all().iter().position(|x| x == c).unwrap_or(99)
         });
+
+        // 2. Filtered & sorted indices
+        let q = self.search_query.trim().to_lowercase();
+        let mut indices: Vec<usize> = self
+            .devices
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| {
+                match self.security_filter {
+                    SecurityFilter::All => {}
+                    SecurityFilter::Whitelist => {
+                        if !d.is_whitelisted {
+                            return false;
+                        }
+                    }
+                    SecurityFilter::Blocked => {
+                        if !d.is_blocked {
+                            return false;
+                        }
+                    }
+                }
+
+                if let Some(cat) = self.selected_category {
+                    if d.category != cat {
+                        return false;
+                    }
+                }
+
+                if !q.is_empty() {
+                    let matches_ip = d.ip.to_string().contains(&q);
+                    let matches_mac = d.mac.to_lowercase().contains(&q);
+                    let matches_vendor = d.vendor.to_lowercase().contains(&q);
+                    let matches_host = d
+                        .hostname
+                        .as_deref()
+                        .map(|h| h.to_lowercase().contains(&q))
+                        .unwrap_or(false);
+                    let matches_alias = d
+                        .custom_alias
+                        .as_deref()
+                        .map(|a| a.to_lowercase().contains(&q))
+                        .unwrap_or(false);
+
+                    if !matches_ip && !matches_mac && !matches_vendor && !matches_host && !matches_alias {
+                        return false;
+                    }
+                }
+
+                true
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        let devices = &self.devices;
+        let lang = self.language;
+        match self.sort_by {
+            SortOption::Ip => {
+                indices.sort_by_key(|&i| devices[i].ip);
+            }
+            SortOption::Latency => {
+                indices.sort_by(|&a, &b| {
+                    let lat_a = devices[a].latency_ms.unwrap_or(f32::MAX);
+                    let lat_b = devices[b].latency_ms.unwrap_or(f32::MAX);
+                    lat_a.partial_cmp(&lat_b).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            SortOption::Name => {
+                indices.sort_by_cached_key(|&i| devices[i].display_name().to_lowercase());
+            }
+            SortOption::Vendor => {
+                indices.sort_by_cached_key(|&i| devices[i].vendor.to_lowercase());
+            }
+            SortOption::Category => {
+                indices.sort_by_key(|&i| Translations::category_name(devices[i].category, lang));
+            }
+        }
+
+        self.cached_filtered_indices = indices;
+    }
+
+    /// Periodic timer (1s when window visible, 5s when minimized to tray), window events, and System Tray
+    pub fn subscription(&self) -> Subscription<Message> {
+        let tick_duration = if self.active_window_id.is_some() {
+            Duration::from_millis(1000)
+        } else {
+            Duration::from_millis(5000)
+        };
+        let tick_sub = iced::time::every(tick_duration).map(|_| Message::Tick);
 
         let close_req_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
         let close_evt_sub = iced::window::close_events().map(Message::WindowClosed);
@@ -952,25 +1150,14 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
-                self.telemetry.update_sample(&self.network.interface);
+                self.telemetry_tick_counter = self.telemetry_tick_counter.wrapping_add(1);
 
-                // Telemetry sparklines: record samples of the last 30 seconds
-                self.download_history
-                    .push_back(self.telemetry.download_speed_bps as f32);
-                if self.download_history.len() > 30 {
-                    self.download_history.pop_front();
-                }
-
-                self.upload_history
-                    .push_back(self.telemetry.upload_speed_bps as f32);
-                if self.upload_history.len() > 30 {
-                    self.upload_history.pop_front();
-                }
-
-                if let Some(stats) = &self.inspector_ping_stats {
-                    self.ping_history.push_back(stats.avg_ms);
-                    if self.ping_history.len() > 30 {
-                        self.ping_history.pop_front();
+                // Flush debounced persistence if idle for >= 1.2s
+                if self.state_dirty {
+                    if let Some(t) = self.last_state_dirty {
+                        if t.elapsed() >= Duration::from_millis(1200) {
+                            self.save_state();
+                        }
                     }
                 }
 
@@ -987,12 +1174,27 @@ impl App {
 
                 let mut tick_tasks = Vec::new();
 
+                // 0. Non-blocking async telemetry sampling (skipped when window is closed/minimized to tray)
+                if self.active_window_id.is_some() && !self.telemetry_in_flight {
+                    self.telemetry_in_flight = true;
+                    let iface = self.network.interface.clone();
+                    let wifi_iface = self.telemetry.cached_wifi_iface.clone();
+                    let query_iw = self.telemetry_tick_counter % 3 == 1;
+                    tick_tasks.push(Task::future(async move {
+                        let snap = Telemetry::collect_snapshot(iface, wifi_iface, query_iw).await;
+                        Message::TelemetryUpdated(snap)
+                    }));
+                }
+
                 // 1. Periodic Internet stability probe every 5 seconds
-                let gw = self.network.gateway_ip;
-                tick_tasks.push(Task::future(async move {
-                    let (gw_ok, internet_ok) = UptimeTracker::probe_connectivity(gw).await;
-                    Message::ConnectivityChecked { gw_ok, internet_ok }
-                }));
+                if self.last_uptime_check.elapsed() >= Duration::from_secs(5) {
+                    self.last_uptime_check = Instant::now();
+                    let gw = self.network.gateway_ip;
+                    tick_tasks.push(Task::future(async move {
+                        let (gw_ok, internet_ok) = UptimeTracker::probe_connectivity(gw).await;
+                        Message::ConnectivityChecked { gw_ok, internet_ok }
+                    }));
+                }
 
                 // 2. Fast Disconnection Detection (Heartbeat Keep-Alive every 4 seconds)
                 if self.notification_settings.enabled
@@ -1009,14 +1211,17 @@ impl App {
 
                     if !targets.is_empty() {
                         tick_tasks.push(Task::future(async move {
+                            let sem = Arc::new(tokio::sync::Semaphore::new(16));
                             let mut join_set = tokio::task::JoinSet::new();
                             for (ip, mac, name) in targets {
+                                let sem_c = Arc::clone(&sem);
                                 join_set.spawn(async move {
+                                    let _permit = sem_c.acquire().await;
                                     let is_alive = probe_heartbeat_device(ip).await;
                                     (ip, mac, name, is_alive)
                                 });
                             }
-                            let mut results = Vec::new();
+                            let mut results = Vec::with_capacity(join_set.len());
                             while let Some(res) = join_set.join_next().await {
                                 if let Ok(entry) = res {
                                     results.push(entry);
@@ -1027,7 +1232,40 @@ impl App {
                     }
                 }
 
-                Task::batch(tick_tasks)
+                if tick_tasks.is_empty() {
+                    Task::none()
+                } else {
+                    Task::batch(tick_tasks)
+                }
+            }
+
+            Message::TelemetryUpdated(snap) => {
+                self.telemetry_in_flight = false;
+                self.telemetry.apply_snapshot(snap);
+
+                self.download_history
+                    .push_back(self.telemetry.download_speed_bps as f32);
+                if self.download_history.len() > 30 {
+                    self.download_history.pop_front();
+                }
+                self.download_sparkline_cache.clear();
+
+                self.upload_history
+                    .push_back(self.telemetry.upload_speed_bps as f32);
+                if self.upload_history.len() > 30 {
+                    self.upload_history.pop_front();
+                }
+                self.upload_sparkline_cache.clear();
+
+                if let Some(stats) = &self.inspector_ping_stats {
+                    self.ping_history.push_back(stats.avg_ms);
+                    if self.ping_history.len() > 30 {
+                        self.ping_history.pop_front();
+                    }
+                    self.ping_sparkline_cache.clear();
+                }
+
+                Task::none()
             }
 
             Message::OpenSettings => {
@@ -1140,12 +1378,14 @@ impl App {
             }
 
             Message::RestartNetLens => {
+                self.flush_state_sync();
                 UpdateChecker::restart_application();
                 Task::none()
             }
 
             Message::LanguageChanged(lang) => {
                 self.language = lang;
+                self.rebuild_device_caches();
                 self.sync_tray_state();
                 self.save_state();
                 let notif_msg = match lang {
@@ -1263,6 +1503,7 @@ impl App {
                 }
 
                 if state_changed {
+                    self.rebuild_device_caches();
                     self.sync_tray_state();
                     self.save_state();
                 }
@@ -1562,6 +1803,7 @@ impl App {
                 if self.network_events.len() > 150 {
                     self.network_events.truncate(150);
                 }
+                self.rebuild_device_caches();
                 self.sync_tray_state();
                 notif_task
             }
@@ -1648,7 +1890,7 @@ impl App {
             Message::NotificationPrefixChanged(prefix) => {
                 self.notification_prefix_input = prefix.clone();
                 self.notification_settings.custom_prefix = prefix;
-                self.save_state();
+                self.mark_state_dirty();
                 Task::none()
             }
 
@@ -1668,6 +1910,7 @@ impl App {
             }
 
             Message::WindowCloseRequested(id) => {
+                self.flush_state_sync();
                 if self.minimize_on_close {
                     // Close and destroy window completely so it disappears from taskbar,
                     // leaving only the system tray icon.
@@ -1705,6 +1948,7 @@ impl App {
             }
 
             Message::ExitApp => {
+                self.flush_state_sync();
                 std::process::exit(0);
             }
 
@@ -1826,6 +2070,7 @@ impl App {
 
             Message::SecurityFilterChanged(filter) => {
                 self.security_filter = filter;
+                self.rebuild_device_caches();
                 Task::none()
             }
 
@@ -1840,6 +2085,7 @@ impl App {
                         dev.is_whitelisted,
                     );
                 }
+                self.rebuild_device_caches();
                 self.save_state();
                 let notif_msg = if is_now_whitelisted {
                     format!("Dispositivo {} añadido a Lista Blanca.", ip)
@@ -1917,6 +2163,7 @@ impl App {
                             &mac,
                             target_blocked,
                         );
+                        self.rebuild_device_caches();
                         self.save_state();
 
                         let notif = if target_blocked {
@@ -1936,13 +2183,13 @@ impl App {
 
             Message::RouterIpChanged(ip) => {
                 self.router_ip_input = ip;
-                self.save_state();
+                self.mark_state_dirty();
                 Task::none()
             }
 
             Message::RouterPasswordChanged(pass) => {
                 self.router_password_input = pass;
-                self.save_state();
+                self.mark_state_dirty();
                 Task::none()
             }
 
@@ -1984,6 +2231,7 @@ impl App {
                     dev.is_whitelisted = true;
                 }
                 self.pending_intruder_alert = None;
+                self.rebuild_device_caches();
                 self.save_state();
                 self.notification = Some(("Dispositivo verificado y añadido a Lista Blanca.".to_string(), true));
                 Task::none()
@@ -1994,6 +2242,7 @@ impl App {
                     self.known_macs.insert(alert.mac.trim().to_lowercase());
                 }
                 self.pending_intruder_alert = None;
+                self.rebuild_device_caches();
                 self.save_state();
                 Task::none()
             }
@@ -2025,6 +2274,7 @@ impl App {
                         }
                         self.router_connections.insert(key, c);
                     }
+                    self.rebuild_device_caches();
                 }
                 Task::none()
             }
@@ -2062,6 +2312,7 @@ impl App {
                         Some(new_category),
                     );
                 }
+                self.rebuild_device_caches();
                 self.save_state();
                 let notif_msg = match self.language {
                     Language::Spanish => format!(
@@ -3506,6 +3757,7 @@ impl App {
                     } else {
                         self.devices.push(device);
                     }
+                    self.rebuild_device_caches();
                     intruder_task
                 }
                 ScanEvent::Completed {
@@ -3557,6 +3809,7 @@ impl App {
                         total_found,
                         duration_secs: duration_ms as f32 / 1000.0,
                     };
+                    self.rebuild_device_caches();
                     self.sync_tray_state();
                     self.save_state();
                     crate::trim_memory();
@@ -3603,6 +3856,7 @@ impl App {
 
             Message::SearchChanged(query) => {
                 self.search_query = query;
+                self.rebuild_device_caches();
                 Task::none()
             }
 
@@ -3611,11 +3865,13 @@ impl App {
                 if cat.is_none() {
                     self.security_filter = SecurityFilter::All;
                 }
+                self.rebuild_device_caches();
                 Task::none()
             }
 
             Message::SortChanged(sort) => {
                 self.sort_by = sort;
+                self.rebuild_device_caches();
                 Task::none()
             }
 
@@ -3657,7 +3913,13 @@ impl App {
                         if let Some(dev) = self.devices.iter_mut().find(|d| d.ip == stats.ip) {
                             dev.latency_ms = Some(stats.avg_ms);
                         }
+                        self.ping_history.push_back(stats.avg_ms);
+                        if self.ping_history.len() > 30 {
+                            self.ping_history.pop_front();
+                        }
+                        self.ping_sparkline_cache.clear();
                         self.inspector_ping_stats = Some(stats);
+                        self.rebuild_device_caches();
                     }
                     Err(err) => {
                         self.notification = Some((format!("Ping error: {}", err), false));
@@ -3684,6 +3946,7 @@ impl App {
                         dev.open_ports = ports;
                     }
                 }
+                self.rebuild_device_caches();
                 Task::none()
             }
 
@@ -3756,6 +4019,7 @@ impl App {
                         None,
                     );
                 }
+                self.rebuild_device_caches();
                 self.save_state();
                 let notif_msg = match self.language {
                     Language::Spanish => format!("Alias guardado para {}.", ip),
@@ -5167,7 +5431,7 @@ impl App {
                 .width(Length::Fill),
                 column![
                     text("🦀 Core Engine").size(11).color(CustomStyles::text_muted()),
-                    text("Rust + Iced 0.13 + Tokio Runtime").size(11).color(CustomStyles::text_primary()),
+                    text("Rust + Iced 0.14 + Tokio Runtime").size(11).color(CustomStyles::text_primary()),
                 ]
                 .width(Length::Fill),
             ]
@@ -5714,9 +5978,10 @@ impl App {
         let rx_speed_str = Telemetry::format_speed(self.telemetry.download_speed_bps);
         let rx_session_str = Telemetry::format_bytes(self.telemetry.session_download_bytes());
 
-        let sparkline_dl = Canvas::new(Sparkline::new(
-            self.download_history.iter().copied().collect(),
+        let sparkline_dl = Canvas::new(CachedSparkline::new(
+            &self.download_history,
             CustomStyles::accent_emerald(),
+            &self.download_sparkline_cache,
         ))
         .width(Length::Fill)
         .height(20);
@@ -5743,9 +6008,10 @@ impl App {
         let tx_speed_str = Telemetry::format_speed(self.telemetry.upload_speed_bps);
         let tx_session_str = Telemetry::format_bytes(self.telemetry.session_upload_bytes());
 
-        let sparkline_ul = Canvas::new(Sparkline::new(
-            self.upload_history.iter().copied().collect(),
+        let sparkline_ul = Canvas::new(CachedSparkline::new(
+            &self.upload_history,
             CustomStyles::accent_purple(),
+            &self.upload_sparkline_cache,
         ))
         .width(Length::Fill)
         .height(20);
@@ -5908,23 +6174,8 @@ impl App {
             self.tip(all_btn, Translations::tip_filter_all(self.language), tooltip::Position::Bottom)
         );
 
-        // Only display category pills for device types currently detected in the network
-        let mut visible_categories: Vec<DeviceCategory> = Vec::new();
-        for d in &self.devices {
-            if d.category != DeviceCategory::Unknown && !visible_categories.contains(&d.category) {
-                visible_categories.push(d.category);
-            }
-        }
-        if let Some(sel) = self.selected_category {
-            if sel != DeviceCategory::Unknown && !visible_categories.contains(&sel) {
-                visible_categories.push(sel);
-            }
-        }
-        visible_categories.sort_by_key(|c| {
-            DeviceCategory::all().iter().position(|x| x == c).unwrap_or(99)
-        });
-
-        for cat in visible_categories {
+        // Only display category pills for device types currently detected in the network (cached)
+        for &cat in &self.cached_visible_categories {
             let is_active = self.selected_category == Some(cat);
             let label = Translations::category_short_name(cat, self.language);
             let cat_btn = button(
@@ -5950,9 +6201,9 @@ impl App {
             );
         }
 
-        // Security & List Filters (Whitelist and Blocked)
-        let whitelist_count = self.devices.iter().filter(|d| d.is_whitelisted).count();
-        let blocked_count = self.devices.iter().filter(|d| d.is_blocked).count();
+        // Security & List Filters (Whitelist and Blocked) from cached counts
+        let whitelist_count = self.cached_whitelist_count;
+        let blocked_count = self.cached_blocked_count;
 
         let is_whitelist_active = self.security_filter == SecurityFilter::Whitelist;
         let is_blocked_active = self.security_filter == SecurityFilter::Blocked;
@@ -6333,18 +6584,19 @@ impl App {
         .padding(Padding::from([2, 7]))
         .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan()));
 
-        // 4. Vendor
+        // 4. Vendor (UTF-8 char-safe truncation)
         let vendor_str = if !device.vendor.is_empty() && device.vendor != "Desconocido" {
-            device.vendor.clone()
+            device.vendor.as_str()
         } else if device.is_randomized_mac {
-            Translations::vendor_private(self.language).to_string()
+            Translations::vendor_private(self.language)
         } else {
-            Translations::vendor_generic(self.language).to_string()
+            Translations::vendor_generic(self.language)
         };
-        let vendor_truncated = if vendor_str.len() > 20 {
-            format!("{}...", &vendor_str[..18])
+        let vendor_truncated = if vendor_str.chars().count() > 20 {
+            let head: String = vendor_str.chars().take(18).collect();
+            format!("{}...", head)
         } else {
-            vendor_str
+            vendor_str.to_string()
         };
         let vendor_pill = container(
             text(vendor_truncated)
@@ -6715,9 +6967,10 @@ impl App {
         .spacing(5);
 
         if let Some(stats) = &self.inspector_ping_stats {
-            let ping_sparkline = Canvas::new(Sparkline::new(
-                self.ping_history.iter().copied().collect(),
+            let ping_sparkline = Canvas::new(CachedSparkline::new(
+                &self.ping_history,
                 CustomStyles::accent_cyan(),
+                &self.ping_sparkline_cache,
             ))
             .width(Length::Fill)
             .height(20);
@@ -7106,81 +7359,12 @@ impl App {
             .into()
     }
 
-    /// Filters and sorts devices according to current user preferences
+    /// Returns cached filtered and sorted device references in O(N) pointer copies without allocations
     fn get_filtered_devices(&self) -> Vec<&Device> {
-        let q = self.search_query.trim().to_lowercase();
-
-        let mut list: Vec<&Device> = self
-            .devices
+        self.cached_filtered_indices
             .iter()
-            .filter(|d| {
-                match self.security_filter {
-                    SecurityFilter::All => {}
-                    SecurityFilter::Whitelist => {
-                        if !d.is_whitelisted {
-                            return false;
-                        }
-                    }
-                    SecurityFilter::Blocked => {
-                        if !d.is_blocked {
-                            return false;
-                        }
-                    }
-                }
-
-                if let Some(cat) = self.selected_category {
-                    if d.category != cat {
-                        return false;
-                    }
-                }
-
-                if !q.is_empty() {
-                    let matches_ip = d.ip.to_string().contains(&q);
-                    let matches_mac = d.mac.to_lowercase().contains(&q);
-                    let matches_vendor = d.vendor.to_lowercase().contains(&q);
-                    let matches_host = d
-                        .hostname
-                        .as_deref()
-                        .map(|h| h.to_lowercase().contains(&q))
-                        .unwrap_or(false);
-                    let matches_alias = d
-                        .custom_alias
-                        .as_deref()
-                        .map(|a| a.to_lowercase().contains(&q))
-                        .unwrap_or(false);
-
-                    if !matches_ip && !matches_mac && !matches_vendor && !matches_host && !matches_alias {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .collect();
-
-        match self.sort_by {
-            SortOption::Ip => {
-                list.sort_by_key(|d| d.ip);
-            }
-            SortOption::Latency => {
-                list.sort_by(|a, b| {
-                    let lat_a = a.latency_ms.unwrap_or(f32::MAX);
-                    let lat_b = b.latency_ms.unwrap_or(f32::MAX);
-                    lat_a.partial_cmp(&lat_b).unwrap_or(std::cmp::Ordering::Equal)
-                });
-            }
-            SortOption::Name => {
-                list.sort_by(|a, b| a.display_name().to_lowercase().cmp(&b.display_name().to_lowercase()));
-            }
-            SortOption::Vendor => {
-                list.sort_by(|a, b| a.vendor.to_lowercase().cmp(&b.vendor.to_lowercase()));
-            }
-            SortOption::Category => {
-                list.sort_by_key(|d| Translations::category_name(d.category, self.language));
-            }
-        }
-
-        list
+            .filter_map(|&idx| self.devices.get(idx))
+            .collect()
     }
 
     /// Modal: Comprehensive Network Security Audit

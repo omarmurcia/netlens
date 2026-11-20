@@ -271,9 +271,20 @@ impl SpeedTest {
         };
 
         if let Some(mut stdin) = child.stdin.take() {
-            let payload = vec![0u8; 10_000_000];
             tokio::spawn(async move {
-                let _ = stdin.write_all(&payload).await;
+                // Stream 10 MB using a reusable 64 KB buffer instead of allocating 10 MB upfront
+                const TOTAL_BYTES: usize = 10_000_000;
+                const CHUNK_SIZE: usize = 65_536;
+                let chunk = [0u8; CHUNK_SIZE];
+                let mut remaining = TOTAL_BYTES;
+                while remaining > 0 {
+                    let to_write = remaining.min(CHUNK_SIZE);
+                    if stdin.write_all(&chunk[..to_write]).await.is_err() {
+                        break;
+                    }
+                    remaining -= to_write;
+                }
+                let _ = stdin.shutdown().await;
             });
         }
 

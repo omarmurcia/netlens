@@ -45,27 +45,32 @@ impl UpnpClient {
 
         let mut status = UpnpRouterStatus::default();
 
-        // 1. Get public IP (GetExternalIPAddress)
-        if let Ok(ip) = Self::get_external_ip(&control_url, &service_type).await {
+        // Execute independent UPnP queries concurrently
+        let (ext_ip_res, status_res, rx_res, tx_res, mappings) = tokio::join!(
+            Self::get_external_ip(&control_url, &service_type),
+            Self::get_status_info(&control_url, &service_type),
+            Self::get_bytes(&control_url, &service_type, "GetTotalBytesReceived"),
+            Self::get_bytes(&control_url, &service_type, "GetTotalBytesSent"),
+            Self::get_port_mappings(&control_url, &service_type),
+        );
+
+        if let Ok(ip) = ext_ip_res {
             status.external_ip = Some(ip);
         }
 
-        // 2. Get connection status and uptime (GetStatusInfo)
-        if let Ok((conn_status, uptime)) = Self::get_status_info(&control_url, &service_type).await {
+        if let Ok((conn_status, uptime)) = status_res {
             status.connection_status = Some(conn_status);
             status.uptime_secs = Some(uptime);
         }
 
-        // 3. Get byte counters (GetTotalBytesReceived / Sent)
-        if let Ok(rx) = Self::get_bytes(&control_url, &service_type, "GetTotalBytesReceived").await {
+        if let Ok(rx) = rx_res {
             status.total_bytes_received = Some(rx);
         }
-        if let Ok(tx) = Self::get_bytes(&control_url, &service_type, "GetTotalBytesSent").await {
+        if let Ok(tx) = tx_res {
             status.total_bytes_sent = Some(tx);
         }
 
-        // 4. Get port forwarding table (GetGenericPortMappingEntry)
-        status.port_mappings = Self::get_port_mappings(&control_url, &service_type).await;
+        status.port_mappings = mappings;
 
         Ok(status)
     }
@@ -211,41 +216,57 @@ impl UpnpClient {
             .ok_or_else(|| "Failed to read byte counter".to_string())
     }
 
-    /// Retrieves port forwarding list (Port Forwardings)
+    /// Retrieves port forwarding list (Port Forwardings) in small concurrent batches
     async fn get_port_mappings(control_url: &str, service_type: &str) -> Vec<UpnpPortMapping> {
         let mut mappings = Vec::new();
-        // Iterate over indices 0 to 64
-        for idx in 0..64 {
-            let body = format!("<NewPortMappingIndex>{}</NewPortMappingIndex>", idx);
-            if let Ok(resp) = Self::execute_soap(control_url, service_type, "GetGenericPortMappingEntry", &body).await {
-                if resp.contains("s:Fault") || resp.contains("errorCode>713") {
-                    break; // End of rules list
-                }
+        for chunk_start in (0..64).step_by(4) {
+            let chunk_end = (chunk_start + 4).min(64);
+            let futs = (chunk_start..chunk_end).map(|idx| async move {
+                let body = format!("<NewPortMappingIndex>{}</NewPortMappingIndex>", idx);
+                Self::execute_soap(control_url, service_type, "GetGenericPortMappingEntry", &body).await
+            });
+            let results = iced::futures::future::join_all(futs).await;
 
-                let ext_port: u16 = Self::extract_tag_value(&resp, "NewExternalPort")
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(0);
-                let int_port: u16 = Self::extract_tag_value(&resp, "NewInternalPort")
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(0);
-                let int_client = Self::extract_tag_value(&resp, "NewInternalClient").unwrap_or_default();
-                let protocol = Self::extract_tag_value(&resp, "NewProtocol").unwrap_or_else(|| "TCP".to_string());
-                let description = Self::extract_tag_value(&resp, "NewPortMappingDescription").unwrap_or_default();
-                let enabled = Self::extract_tag_value(&resp, "NewEnabled")
-                    .map(|e| e == "1" || e.to_lowercase() == "true")
-                    .unwrap_or(true);
+            let mut reached_end = false;
+            for res in results {
+                match res {
+                    Ok(resp) => {
+                        if resp.contains("s:Fault") || resp.contains("errorCode>713") {
+                            reached_end = true;
+                            break;
+                        }
 
-                if ext_port > 0 && !int_client.is_empty() {
-                    mappings.push(UpnpPortMapping {
-                        external_port: ext_port,
-                        internal_port: int_port,
-                        internal_client: int_client,
-                        protocol,
-                        description,
-                        enabled,
-                    });
+                        let ext_port: u16 = Self::extract_tag_value(&resp, "NewExternalPort")
+                            .and_then(|p| p.parse().ok())
+                            .unwrap_or(0);
+                        let int_port: u16 = Self::extract_tag_value(&resp, "NewInternalPort")
+                            .and_then(|p| p.parse().ok())
+                            .unwrap_or(0);
+                        let int_client = Self::extract_tag_value(&resp, "NewInternalClient").unwrap_or_default();
+                        let protocol = Self::extract_tag_value(&resp, "NewProtocol").unwrap_or_else(|| "TCP".to_string());
+                        let description = Self::extract_tag_value(&resp, "NewPortMappingDescription").unwrap_or_default();
+                        let enabled = Self::extract_tag_value(&resp, "NewEnabled")
+                            .map(|e| e == "1" || e.to_lowercase() == "true")
+                            .unwrap_or(true);
+
+                        if ext_port > 0 && !int_client.is_empty() {
+                            mappings.push(UpnpPortMapping {
+                                external_port: ext_port,
+                                internal_port: int_port,
+                                internal_client: int_client,
+                                protocol,
+                                description,
+                                enabled,
+                            });
+                        }
+                    }
+                    Err(_) => {
+                        reached_end = true;
+                        break;
+                    }
                 }
-            } else {
+            }
+            if reached_end {
                 break;
             }
         }

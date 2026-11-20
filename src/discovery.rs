@@ -15,19 +15,26 @@ pub struct DiscoveredIdentity {
 pub struct Discovery;
 
 impl Discovery {
-    /// Attempts to enrich device identity by querying NetBIOS, mDNS, SSDP/UPnP, and HTTP/DIAL
+    /// Attempts to enrich device identity by querying NetBIOS, mDNS, SSDP/UPnP, and HTTP/DIAL concurrently
     pub async fn probe(ip: Ipv4Addr) -> DiscoveredIdentity {
         let mut identity = DiscoveredIdentity::default();
 
-        // 1. Attempt NetBIOS Name Service query (UDP 137)
-        if let Ok(Ok(Some(netbios_name))) = timeout(Duration::from_millis(300), Self::probe_netbios(ip)).await {
+        let (nb_res, mdns_res, ssdp_res, http_res) = tokio::join!(
+            timeout(Duration::from_millis(300), Self::probe_netbios(ip)),
+            timeout(Duration::from_millis(300), Self::probe_mdns_ptr(ip)),
+            timeout(Duration::from_millis(300), Self::probe_ssdp(ip)),
+            timeout(Duration::from_millis(250), Self::probe_http_banner(ip)),
+        );
+
+        // 1. NetBIOS Name Service query (UDP 137)
+        if let Ok(Ok(Some(netbios_name))) = nb_res {
             identity.model_or_friendly_name = Some(netbios_name.clone());
             identity.hostname = Some(netbios_name);
             identity.services.push("NetBIOS / SMB".to_string());
         }
 
-        // 2. Attempt mDNS PTR query & service detection (UDP 5353)
-        if let Ok(Ok(Some((mdns_name, mdns_services)))) = timeout(Duration::from_millis(300), Self::probe_mdns_ptr(ip)).await {
+        // 2. mDNS PTR query & service detection (UDP 5353)
+        if let Ok(Ok(Some((mdns_name, mdns_services)))) = mdns_res {
             if let Some(name) = mdns_name {
                 let clean_name = name.trim_end_matches(".local").replace(".local.", "");
                 if identity.model_or_friendly_name.is_none() {
@@ -47,8 +54,8 @@ impl Discovery {
             }
         }
 
-        // 3. Attempt SSDP / UPnP M-SEARCH query (UDP 1900)
-        if let Ok(Ok(Some((friendly_name, ssdp_services)))) = timeout(Duration::from_millis(300), Self::probe_ssdp(ip)).await {
+        // 3. SSDP / UPnP M-SEARCH query (UDP 1900)
+        if let Ok(Ok(Some((friendly_name, ssdp_services)))) = ssdp_res {
             if let Some(fname) = friendly_name {
                 if identity.model_or_friendly_name.is_none() {
                     identity.model_or_friendly_name = Some(fname);
@@ -62,7 +69,7 @@ impl Discovery {
         }
 
         // 4. Quick HTTP/DIAL service identification (Port 8008 Google Cast & Port 80 Web titles)
-        if let Ok(Ok(Some((web_name, web_service)))) = timeout(Duration::from_millis(250), Self::probe_http_banner(ip)).await {
+        if let Ok(Ok(Some((web_name, web_service)))) = http_res {
             if let Some(wname) = web_name {
                 if identity.model_or_friendly_name.is_none() {
                     identity.model_or_friendly_name = Some(wname);
@@ -279,65 +286,69 @@ impl Discovery {
         Ok(Some((friendly_name, services)))
     }
 
-    /// Quick HTTP probe for DIAL eureka_info (port 8008) and web titles (port 80)
+    /// Quick HTTP probe for DIAL eureka_info (port 8008) and web titles (port 80) concurrently
     async fn probe_http_banner(ip: Ipv4Addr) -> Result<Option<(Option<String>, Option<String>)>, ()> {
-        // 1. Try Google Cast DIAL info on port 8008
-        let dial_addr = SocketAddrV4::new(ip, 8008);
-        if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(150), TcpStream::connect(dial_addr)).await {
-            let req = b"GET /setup/eureka_info HTTP/1.0\r\nHost: 127.0.0.1:8008\r\nConnection: close\r\n\r\n";
-            if stream.write_all(req).await.is_ok() {
-                let mut buf = [0u8; 1024];
-                if let Ok(Ok(n)) = timeout(Duration::from_millis(150), stream.read(&mut buf)).await {
-                    let body = String::from_utf8_lossy(&buf[..n]);
-                    // Parse "name":"Living Room TV"
-                    if let Some(pos) = body.find("\"name\":\"") {
-                        let rem = &body[pos + 8..];
-                        if let Some(end) = rem.find('"') {
-                            let name = &rem[..end];
-                            if !name.is_empty() {
-                                return Ok(Some((Some(name.to_string()), Some("Streaming / Google Cast".to_string()))));
+        let dial_fut = async {
+            let dial_addr = SocketAddrV4::new(ip, 8008);
+            if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(120), TcpStream::connect(dial_addr)).await {
+                let req = b"GET /setup/eureka_info HTTP/1.0\r\nHost: 127.0.0.1:8008\r\nConnection: close\r\n\r\n";
+                if stream.write_all(req).await.is_ok() {
+                    let mut buf = [0u8; 1024];
+                    if let Ok(Ok(n)) = timeout(Duration::from_millis(120), stream.read(&mut buf)).await {
+                        let body = String::from_utf8_lossy(&buf[..n]);
+                        if let Some(pos) = body.find("\"name\":\"") {
+                            let rem = &body[pos + 8..];
+                            if let Some(end) = rem.find('"') {
+                                let name = &rem[..end];
+                                if !name.is_empty() {
+                                    return Some((Some(name.to_string()), Some("Streaming / Google Cast".to_string())));
+                                }
                             }
                         }
-                    }
-                    return Ok(Some((Some("Google Cast Device".to_string()), Some("Streaming / Google Cast".to_string()))));
-                }
-            }
-        }
-
-        // 2. Try HTTP Title on port 80
-        let http_addr = SocketAddrV4::new(ip, 80);
-        if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(150), TcpStream::connect(http_addr)).await {
-            let req = format!("GET / HTTP/1.0\r\nHost: {}\r\nUser-Agent: NetLens/0.2\r\nConnection: close\r\n\r\n", ip);
-            if stream.write_all(req.as_bytes()).await.is_ok() {
-                let mut buf = [0u8; 1500];
-                if let Ok(Ok(n)) = timeout(Duration::from_millis(150), stream.read(&mut buf)).await {
-                    let resp = String::from_utf8_lossy(&buf[..n]);
-                    let resp_lower = resp.to_lowercase();
-
-                    if let Some(start_tag) = resp_lower.find("<title>") {
-                        let title_part = &resp[start_tag + 7..];
-                        if let Some(end_tag) = title_part.to_lowercase().find("</title>") {
-                            let title = title_part[..end_tag].trim();
-                            if !title.is_empty() && title.len() < 50 {
-                                let service = if resp_lower.contains("camera") || resp_lower.contains("hikvision") || resp_lower.contains("reolink") || resp_lower.contains("dahua") {
-                                    Some("Security / IP Camera Web".to_string())
-                                } else if resp_lower.contains("synology") || resp_lower.contains("diskstation") || resp_lower.contains("qnap") || resp_lower.contains("truenas") {
-                                    Some("Storage / NAS Web UI".to_string())
-                                } else if resp_lower.contains("tasmota") || resp_lower.contains("wled") || resp_lower.contains("shelly") {
-                                    Some("Smart Home / IoT Web UI".to_string())
-                                } else if resp_lower.contains("printer") || resp_lower.contains("laserjet") || resp_lower.contains("epson") {
-                                    Some("Printer / Web Admin".to_string())
-                                } else {
-                                    Some("HTTP Web Panel".to_string())
-                                };
-                                return Ok(Some((Some(title.to_string()), service)));
-                            }
-                        }
+                        return Some((Some("Google Cast Device".to_string()), Some("Streaming / Google Cast".to_string())));
                     }
                 }
             }
-        }
+            None
+        };
 
-        Ok(None)
+        let http_fut = async {
+            let http_addr = SocketAddrV4::new(ip, 80);
+            if let Ok(Ok(mut stream)) = timeout(Duration::from_millis(120), TcpStream::connect(http_addr)).await {
+                let req = format!("GET / HTTP/1.0\r\nHost: {}\r\nUser-Agent: NetLens/0.2\r\nConnection: close\r\n\r\n", ip);
+                if stream.write_all(req.as_bytes()).await.is_ok() {
+                    let mut buf = [0u8; 1500];
+                    if let Ok(Ok(n)) = timeout(Duration::from_millis(120), stream.read(&mut buf)).await {
+                        let resp = String::from_utf8_lossy(&buf[..n]);
+                        let resp_lower = resp.to_lowercase();
+
+                        if let Some(start_tag) = resp_lower.find("<title>") {
+                            let title_part = &resp[start_tag + 7..];
+                            if let Some(end_tag) = title_part.to_lowercase().find("</title>") {
+                                let title = title_part[..end_tag].trim();
+                                if !title.is_empty() && title.len() < 50 {
+                                    let service = if resp_lower.contains("camera") || resp_lower.contains("hikvision") || resp_lower.contains("reolink") || resp_lower.contains("dahua") {
+                                        Some("Security / IP Camera Web".to_string())
+                                    } else if resp_lower.contains("synology") || resp_lower.contains("diskstation") || resp_lower.contains("qnap") || resp_lower.contains("truenas") {
+                                        Some("Storage / NAS Web UI".to_string())
+                                    } else if resp_lower.contains("tasmota") || resp_lower.contains("wled") || resp_lower.contains("shelly") {
+                                        Some("Smart Home / IoT Web UI".to_string())
+                                    } else if resp_lower.contains("printer") || resp_lower.contains("laserjet") || resp_lower.contains("epson") {
+                                        Some("Printer / Web Admin".to_string())
+                                    } else {
+                                        Some("HTTP Web Panel".to_string())
+                                    };
+                                    return Some((Some(title.to_string()), service));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        let (dial_res, http_res) = tokio::join!(dial_fut, http_fut);
+        Ok(dial_res.or(http_res))
     }
 }

@@ -214,12 +214,16 @@ impl Scanner {
         let host_lower = hostname.unwrap_or("").to_lowercase();
         let vendor_lower = vendor.to_lowercase();
         let model_lower = model_name.unwrap_or("").to_lowercase();
-        let open_port_nums: Vec<u16> = open_ports.iter().map(|p| p.port).collect();
-        let svc_str = discovered_services.join(" ").to_lowercase();
+        let has_port = |port: u16| open_ports.iter().any(|p| p.port == port);
+        let svc_str = if discovered_services.is_empty() {
+            String::new()
+        } else {
+            discovered_services.join(" ").to_lowercase()
+        };
 
         // 1. Security Cameras / Surveillance / NVR
-        if open_port_nums.contains(&554)
-            || open_port_nums.contains(&8554)
+        if has_port(554)
+            || has_port(8554)
             || svc_str.contains("camera")
             || svc_str.contains("onvif")
             || svc_str.contains("rtsp")
@@ -267,7 +271,7 @@ impl Scanner {
         }
 
         // 2. Smart Speakers & Audio Systems (Sonos, Echo, HomePod, Nest Audio)
-        if open_port_nums.contains(&1400)
+        if has_port(1400)
             || svc_str.contains("sonos")
             || svc_str.contains("spotify connect")
             || svc_str.contains("raop")
@@ -302,8 +306,8 @@ impl Scanner {
         }
 
         // 3. Network Printers (IPP 631, JetDirect 9100)
-        if open_port_nums.contains(&631)
-            || open_port_nums.contains(&9100)
+        if has_port(631)
+            || has_port(9100)
             || svc_str.contains("ipp")
             || svc_str.contains("printer")
             || svc_str.contains("cups")
@@ -354,12 +358,12 @@ impl Scanner {
             || vendor_lower.contains("nintendo")
             || (vendor_lower.contains("microsoft") && (host_lower.contains("xbox") || host_lower.contains("console")))
             || (vendor_lower.contains("valve") && (host_lower.contains("steam") || host_lower.contains("deck")))
-            || open_port_nums.contains(&3074)
-            || open_port_nums.contains(&9295)
-            || open_port_nums.contains(&9296)
-            || open_port_nums.contains(&9297)
-            || open_port_nums.contains(&9303)
-            || open_port_nums.contains(&9304)
+            || has_port(3074)
+            || has_port(9295)
+            || has_port(9296)
+            || has_port(9297)
+            || has_port(9303)
+            || has_port(9304)
         {
             return DeviceCategory::GamingConsole;
         }
@@ -388,9 +392,9 @@ impl Scanner {
             || (vendor_lower.contains("google") && (host_lower.contains("chromecast") || host_lower.contains("cast")))
             || (vendor_lower.contains("apple") && host_lower.contains("tv"))
             || (vendor_lower.contains("nvidia") && host_lower.contains("shield"))
-            || open_port_nums.contains(&8008)
-            || open_port_nums.contains(&8009)
-            || open_port_nums.contains(&7000)
+            || has_port(8008)
+            || has_port(8009)
+            || has_port(7000)
             || svc_str.contains("google cast")
             || svc_str.contains("dial")
         {
@@ -445,8 +449,8 @@ impl Scanner {
         }
 
         // 8. Network Storage / NAS (Synology, QNAP, TrueNAS, Unraid)
-        if open_port_nums.contains(&5000)
-            || open_port_nums.contains(&5001)
+        if has_port(5000)
+            || has_port(5001)
             || svc_str.contains("nas")
             || host_lower.contains("nas")
             || host_lower.contains("synology")
@@ -492,7 +496,7 @@ impl Scanner {
         }
 
         // 10. Routers / Gateways
-        if open_port_nums.contains(&53)
+        if has_port(53)
             || host_lower.contains("router")
             || host_lower.contains("gateway")
             || host_lower.contains("linksys")
@@ -567,7 +571,7 @@ impl Scanner {
         }
 
         // 13. Smart Home / IoT / Domótica
-        if open_port_nums.contains(&1883)
+        if has_port(1883)
             || svc_str.contains("hap")
             || svc_str.contains("homekit")
             || svc_str.contains("mqtt")
@@ -628,7 +632,7 @@ impl Scanner {
             || host_lower.contains("rpi")
             || host_lower.contains("nextcloud")
             || host_lower.contains("homelab")
-            || open_port_nums.contains(&9000)
+            || has_port(9000)
             || model_lower.contains("server")
             || model_lower.contains("raspberry pi")
             || (vendor_lower.contains("raspberry pi") && !host_lower.contains("pc") && !host_lower.contains("desktop"))
@@ -638,10 +642,10 @@ impl Scanner {
 
         // 15. Personal Computers (Desktop, Laptop, PC, Mac)
         if is_current_host
-            || open_port_nums.contains(&22)
-            || open_port_nums.contains(&445)
-            || open_port_nums.contains(&3389)
-            || open_port_nums.contains(&5900)
+            || has_port(22)
+            || has_port(445)
+            || has_port(3389)
+            || has_port(5900)
             || host_lower.contains("pc")
             || host_lower.contains("laptop")
             || host_lower.contains("desktop")
@@ -693,39 +697,67 @@ impl Scanner {
             subnet: format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2]),
         });
 
-        // 1. Fast sweep with ICMP/TCP packets to populate kernel ARP cache
-        let semaphore = Arc::new(Semaphore::new(45));
-        let mut tasks = Vec::with_capacity(total_hosts);
-
-        for host_num in 1..=254 {
-            let target_ip = Ipv4Addr::new(octets[0], octets[1], octets[2], host_num);
-            let sem_clone = Arc::clone(&semaphore);
-
-            tasks.push(tokio::spawn(async move {
-                let _permit = sem_clone.acquire().await;
-                // Send single-packet ping with strict 500ms timeout
-                let _ = Command::new("ping")
-                    .args(["-c", "1", "-W", "1", &target_ip.to_string()])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .await;
-            }));
+        // 1. Fast zero-subprocess LAN ARP sweep using a shared UDP socket + paced TCP wakeups
+        // Sending a packet to any LAN IP forces the Linux kernel to issue Layer-2 ARP Who-Has
+        // requests regardless of host firewall rules, populating /proc/net/arp without 254 ping forks.
+        let mut udp_sweep_ok = false;
+        if let Ok(udp_sock) = tokio::net::UdpSocket::bind("0.0.0.0:0").await {
+            udp_sweep_ok = true;
+            let mut scanned_count = 0usize;
+            for pass in 0..2 {
+                for chunk_start in (1u8..=254).step_by(32) {
+                    let chunk_end = chunk_start.saturating_add(31).min(254);
+                    for host_num in chunk_start..=chunk_end {
+                        let target_ip = Ipv4Addr::new(octets[0], octets[1], octets[2], host_num);
+                        let _ = udp_sock.send_to(&[0u8], SocketAddrV4::new(target_ip, 9)).await;
+                        if pass == 0 {
+                            scanned_count += 1;
+                        }
+                    }
+                    if pass == 0 {
+                        let _ = sender.unbounded_send(ScanEvent::Progress {
+                            scanned: scanned_count.min(total_hosts),
+                            total: total_hosts,
+                        });
+                    }
+                    tokio::time::sleep(Duration::from_millis(18)).await;
+                }
+            }
         }
 
-        // Wait for basic connectivity probes to finish
-        for (idx, task) in tasks.into_iter().enumerate() {
-            let _ = task.await;
-            if (idx + 1) % 15 == 0 || idx + 1 == total_hosts {
-                let _ = sender.unbounded_send(ScanEvent::Progress {
-                    scanned: idx + 1,
-                    total: total_hosts,
-                });
+        if !udp_sweep_ok {
+            // Fallback to parallel ping sweep if UDP socket binding fails
+            let semaphore = Arc::new(Semaphore::new(45));
+            let mut tasks = Vec::with_capacity(total_hosts);
+
+            for host_num in 1..=254 {
+                let target_ip = Ipv4Addr::new(octets[0], octets[1], octets[2], host_num);
+                let sem_clone = Arc::clone(&semaphore);
+
+                tasks.push(tokio::spawn(async move {
+                    let _permit = sem_clone.acquire().await;
+                    let _ = Command::new("ping")
+                        .args(["-c", "1", "-W", "1", &target_ip.to_string()])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .await;
+                }));
+            }
+
+            for (idx, task) in tasks.into_iter().enumerate() {
+                let _ = task.await;
+                if (idx + 1) % 15 == 0 || idx + 1 == total_hosts {
+                    let _ = sender.unbounded_send(ScanEvent::Progress {
+                        scanned: idx + 1,
+                        total: total_hosts,
+                    });
+                }
             }
         }
 
         // Brief delay allowing the kernel to commit ARP responses
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
 
         // 2. Read kernel ARP table (/proc/net/arp)
         let mut discovered_ips: Vec<(Ipv4Addr, String, String)> = Vec::new();
@@ -776,16 +808,16 @@ impl Scanner {
         // Sort IPs in ascending order
         discovered_ips.sort_by_key(|&(ip, _, _)| ip);
 
-        // 3. Enrich data for each discovered host (reverse DNS, ports, latency)
+        // 3. Enrich data for each discovered host concurrently via JoinSet so results stream immediately
         let total_found = discovered_ips.len();
-        let mut enrich_tasks = Vec::new();
+        let mut enrich_set = tokio::task::JoinSet::new();
 
         for (ip, mac, iface) in discovered_ips {
             let is_gateway = ctx.gateway_ip == Some(ip);
             let is_current = ctx.local_ip == Some(ip);
             let oui_ref = oui_db.clone();
 
-            enrich_tasks.push(tokio::spawn(async move {
+            enrich_set.spawn(async move {
                 // Latency
                 let latency_ms = if is_current {
                     Some(0.05)
@@ -1061,12 +1093,12 @@ impl Scanner {
                     discovered_services,
                     request_history: initial_requests,
                 }
-            }));
+            });
         }
 
-        // Collect devices and send in real time
-        for task in enrich_tasks {
-            if let Ok(device) = task.await {
+        // Collect devices and send in real time as soon as each host finishes enriching
+        while let Some(res) = enrich_set.join_next().await {
+            if let Ok(device) = res {
                 let _ = sender.unbounded_send(ScanEvent::HostFound(device));
             }
         }
@@ -1106,23 +1138,29 @@ impl Scanner {
         None
     }
 
-    /// Fast probe on key ports for basic fingerprinting
+    /// Fast parallel probe on key ports for basic fingerprinting
     pub async fn quick_probe_ports(ip: Ipv4Addr) -> Vec<PortInfo> {
         let candidate_ports = [22, 53, 80, 443, 445, 554, 631, 1400, 1883, 3074, 5000, 8008, 8080, 9100];
-        let mut results = Vec::new();
-
-        for &port in &candidate_ports {
+        let futures = candidate_ports.iter().map(|&port| async move {
             let addr = SocketAddrV4::new(ip, port);
             if let Ok(Ok(_)) = timeout(Duration::from_millis(150), TcpStream::connect(addr)).await {
                 let (service, desc) = WellKnownPort::describe(port);
-                results.push(PortInfo {
+                Some(PortInfo {
                     port,
                     service: service.to_string(),
                     description: desc.to_string(),
-                });
+                })
+            } else {
+                None
             }
-        }
+        });
 
+        let mut results: Vec<PortInfo> = iced::futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
+        results.sort_by_key(|p| p.port);
         results
     }
 

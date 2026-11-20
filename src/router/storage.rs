@@ -1006,7 +1006,7 @@ impl RouterStorageManager {
                             percent: percent.clamp(1.0, 96.0),
                         });
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(80)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
                 Err(e) => {
                     return Err(format!("Error waiting for smbclient: {}", e));
@@ -1081,9 +1081,15 @@ impl RouterStorageManager {
             .and_then(|s| s.to_str())
             .unwrap_or("folder");
 
-        // 1. Collect all files recursively
-        let mut local_files = Vec::new();
-        Self::collect_files_recursive(local_dir, "", &mut local_files)?;
+        // 1. Collect all files recursively without blocking the async runtime
+        let local_dir_buf = local_dir.to_path_buf();
+        let local_files = tokio::task::spawn_blocking(move || {
+            let mut files = Vec::new();
+            Self::collect_files_recursive(&local_dir_buf, "", &mut files)?;
+            Ok::<Vec<LocalFileInfo>, String>(files)
+        })
+        .await
+        .map_err(|e| format!("Failed collecting local files: {}", e))??;
 
         let total_items = local_files.len();
         let total_bytes: u64 = local_files.iter().map(|f| f.size).sum();

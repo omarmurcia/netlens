@@ -23,11 +23,12 @@ pub fn send_tray_action(action: TrayAction) {
     let _ = get_tray_sender().send(action);
 }
 
-/// Extracts and converts NetLens icon to ARGB32 format for System Tray
+/// Extracts and converts NetLens icon to ARGB32 format for System Tray (64x64 to minimize D-Bus payload)
 pub fn get_icon_argb() -> Option<Icon> {
     let png_bytes = include_bytes!("../assets/netlens.png");
     let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png).ok()?;
-    let rgba = img.into_rgba8();
+    let resized = img.resize_exact(64, 64, image::imageops::FilterType::Lanczos3);
+    let rgba = resized.into_rgba8();
     let width = rgba.width() as i32;
     let height = rgba.height() as i32;
     let mut data = rgba.into_raw();
