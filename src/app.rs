@@ -2746,7 +2746,30 @@ impl App {
                 self.hovered_drop_name = None;
 
                 if !self.is_storage_explorer_open {
-                    return Task::none();
+                    self.is_storage_explorer_open = true;
+                    if self.storage_shares.is_empty() {
+                        if self.is_storage_demo_mode {
+                            let shares = RouterStorageManager::get_demo_shares();
+                            self.storage_shares = shares;
+                            if let Some(first) = self.storage_shares.first() {
+                                self.storage_active_share = Some(first.name.clone());
+                            }
+                        } else {
+                            let _ = self.update(Message::RefreshStorageShares);
+                        }
+                    }
+                }
+
+                if self.storage_active_share.is_none() {
+                    if let Some(first) = self.storage_shares.first() {
+                        self.storage_active_share = Some(first.name.clone());
+                    } else if self.is_storage_demo_mode {
+                        let shares = RouterStorageManager::get_demo_shares();
+                        self.storage_shares = shares;
+                        if let Some(first) = self.storage_shares.first() {
+                            self.storage_active_share = Some(first.name.clone());
+                        }
+                    }
                 }
 
                 if self.storage_active_share.is_none() {

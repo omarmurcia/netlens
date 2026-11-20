@@ -46,6 +46,23 @@ pub fn trim_memory() {}
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
 
+    // Winit 0.30 / Iced limitation on Wayland:
+    // Winit does not implement WindowEvent::DroppedFile or HoveredFile on Wayland natively.
+    // When XWayland is available (DISPLAY is set), running via the X11 backend enables full XDnD
+    // drag-and-drop support from file managers like Dolphin, Nautilus, Thunar, etc.
+    #[cfg(target_os = "linux")]
+    {
+        if env::var("NETLENS_NATIVE_WAYLAND").is_err() {
+            if env::var("DISPLAY").map(|d| !d.is_empty()).unwrap_or(false)
+                && env::var("WAYLAND_DISPLAY").map(|w| !w.is_empty()).unwrap_or(false)
+            {
+                unsafe {
+                    env::remove_var("WAYLAND_DISPLAY");
+                }
+            }
+        }
+    }
+
     // Initialize optimized multi-threaded Tokio runtime (4 worker threads)
     // Drastically reduces memory usage by preventing glibc from creating 20+ arenas on high-core CPUs
     let rt = tokio::runtime::Builder::new_multi_thread()
