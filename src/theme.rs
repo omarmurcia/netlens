@@ -494,4 +494,34 @@ impl CustomStyles {
             snap: false,
         }
     }
+
+    /// Style for router storage file list rows without rounded corners (flat rectangular)
+    pub fn storage_file_row() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Self::card_bg())),
+            border: Border {
+                color: Self::card_border(),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Style for router storage table header without rounded corners
+    pub fn storage_table_header() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
+            border: Border {
+                color: Self::card_border(),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
 }

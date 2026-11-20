@@ -8506,7 +8506,7 @@ impl App {
             .padding(Padding::from([4, 8])),
         )
         .width(Length::Fill)
-        .style(|_| CustomStyles::card_container());
+        .style(|_| CustomStyles::storage_table_header());
 
         modal_body = modal_body.push(table_header);
 
@@ -8642,7 +8642,7 @@ impl App {
                     .padding(Padding::from([4, 8])),
                 )
                 .width(Length::Fill)
-                .style(|_| CustomStyles::card_container());
+                .style(|_| CustomStyles::storage_file_row());
 
                 files_column = files_column.push(file_row);
             }
