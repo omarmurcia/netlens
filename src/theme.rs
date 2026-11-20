@@ -1,5 +1,15 @@
+use crate::router::storage::StorageFileType;
+use iced::border;
 use iced::widget::{button, container, scrollable};
 use iced::{Background, Border, Color, Shadow, Theme, Vector};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageActionTone {
+    Primary,
+    Success,
+    Neutral,
+    Danger,
+}
 
 pub struct CustomStyles;
 
@@ -163,9 +173,13 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(56, 189, 248),
                 width: 1.0,
-                radius: 12.0.into(),
+                radius: 14.0.into(),
             },
-            shadow: Shadow::default(),
+            shadow: Shadow {
+                color: Color::from_rgba8(0, 0, 0, 0.25),
+                offset: Vector::new(0.0, 4.0),
+                blur_radius: 14.0,
+            },
             snap: false,
         }
     }
@@ -178,14 +192,18 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(14, 165, 233),
                 width: 1.5,
-                radius: 12.0.into(),
+                radius: 14.0.into(),
             },
-            shadow: Shadow::default(),
+            shadow: Shadow {
+                color: Color::from_rgba8(0, 0, 0, 0.45),
+                offset: Vector::new(0.0, 8.0),
+                blur_radius: 24.0,
+            },
             snap: false,
         }
     }
 
-    // Style for advanced modal dialogs (Audit, History, Wi-Fi, UPnP)
+    // Style for advanced modal dialogs (Audit, History, Wi-Fi, UPnP, Storage)
     pub fn modal_panel(accent_color: Color) -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
@@ -193,7 +211,41 @@ impl CustomStyles {
             border: Border {
                 color: accent_color,
                 width: 1.5,
-                radius: 12.0.into(),
+                radius: 14.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba8(0, 0, 0, 0.45),
+                offset: Vector::new(0.0, 8.0),
+                blur_radius: 24.0,
+            },
+            snap: false,
+        }
+    }
+
+    // Subtle inset container for nested scroll regions (ports, traceroute, DNS requests)
+    pub fn inset_container() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
+            border: Border {
+                color: Color::from_rgb8(36, 48, 68),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    // Security audit check card (10px radius matching card hierarchy)
+    pub fn audit_card(bg_color: Color, border_color: Color) -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(bg_color)),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: 10.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -208,7 +260,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(56, 189, 248),
                 width: 1.0,
-                radius: 8.0.into(),
+                radius: 7.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -223,7 +275,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(71, 85, 105),
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 7.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -238,7 +290,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(248, 113, 113),
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 7.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -253,7 +305,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(52, 211, 153),
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 7.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -298,7 +350,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(16, 185, 129),
                 width: 1.0,
-                radius: 8.0.into(),
+                radius: 10.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -313,20 +365,22 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(239, 68, 68),
                 width: 1.0,
-                radius: 8.0.into(),
+                radius: 10.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
         }
     }
 
-    // Elegant style for scrollbars
+    // Sleek, non-intrusive scrollbar style (transparent rail when idle to prevent layout noise)
     pub fn scrollbar_style() -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style {
         |theme, status| {
-            let (scroller_bg, border_color) = match status {
+            let (rail_bg, scroller_bg, border_color, border_width) = match status {
                 scrollable::Status::Active { .. } => (
-                    Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                    None,
+                    Background::Color(Color::from_rgba8(148, 163, 184, 0.32)),
                     Color::TRANSPARENT,
+                    0.0,
                 ),
                 scrollable::Status::Hovered {
                     is_vertical_scrollbar_hovered,
@@ -335,13 +389,17 @@ impl CustomStyles {
                 } => {
                     if is_vertical_scrollbar_hovered || is_horizontal_scrollbar_hovered {
                         (
+                            Some(Background::Color(Color::from_rgba8(15, 23, 42, 0.28))),
                             Background::Color(Color::from_rgba8(14, 165, 233, 0.85)),
-                            Color::from_rgba8(56, 189, 248, 0.6),
+                            Color::from_rgba8(56, 189, 248, 0.5),
+                            1.0,
                         )
                     } else {
                         (
-                            Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                            None,
+                            Background::Color(Color::from_rgba8(148, 163, 184, 0.45)),
                             Color::TRANSPARENT,
+                            0.0,
                         )
                     }
                 }
@@ -352,20 +410,24 @@ impl CustomStyles {
                 } => {
                     if is_vertical_scrollbar_dragged || is_horizontal_scrollbar_dragged {
                         (
+                            Some(Background::Color(Color::from_rgba8(15, 23, 42, 0.35))),
                             Background::Color(Color::from_rgb8(14, 165, 233)),
                             Color::from_rgb8(56, 189, 248),
+                            1.0,
                         )
                     } else {
                         (
-                            Background::Color(Color::from_rgba8(148, 163, 184, 0.4)),
+                            None,
+                            Background::Color(Color::from_rgba8(148, 163, 184, 0.45)),
                             Color::TRANSPARENT,
+                            0.0,
                         )
                     }
                 }
             };
 
             let rail = scrollable::Rail {
-                background: Some(Background::Color(Color::from_rgba8(15, 23, 42, 0.35))),
+                background: rail_bg,
                 border: Border {
                     radius: 4.0.into(),
                     ..Border::default()
@@ -374,7 +436,7 @@ impl CustomStyles {
                     background: scroller_bg,
                     border: Border {
                         radius: 4.0.into(),
-                        width: 1.0,
+                        width: border_width,
                         color: border_color,
                     },
                 },
@@ -429,7 +491,7 @@ impl CustomStyles {
                 scroller: scrollable::Scroller {
                     background: scroller_bg,
                     border: Border {
-                        radius: 2.0.into(),
+                        radius: 3.0.into(),
                         width: 0.0,
                         color: Color::TRANSPARENT,
                     },
@@ -454,22 +516,26 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(51, 65, 85),
                 width: 1.0,
-                radius: 6.0.into(),
+                radius: 7.0.into(),
             },
-            shadow: Shadow::default(),
+            shadow: Shadow {
+                color: Color::from_rgba8(0, 0, 0, 0.4),
+                offset: Vector::new(0.0, 3.0),
+                blur_radius: 10.0,
+            },
             snap: false,
         }
     }
 
-    /// Style for router storage file list area in normal/idle state
+    /// Style for router storage file list area in normal/idle state (bottom corners rounded to join header)
     pub fn drop_zone_idle() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
             background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
             border: Border {
-                color: Color::from_rgb8(30, 41, 59),
+                color: Color::from_rgb8(42, 54, 74),
                 width: 1.0,
-                radius: 8.0.into(),
+                radius: border::bottom(8.0),
             },
             shadow: Shadow::default(),
             snap: false,
@@ -484,7 +550,7 @@ impl CustomStyles {
             border: Border {
                 color: Color::from_rgb8(56, 189, 248),
                 width: 2.0,
-                radius: 8.0.into(),
+                radius: border::bottom(8.0),
             },
             shadow: Shadow {
                 color: Color::from_rgba8(14, 165, 233, 0.35),
@@ -495,30 +561,202 @@ impl CustomStyles {
         }
     }
 
-    /// Style for router storage file list rows without rounded corners (flat rectangular)
-    pub fn storage_file_row() -> container::Style {
+    /// Style for router storage file list rows (borderless zebra striping, inherits table background)
+    pub fn storage_file_row(index: usize) -> container::Style {
+        let background = if index % 2 == 1 {
+            Some(Background::Color(Color::from_rgba8(30, 41, 59, 0.36)))
+        } else {
+            None
+        };
+
         container::Style {
             text_color: Some(Self::text_primary()),
-            background: Some(Background::Color(Self::card_bg())),
+            background,
             border: Border {
-                color: Self::card_border(),
-                width: 1.0,
-                radius: 0.0.into(),
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 6.0.into(),
             },
             shadow: Shadow::default(),
             snap: false,
         }
     }
 
-    /// Style for router storage table header without rounded corners
+    /// Soft tinted icon badge for router storage file types
+    pub fn storage_type_badge(file_type: StorageFileType) -> container::Style {
+        let (bg, border_col) = match file_type {
+            StorageFileType::Folder => (
+                Color::from_rgba8(14, 165, 233, 0.14),
+                Color::from_rgba8(56, 189, 248, 0.28),
+            ),
+            StorageFileType::Image => (
+                Color::from_rgba8(168, 85, 247, 0.14),
+                Color::from_rgba8(192, 132, 252, 0.28),
+            ),
+            StorageFileType::Video => (
+                Color::from_rgba8(244, 63, 94, 0.14),
+                Color::from_rgba8(251, 113, 133, 0.28),
+            ),
+            StorageFileType::Audio => (
+                Color::from_rgba8(16, 185, 129, 0.14),
+                Color::from_rgba8(52, 211, 153, 0.28),
+            ),
+            StorageFileType::Document => (
+                Color::from_rgba8(59, 130, 246, 0.14),
+                Color::from_rgba8(96, 165, 250, 0.28),
+            ),
+            StorageFileType::Archive => (
+                Color::from_rgba8(245, 158, 11, 0.14),
+                Color::from_rgba8(251, 191, 36, 0.28),
+            ),
+            StorageFileType::Executable => (
+                Color::from_rgba8(249, 115, 22, 0.14),
+                Color::from_rgba8(251, 146, 60, 0.28),
+            ),
+            StorageFileType::Code => (
+                Color::from_rgba8(20, 184, 166, 0.14),
+                Color::from_rgba8(45, 212, 191, 0.28),
+            ),
+            StorageFileType::Unknown => (
+                Color::from_rgba8(100, 116, 139, 0.14),
+                Color::from_rgba8(148, 163, 184, 0.22),
+            ),
+        };
+
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(bg)),
+            border: Border {
+                color: border_col,
+                width: 1.0,
+                radius: 7.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Clean interactive link-style button for file/folder names in the storage table
+    pub fn storage_name_button(is_dir: bool, status: button::Status) -> button::Style {
+        let base_text = if is_dir {
+            Color::from_rgb8(56, 189, 248)
+        } else {
+            Self::text_primary()
+        };
+
+        let (background, border_color, border_width, text_color) = match status {
+            button::Status::Active | button::Status::Disabled => {
+                (None, Color::TRANSPARENT, 0.0, base_text)
+            }
+            button::Status::Hovered => {
+                let hover_bg = if is_dir {
+                    Color::from_rgba8(56, 189, 248, 0.12)
+                } else {
+                    Color::from_rgba8(148, 163, 184, 0.12)
+                };
+                let hover_border = if is_dir {
+                    Color::from_rgba8(56, 189, 248, 0.28)
+                } else {
+                    Color::from_rgba8(148, 163, 184, 0.22)
+                };
+                (
+                    Some(Background::Color(hover_bg)),
+                    hover_border,
+                    1.0,
+                    if is_dir {
+                        Color::from_rgb8(125, 211, 252)
+                    } else {
+                        Color::WHITE
+                    },
+                )
+            }
+            button::Status::Pressed => (
+                Some(Background::Color(Color::from_rgba8(56, 189, 248, 0.20))),
+                Color::from_rgba8(56, 189, 248, 0.40),
+                1.0,
+                Color::WHITE,
+            ),
+        };
+
+        button::Style {
+            background,
+            text_color,
+            border: Border {
+                color: border_color,
+                width: border_width,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Ghost-pill action buttons for storage table rows
+    pub fn storage_action_button(tone: StorageActionTone, status: button::Status) -> button::Style {
+        let (idle_bg, idle_border, idle_text, hover_bg, hover_border, hover_text) = match tone {
+            StorageActionTone::Primary => (
+                Color::from_rgba8(14, 165, 233, 0.14),
+                Color::from_rgba8(56, 189, 248, 0.28),
+                Color::from_rgb8(56, 189, 248),
+                Color::from_rgba8(14, 165, 233, 0.30),
+                Color::from_rgb8(56, 189, 248),
+                Color::WHITE,
+            ),
+            StorageActionTone::Success => (
+                Color::from_rgba8(16, 185, 129, 0.14),
+                Color::from_rgba8(52, 211, 153, 0.28),
+                Color::from_rgb8(52, 211, 153),
+                Color::from_rgba8(16, 185, 129, 0.28),
+                Color::from_rgb8(52, 211, 153),
+                Color::WHITE,
+            ),
+            StorageActionTone::Neutral => (
+                Color::from_rgba8(51, 65, 85, 0.42),
+                Color::from_rgba8(71, 85, 105, 0.55),
+                Color::from_rgb8(203, 213, 225),
+                Color::from_rgba8(71, 85, 105, 0.72),
+                Color::from_rgb8(148, 163, 184),
+                Color::WHITE,
+            ),
+            StorageActionTone::Danger => (
+                Color::from_rgba8(239, 68, 68, 0.12),
+                Color::from_rgba8(248, 113, 113, 0.26),
+                Color::from_rgb8(248, 113, 113),
+                Color::from_rgb8(220, 38, 38),
+                Color::from_rgb8(248, 113, 113),
+                Color::WHITE,
+            ),
+        };
+
+        let (bg, border_col, text_col) = match status {
+            button::Status::Active | button::Status::Disabled => (idle_bg, idle_border, idle_text),
+            button::Status::Hovered | button::Status::Pressed => {
+                (hover_bg, hover_border, hover_text)
+            }
+        };
+
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: text_col,
+            border: Border {
+                color: border_col,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Style for router storage table header (top corners rounded to cap the table frame)
     pub fn storage_table_header() -> container::Style {
         container::Style {
             text_color: Some(Self::text_primary()),
-            background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
+            background: Some(Background::Color(Color::from_rgb8(17, 25, 44))),
             border: Border {
-                color: Self::card_border(),
+                color: Color::from_rgb8(42, 54, 74),
                 width: 1.0,
-                radius: 0.0.into(),
+                radius: border::top(8.0),
             },
             shadow: Shadow::default(),
             snap: false,

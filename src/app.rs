@@ -4128,7 +4128,9 @@ impl App {
     }
 
     pub fn view(&self, _window: iced::window::Id) -> Element<'_, Message> {
-        let mut content = Column::new().spacing(14).padding(16);
+        let mut content = Column::new()
+            .spacing(12)
+            .padding(Padding::from([14, 16]));
 
         // 1. Main header (Title, Settings button, scan and export buttons)
         content = content.push(self.view_header());
@@ -4297,7 +4299,7 @@ impl App {
                         .style(|_| CustomStyles::inspector_panel())
                         .padding(Padding {
                             top: 14.0,
-                            right: 10.0,
+                            right: 12.0,
                             bottom: 14.0,
                             left: 14.0,
                         }),
@@ -4647,10 +4649,32 @@ impl App {
             ),
         ]
         .spacing(6)
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Center)
+        .padding(Padding {
+            top: 2.0,
+            right: 2.0,
+            bottom: 4.0,
+            left: 2.0,
+        });
 
-        let tools_toolbar = container(nav_tools)
-            .padding(Padding::from([4, 8]))
+        let tools_scroll = scrollable(nav_tools)
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Scrollbar::new()
+                    .width(3.0)
+                    .margin(1.0)
+                    .scroller_width(3.0)
+                    .spacing(3.0),
+            ))
+            .style(CustomStyles::discrete_horizontal_scrollbar_style())
+            .width(Length::Fill);
+
+        let tools_toolbar = container(tools_scroll)
+            .padding(Padding {
+                top: 4.0,
+                right: 8.0,
+                bottom: 2.0,
+                left: 8.0,
+            })
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
@@ -5156,28 +5180,38 @@ impl App {
             container(info_col).padding(12).style(|_| CustomStyles::card_container()),
             about_card,
         ]
-        .spacing(14)
+        .spacing(12)
         .padding(Padding {
-            top: 0.0,
-            right: 16.0,
-            bottom: 0.0,
-            left: 0.0,
+            top: 2.0,
+            right: 10.0,
+            bottom: 4.0,
+            left: 2.0,
         });
 
         let scrollable_body = scrollable(body_content)
-            .height(Length::Fill);
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(6.0)
+                    .scroller_width(6.0)
+                    .margin(2.0)
+                    .spacing(8.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Shrink);
 
         let panel_layout = column![
             title_row,
-            scrollable_body,
+            container(scrollable_body)
+                .width(Length::Fill)
+                .max_height(530.0),
             footer_row,
         ]
         .spacing(14);
 
         container(panel_layout)
-            .padding(24)
+            .padding(22)
             .width(820)
-            .max_height(720)
+            .max_height(680)
             .style(|_| CustomStyles::settings_panel())
             .into()
     }
@@ -5916,8 +5950,9 @@ impl App {
             );
 
             for test in self.speed_test_history.iter().take(4) {
-                let srv_truncated = if test.server.len() > 20 {
-                    format!("{}...", &test.server[..18])
+                let srv_truncated = if test.server.chars().count() > 20 {
+                    let head: String = test.server.chars().take(18).collect();
+                    format!("{}...", head)
                 } else {
                     test.server.clone()
                 };
@@ -5966,8 +6001,9 @@ impl App {
         .spacing(14);
 
         container(content)
-            .padding(24)
+            .padding(22)
             .width(850)
+            .max_height(680)
             .style(|_| CustomStyles::settings_panel())
             .into()
     }
@@ -6145,10 +6181,10 @@ impl App {
 
         // Category compact styled pill buttons in an elegant scrollable horizontal row
         let mut category_pills = row![].spacing(6).align_y(Alignment::Center).padding(Padding {
-            top: 3.0,
+            top: 4.0,
             right: 6.0,
-            bottom: 9.0,
-            left: 4.0,
+            bottom: 6.0,
+            left: 2.0,
         });
 
         let is_all_active = self.selected_category.is_none() && self.security_filter == SecurityFilter::All;
@@ -6283,9 +6319,10 @@ impl App {
         let category_scroll = scrollable(category_pills)
             .direction(scrollable::Direction::Horizontal(
                 scrollable::Scrollbar::new()
-                    .width(3)
-                    .margin(1)
-                    .scroller_width(3),
+                    .width(3.0)
+                    .margin(1.0)
+                    .scroller_width(3.0)
+                    .spacing(4.0),
             ))
             .style(CustomStyles::discrete_horizontal_scrollbar_style())
             .width(Length::Fill);
@@ -6329,9 +6366,9 @@ impl App {
 
         let mut list_col = Column::new().spacing(8).padding(Padding {
             top: 2.0,
-            right: 6.0,
-            bottom: 12.0,
-            left: 2.0,
+            right: 0.0,
+            bottom: 10.0,
+            left: 0.0,
         });
 
         for device in devices {
@@ -6341,10 +6378,10 @@ impl App {
         scrollable(list_col)
             .direction(scrollable::Direction::Vertical(
                 scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
+                    .width(5.0)
+                    .scroller_width(5.0)
                     .margin(2.0)
-                    .spacing(8.0),
+                    .spacing(6.0),
             ))
             .style(CustomStyles::scrollbar_style())
             .height(Length::Fill)
@@ -6669,7 +6706,7 @@ impl App {
         .width(Length::Fill);
 
         container(card_content)
-            .padding(10)
+            .padding(Padding::from([10, 12]))
             .width(Length::Fill)
             .style(move |_| {
                 if is_selected {
@@ -6701,12 +6738,18 @@ impl App {
             space::horizontal(),
             close_btn,
         ]
+        .padding(Padding {
+            top: 0.0,
+            right: 8.0,
+            bottom: 0.0,
+            left: 2.0,
+        })
         .align_y(Alignment::Center);
 
-        let mut insp_body = Column::new().spacing(12).padding(Padding {
+        let mut insp_body = Column::new().spacing(11).padding(Padding {
             top: 2.0,
-            right: 6.0,
-            bottom: 12.0,
+            right: 10.0,
+            bottom: 10.0,
             left: 2.0,
         });
 
@@ -6830,7 +6873,7 @@ impl App {
 
         insp_body = insp_body.push(
             container(specs_col)
-                .padding(8)
+                .padding(10)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -6997,7 +7040,7 @@ impl App {
 
         insp_body = insp_body.push(
             container(ping_section)
-                .padding(8)
+                .padding(10)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -7039,10 +7082,10 @@ impl App {
             );
         } else {
             let mut port_list = Column::new().spacing(4).padding(Padding {
-                top: 0.0,
-                right: 4.0,
+                top: 2.0,
+                right: 8.0,
                 bottom: 2.0,
-                left: 0.0,
+                left: 2.0,
             });
             for p in &self.deep_ports {
                 port_list = port_list.push(
@@ -7065,22 +7108,28 @@ impl App {
                 );
             }
             ports_section = ports_section.push(
-                scrollable(port_list)
-                    .direction(scrollable::Direction::Vertical(
-                        scrollable::Scrollbar::new()
-                            .width(5.0)
-                            .scroller_width(5.0)
-                            .margin(1.0)
-                            .spacing(6.0),
-                    ))
-                    .style(CustomStyles::scrollbar_style())
-                    .height(110),
+                container(
+                    scrollable(port_list)
+                        .direction(scrollable::Direction::Vertical(
+                            scrollable::Scrollbar::new()
+                                .width(5.0)
+                                .scroller_width(5.0)
+                                .margin(1.0)
+                                .spacing(6.0),
+                        ))
+                        .style(CustomStyles::scrollbar_style())
+                        .height(Length::Shrink),
+                )
+                .padding(Padding::from([4, 6]))
+                .width(Length::Fill)
+                .max_height(120.0)
+                .style(|_| CustomStyles::inset_container()),
             );
         }
 
         insp_body = insp_body.push(
             container(ports_section)
-                .padding(8)
+                .padding(10)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -7123,10 +7172,10 @@ impl App {
             trace_section = trace_section.push(hops_header);
 
             let mut hops_col = Column::new().spacing(4).padding(Padding {
-                top: 0.0,
-                right: 4.0,
+                top: 2.0,
+                right: 8.0,
                 bottom: 2.0,
-                left: 0.0,
+                left: 2.0,
             });
             for h in hops {
                 let (ip_str, latency_str, color) = if h.is_timeout {
@@ -7164,22 +7213,28 @@ impl App {
                 );
             }
             trace_section = trace_section.push(
-                scrollable(hops_col)
-                    .direction(scrollable::Direction::Vertical(
-                        scrollable::Scrollbar::new()
-                            .width(5.0)
-                            .scroller_width(5.0)
-                            .margin(1.0)
-                            .spacing(6.0),
-                    ))
-                    .style(CustomStyles::scrollbar_style())
-                    .height(120),
+                container(
+                    scrollable(hops_col)
+                        .direction(scrollable::Direction::Vertical(
+                            scrollable::Scrollbar::new()
+                                .width(5.0)
+                                .scroller_width(5.0)
+                                .margin(1.0)
+                                .spacing(6.0),
+                        ))
+                        .style(CustomStyles::scrollbar_style())
+                        .height(Length::Shrink),
+                )
+                .padding(Padding::from([4, 6]))
+                .width(Length::Fill)
+                .max_height(130.0)
+                .style(|_| CustomStyles::inset_container()),
             );
         }
 
         insp_body = insp_body.push(
             container(trace_section)
-                .padding(8)
+                .padding(10)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -7225,10 +7280,10 @@ impl App {
             );
         } else {
             let mut req_list = Column::new().spacing(5).padding(Padding {
-                top: 0.0,
-                right: 4.0,
+                top: 2.0,
+                right: 8.0,
                 bottom: 2.0,
-                left: 0.0,
+                left: 2.0,
             });
 
             for entry in &device.request_history {
@@ -7282,22 +7337,28 @@ impl App {
             }
 
             req_section = req_section.push(
-                scrollable(req_list)
-                    .direction(scrollable::Direction::Vertical(
-                        scrollable::Scrollbar::new()
-                            .width(5.0)
-                            .scroller_width(5.0)
-                            .margin(1.0)
-                            .spacing(6.0),
-                    ))
-                    .style(CustomStyles::scrollbar_style())
-                    .height(160),
+                container(
+                    scrollable(req_list)
+                        .direction(scrollable::Direction::Vertical(
+                            scrollable::Scrollbar::new()
+                                .width(5.0)
+                                .scroller_width(5.0)
+                                .margin(1.0)
+                                .spacing(6.0),
+                        ))
+                        .style(CustomStyles::scrollbar_style())
+                        .height(Length::Shrink),
+                )
+                .padding(Padding::from([4, 6]))
+                .width(Length::Fill)
+                .max_height(170.0)
+                .style(|_| CustomStyles::inset_container()),
             );
         }
 
         insp_body = insp_body.push(
             container(req_section)
-                .padding(8)
+                .padding(10)
                 .style(|_| CustomStyles::card_container()),
         );
 
@@ -7353,7 +7414,7 @@ impl App {
         .align_y(Alignment::Center);
 
         container(notif_row)
-            .padding(6)
+            .padding(Padding::from([8, 12]))
             .width(Length::Fill)
             .style(move |_| style_fn())
             .into()
@@ -7427,18 +7488,18 @@ impl App {
         .style(|_| CustomStyles::card_container());
 
         let mut checks_col = Column::new().spacing(10).padding(Padding {
-            top: 4.0,
-            right: 12.0,
-            bottom: 8.0,
-            left: 4.0,
+            top: 2.0,
+            right: 10.0,
+            bottom: 4.0,
+            left: 2.0,
         });
 
         for check in checks_list {
-            let (icon, icon_color, border_bg) = match check.severity {
-                AuditSeverity::Pass => ("✅", CustomStyles::accent_emerald(), Color::from_rgb8(15, 35, 25)),
-                AuditSeverity::Info => ("ℹ️", CustomStyles::accent_cyan(), Color::from_rgb8(15, 30, 45)),
-                AuditSeverity::Warning => ("⚠️", CustomStyles::accent_amber(), Color::from_rgb8(45, 35, 15)),
-                AuditSeverity::Critical => ("🚨", Color::from_rgb8(239, 68, 68), Color::from_rgb8(50, 15, 15)),
+            let (icon, icon_color, border_bg, border_stroke) = match check.severity {
+                AuditSeverity::Pass => ("✅", CustomStyles::accent_emerald(), Color::from_rgb8(15, 35, 25), Color::from_rgb8(22, 101, 52)),
+                AuditSeverity::Info => ("ℹ️", CustomStyles::accent_cyan(), Color::from_rgb8(15, 30, 45), Color::from_rgb8(21, 94, 117)),
+                AuditSeverity::Warning => ("⚠️", CustomStyles::accent_amber(), Color::from_rgb8(45, 35, 15), Color::from_rgb8(146, 64, 14)),
+                AuditSeverity::Critical => ("🚨", Color::from_rgb8(239, 68, 68), Color::from_rgb8(50, 15, 15), Color::from_rgb8(153, 27, 27)),
             };
 
             let mut check_body = column![
@@ -7492,21 +7553,25 @@ impl App {
             let check_card = container(check_body)
                 .padding(14)
                 .width(Length::Fill)
-                .style(move |_| CustomStyles::badge_pill(border_bg, CustomStyles::text_primary()));
+                .style(move |_| CustomStyles::audit_card(border_bg, border_stroke));
 
             checks_col = checks_col.push(check_card);
         }
 
-        let checks_scrollable = scrollable(checks_col)
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
-                    .margin(2.0)
-                    .spacing(8.0),
-            ))
-            .style(CustomStyles::scrollbar_style())
-            .height(Length::Fixed(480.0));
+        let checks_scrollable = container(
+            scrollable(checks_col)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new()
+                        .width(6.0)
+                        .scroller_width(6.0)
+                        .margin(2.0)
+                        .spacing(8.0),
+                ))
+                .style(CustomStyles::scrollbar_style())
+                .height(Length::Shrink),
+        )
+        .width(Length::Fill)
+        .max_height(430.0);
 
         let actions_row = row![
             button(text(Translations::audit_rerun_btn(self.language)).size(12))
@@ -7528,11 +7593,12 @@ impl App {
             checks_scrollable,
             actions_row,
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(content)
-            .padding(24)
+            .padding(22)
             .width(960)
+            .max_height(680)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -7587,10 +7653,10 @@ impl App {
         .style(|_| CustomStyles::card_container());
 
         let mut events_col = Column::new().spacing(8).padding(Padding {
-            top: 4.0,
-            right: 12.0,
-            bottom: 8.0,
-            left: 4.0,
+            top: 2.0,
+            right: 10.0,
+            bottom: 4.0,
+            left: 2.0,
         });
 
         if self.network_events.is_empty() {
@@ -7650,16 +7716,20 @@ impl App {
             }
         }
 
-        let events_scrollable = scrollable(events_col)
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
-                    .margin(2.0)
-                    .spacing(8.0),
-            ))
-            .style(CustomStyles::scrollbar_style())
-            .height(Length::Fixed(480.0));
+        let events_scrollable = container(
+            scrollable(events_col)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new()
+                        .width(6.0)
+                        .scroller_width(6.0)
+                        .margin(2.0)
+                        .spacing(8.0),
+                ))
+                .style(CustomStyles::scrollbar_style())
+                .height(Length::Shrink),
+        )
+        .width(Length::Fill)
+        .max_height(430.0);
 
         let close_row = row![
             space::horizontal(),
@@ -7677,11 +7747,12 @@ impl App {
             events_scrollable,
             close_row,
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(content)
-            .padding(24)
+            .padding(22)
             .width(960)
+            .max_height(680)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_purple()))
             .into()
     }
@@ -7856,16 +7927,20 @@ impl App {
             );
         }
 
-        let scrollable_area = scrollable(modal_body)
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
-                    .margin(2.0)
-                    .spacing(8.0),
-            ))
-            .style(CustomStyles::scrollbar_style())
-            .height(Length::Fixed(480.0));
+        let scrollable_area = container(
+            scrollable(modal_body)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new()
+                        .width(6.0)
+                        .scroller_width(6.0)
+                        .margin(2.0)
+                        .spacing(8.0),
+                ))
+                .style(CustomStyles::scrollbar_style())
+                .height(Length::Shrink),
+        )
+        .width(Length::Fill)
+        .max_height(440.0);
 
         let close_row = row![
             space::horizontal(),
@@ -7883,11 +7958,12 @@ impl App {
             scrollable_area,
             close_row,
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(content)
-            .padding(24)
+            .padding(22)
             .width(980)
+            .max_height(680)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_amber()))
             .into()
     }
@@ -8082,16 +8158,20 @@ impl App {
             );
         }
 
-        let scrollable_area = scrollable(modal_body)
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
-                    .margin(2.0)
-                    .spacing(8.0),
-            ))
-            .style(CustomStyles::scrollbar_style())
-            .height(Length::Fixed(480.0));
+        let scrollable_area = container(
+            scrollable(modal_body)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new()
+                        .width(6.0)
+                        .scroller_width(6.0)
+                        .margin(2.0)
+                        .spacing(8.0),
+                ))
+                .style(CustomStyles::scrollbar_style())
+                .height(Length::Shrink),
+        )
+        .width(Length::Fill)
+        .max_height(440.0);
 
         let close_row = row![
             space::horizontal(),
@@ -8109,11 +8189,12 @@ impl App {
             scrollable_area,
             close_row,
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(content)
-            .padding(24)
+            .padding(22)
             .width(980)
+            .max_height(680)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -8677,7 +8758,7 @@ impl App {
             modal_body = modal_body.push(status_card);
         }
 
-        // File table header with strictly aligned widths
+        // File table header with strictly aligned widths and reserved right gutter for vertical scrollbar
         let table_header = container(
             row![
                 container(text(Translations::storage_col_type(self.language)).size(11).color(CustomStyles::text_muted())).width(45).align_x(Alignment::Center),
@@ -8687,12 +8768,15 @@ impl App {
                 container(text(Translations::storage_col_actions(self.language)).size(11).color(CustomStyles::text_muted())).width(230).align_x(Alignment::Center),
             ]
             .align_y(Alignment::Center)
-            .padding(Padding::from([4, 8])),
+            .padding(Padding {
+                top: 6.0,
+                right: 16.0,
+                bottom: 6.0,
+                left: 10.0,
+            }),
         )
         .width(Length::Fill)
         .style(|_| CustomStyles::storage_table_header());
-
-        modal_body = modal_body.push(table_header);
 
         // Files / folders content
         let query = self.storage_filter_query.trim().to_lowercase();
@@ -8702,7 +8786,12 @@ impl App {
             .filter(|f| query.is_empty() || f.name.to_lowercase().contains(&query))
             .collect();
 
-        let mut files_column = column![].spacing(3);
+        let mut files_column = column![].spacing(2).padding(Padding {
+            top: 4.0,
+            right: 6.0,
+            bottom: 4.0,
+            left: 4.0,
+        });
 
         if filtered_files.is_empty() {
             let empty_text = if self.is_storage_loading {
@@ -8724,49 +8813,80 @@ impl App {
                 .width(Length::Fill),
             );
         } else {
-            for file in filtered_files {
+            for (row_idx, file) in filtered_files.into_iter().enumerate() {
                 let name_clone = file.name.clone();
                 let is_dir = file.is_dir;
+                let file_type = file.file_type;
                 let target_subpath = if self.storage_current_path.is_empty() {
                     name_clone.clone()
                 } else {
                     format!("{}/{}", self.storage_current_path.trim_matches('/'), name_clone)
                 };
 
-                let max_name_len = 38;
-                let char_count = file.name.chars().count();
-                let display_name = if char_count > max_name_len {
-                    let truncated: String = file.name.chars().take(max_name_len.saturating_sub(3)).collect();
-                    format!("{}...", truncated)
-                } else {
-                    file.name.clone()
-                };
+                let type_badge = container(
+                    container(text(file_type.icon()).size(14))
+                        .width(28)
+                        .height(28)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
+                        .style(move |_| CustomStyles::storage_type_badge(file_type)),
+                )
+                .width(45)
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center);
 
-                let name_button = if is_dir {
-                    button(text(display_name).size(12).color(CustomStyles::accent_cyan()))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([2, 6]))
-                        .on_press(Message::StorageNavigateTo(target_subpath.clone()))
-                } else {
-                    button(text(display_name).size(12).color(CustomStyles::text_primary()))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([2, 6]))
-                        .on_press(Message::StorageOpenFile(name_clone.clone()))
-                };
+                let full_name = file.name.clone();
+                let target_subpath_btn = target_subpath.clone();
+                let name_clone_btn = name_clone.clone();
+
+                let name_responsive = iced::widget::responsive(move |size| {
+                    let usable_width = (size.width - 16.0).max(24.0);
+                    let max_chars = (usable_width / 6.8).floor() as usize;
+                    let char_count = full_name.chars().count();
+                    let display_name = if max_chars >= 4 && char_count > max_chars {
+                        let truncated: String =
+                            full_name.chars().take(max_chars.saturating_sub(3)).collect();
+                        format!("{}...", truncated)
+                    } else {
+                        full_name.clone()
+                    };
+
+                    if is_dir {
+                        button(text(display_name).size(12))
+                            .style(|_, status| CustomStyles::storage_name_button(true, status))
+                            .padding(Padding::from([4, 8]))
+                            .on_press(Message::StorageNavigateTo(target_subpath_btn.clone()))
+                            .into()
+                    } else {
+                        button(text(display_name).size(12))
+                            .style(|_, status| CustomStyles::storage_name_button(false, status))
+                            .padding(Padding::from([4, 8]))
+                            .on_press(Message::StorageOpenFile(name_clone_btn.clone()))
+                            .into()
+                    }
+                });
 
                 let name_element: Element<'_, Message> = self.tip(
-                    name_button,
+                    container(name_responsive)
+                        .width(Length::Fill)
+                        .height(Length::Fixed(26.0))
+                        .align_y(Alignment::Center),
                     &file.name,
                     tooltip::Position::Top,
                 );
 
-                // Centered row action buttons
-                let mut row_actions = row![].spacing(4).align_y(Alignment::Center);
+                // Centered row action buttons with ghost-pill styling
+                let mut row_actions = row![].spacing(5).align_y(Alignment::Center);
 
                 if is_dir {
                     let open_btn = button(text(Translations::storage_action_open(self.language)).size(10))
-                        .style(|_, _| CustomStyles::primary_button())
-                        .padding(Padding::from([2, 6]))
+                        .style(|_, status| {
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Primary,
+                                status,
+                            )
+                        })
+                        .padding(Padding::from([4, 8]))
                         .on_press(Message::StorageNavigateTo(target_subpath.clone()));
                     row_actions = row_actions.push(
                         self.tip(open_btn, Translations::tip_storage_open_item(self.language), tooltip::Position::Top)
@@ -8775,16 +8895,26 @@ impl App {
                     let open_name = file.name.clone();
                     let dl_name = file.name.clone();
                     let open_btn = button(text(Translations::storage_action_open(self.language)).size(10))
-                        .style(|_, _| CustomStyles::primary_button())
-                        .padding(Padding::from([2, 6]))
+                        .style(|_, status| {
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Primary,
+                                status,
+                            )
+                        })
+                        .padding(Padding::from([4, 8]))
                         .on_press(Message::StorageOpenFile(open_name));
                     row_actions = row_actions.push(
                         self.tip(open_btn, Translations::tip_storage_open_item(self.language), tooltip::Position::Top)
                     );
 
                     let dl_btn = button(text(Translations::storage_action_download(self.language)).size(10))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([2, 6]))
+                        .style(|_, status| {
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Success,
+                                status,
+                            )
+                        })
+                        .padding(Padding::from([4, 8]))
                         .on_press(Message::StorageDownloadFile(dl_name));
                     row_actions = row_actions.push(
                         self.tip(dl_btn, Translations::tip_storage_download_item(self.language), tooltip::Position::Top)
@@ -8793,8 +8923,13 @@ impl App {
 
                 let props_entry = file.clone();
                 let details_btn = button(text(Translations::storage_action_details(self.language)).size(10))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 6]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Neutral,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([4, 8]))
                     .on_press(Message::StorageShowFileProperties(props_entry));
                 row_actions = row_actions.push(
                     self.tip(details_btn, Translations::tip_storage_details_item(self.language), tooltip::Position::Top)
@@ -8803,8 +8938,13 @@ impl App {
                 let del_name = file.name.clone();
                 let del_path = target_subpath.clone();
                 let del_btn = button(text("🗑").size(10))
-                    .style(|_, _| CustomStyles::danger_button())
-                    .padding(Padding::from([2, 6]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Danger,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([4, 8]))
                     .on_press(Message::StorageRequestDeleteFile {
                         path: del_path,
                         is_dir,
@@ -8814,19 +8954,30 @@ impl App {
                     self.tip(del_btn, Translations::tip_storage_delete_item(self.language), tooltip::Position::Top)
                 );
 
+                let size_color = if is_dir {
+                    Color::from_rgb8(71, 85, 105)
+                } else {
+                    CustomStyles::text_secondary()
+                };
+
                 let file_row = container(
                     row![
-                        container(text(file.file_type.icon()).size(14)).width(45).align_x(Alignment::Center),
+                        type_badge,
                         container(name_element).width(Length::Fill).align_x(Alignment::Start),
-                        container(text(file.formatted_size()).size(11).color(CustomStyles::text_muted())).width(100).align_x(Alignment::Center),
-                        container(text(&file.modified_str).size(10).color(CustomStyles::text_muted())).width(160).align_x(Alignment::Center),
+                        container(text(file.formatted_size()).size(11).color(size_color)).width(100).align_x(Alignment::Center),
+                        container(text(&file.modified_str).size(11).color(Color::from_rgb8(130, 145, 165))).width(160).align_x(Alignment::Center),
                         container(row_actions).width(230).align_x(Alignment::Center),
                     ]
                     .align_y(Alignment::Center)
-                    .padding(Padding::from([4, 8])),
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 8.0,
+                        bottom: 5.0,
+                        left: 6.0,
+                    }),
                 )
                 .width(Length::Fill)
-                .style(|_| CustomStyles::storage_file_row());
+                .style(move |_| CustomStyles::storage_file_row(row_idx));
 
                 files_column = files_column.push(file_row);
             }
@@ -8838,10 +8989,10 @@ impl App {
                     .width(6.0)
                     .scroller_width(6.0)
                     .margin(2.0)
-                    .spacing(8.0),
+                    .spacing(4.0),
             ))
             .style(CustomStyles::scrollbar_style())
-            .height(Length::Fixed(360.0));
+            .height(Length::Fill);
 
         let files_area: Element<'_, Message> = if self.is_storage_drag_hovered {
             let item_hint = if let Some(name) = &self.hovered_drop_name {
@@ -8878,7 +9029,7 @@ impl App {
             )
             .padding(40)
             .width(Length::Fill)
-            .height(Length::Fixed(360.0))
+            .height(Length::Fixed(310.0))
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
             .style(|_| CustomStyles::drop_zone_active())
@@ -8886,12 +9037,18 @@ impl App {
         } else {
             container(scrollable_files)
                 .width(Length::Fill)
-                .height(Length::Fixed(360.0))
+                .height(Length::Fixed(310.0))
+                .padding(Padding {
+                    top: 0.0,
+                    right: 2.0,
+                    bottom: 2.0,
+                    left: 2.0,
+                })
                 .style(|_| CustomStyles::drop_zone_idle())
                 .into()
         };
 
-        modal_body = modal_body.push(files_area);
+        modal_body = modal_body.push(column![table_header, files_area].spacing(0));
 
         // Bottom bar: item summary and close button
         let total_count = self.storage_files.len();
@@ -8931,7 +9088,7 @@ impl App {
         container(content)
             .padding(20)
             .width(1080)
-            .max_height(780)
+            .max_height(685)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
