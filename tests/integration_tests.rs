@@ -1896,7 +1896,60 @@ fn test_i18n_router_storage_all_languages() {
         assert!(!Translations::storage_upload_progress_speed(lang).is_empty());
         assert!(!Translations::storage_upload_progress_target(lang).is_empty());
         assert!(!Translations::storage_upload_dismiss_btn(lang).is_empty());
+        assert!(!Translations::storage_drag_drop_prompt(lang).is_empty());
+        assert!(!Translations::storage_drag_drop_hint(lang).is_empty());
+        assert!(!Translations::storage_drag_drop_select_share(lang).is_empty());
     }
+}
+
+#[tokio::test]
+async fn test_router_storage_drag_and_drop_handling() {
+    use netlens::app::{App, Message};
+    use std::path::PathBuf;
+
+    let (mut app, _) = App::new();
+
+    // Explorer is closed initially
+    assert!(!app.is_storage_explorer_open);
+    assert!(!app.is_storage_drag_hovered);
+    assert!(app.hovered_drop_name.is_none());
+
+    // File hovered while closed should not set drag hovered
+    let test_path = PathBuf::from("/tmp/document.pdf");
+    let _ = app.update(Message::StorageFileHovered(test_path.clone()));
+    assert!(!app.is_storage_drag_hovered);
+
+    // Open storage explorer
+    let _ = app.update(Message::OpenStorageExplorer);
+    assert!(app.is_storage_explorer_open);
+
+    // Hover file now
+    let _ = app.update(Message::StorageFileHovered(test_path.clone()));
+    assert!(app.is_storage_drag_hovered);
+    assert_eq!(app.hovered_drop_name.as_deref(), Some("document.pdf"));
+
+    // Drag leaves
+    let _ = app.update(Message::StorageFilesHoveredLeft);
+    assert!(!app.is_storage_drag_hovered);
+    assert!(app.hovered_drop_name.is_none());
+
+    // Hover again
+    let _ = app.update(Message::StorageFileHovered(test_path.clone()));
+    assert!(app.is_storage_drag_hovered);
+
+    // Drop without an active share: should set error message and reset hover state
+    app.storage_active_share = None;
+    let _ = app.update(Message::StorageFileDropped(test_path.clone()));
+    assert!(!app.is_storage_drag_hovered);
+    assert!(app.hovered_drop_name.is_none());
+    assert!(app.storage_error_msg.is_some());
+
+    // Close explorer resets drag states
+    app.is_storage_drag_hovered = true;
+    app.hovered_drop_name = Some("test.zip".to_string());
+    let _ = app.update(Message::CloseStorageExplorer);
+    assert!(!app.is_storage_drag_hovered);
+    assert!(app.hovered_drop_name.is_none());
 }
 
 #[tokio::test]

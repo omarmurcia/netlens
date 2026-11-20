@@ -367,6 +367,8 @@ pub struct App {
     pub storage_last_freed: Option<u64>,
     pub demo_storage_files: HashMap<String, Vec<StorageFileEntry>>,
     pub demo_storage_disk: StorageDiskInfo,
+    pub is_storage_drag_hovered: bool,
+    pub hovered_drop_name: Option<String>,
     #[allow(dead_code)]
     pub router_has_storage: bool,
 }
@@ -401,6 +403,9 @@ pub enum Message {
     StoragePickFolderAndUpload,
     StorageFilePicked(Option<PathBuf>),
     StorageFolderPicked(Option<PathBuf>),
+    StorageFileHovered(PathBuf),
+    StorageFileDropped(PathBuf),
+    StorageFilesHoveredLeft,
     StorageShowFileProperties(StorageFileEntry),
     StorageCloseProperties,
     StorageToggleDemoMode,
@@ -803,6 +808,8 @@ impl App {
             storage_last_freed: None,
             demo_storage_files: RouterStorageManager::get_initial_demo_files(),
             demo_storage_disk: RouterStorageManager::get_initial_demo_disk(),
+            is_storage_drag_hovered: false,
+            hovered_drop_name: None,
             router_has_storage: false,
         };
 
@@ -926,7 +933,20 @@ impl App {
             Subscription::none()
         };
 
-        Subscription::batch(vec![tick_sub, close_req_sub, close_evt_sub, tray_sub, realtime_sub])
+        let drag_drop_sub = iced::event::listen_with(|event, _status, _window| match event {
+            iced::Event::Window(iced::window::Event::FileHovered(path)) => {
+                Some(Message::StorageFileHovered(path))
+            }
+            iced::Event::Window(iced::window::Event::FileDropped(path)) => {
+                Some(Message::StorageFileDropped(path))
+            }
+            iced::Event::Window(iced::window::Event::FilesHoveredLeft) => {
+                Some(Message::StorageFilesHoveredLeft)
+            }
+            _ => None,
+        });
+
+        Subscription::batch(vec![tick_sub, close_req_sub, close_evt_sub, tray_sub, realtime_sub, drag_drop_sub])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -2205,6 +2225,8 @@ impl App {
                 self.storage_selected_file = None;
                 self.file_to_delete = None;
                 self.is_creating_folder = false;
+                self.is_storage_drag_hovered = false;
+                self.hovered_drop_name = None;
                 Task::none()
             }
 
@@ -2703,6 +2725,40 @@ impl App {
                     let picked = RouterStorageManager::pick_path_with_file_dialog(true, "Select folder to upload to Router").await;
                     Message::StorageFolderPicked(picked)
                 })
+            }
+
+            Message::StorageFileHovered(path) => {
+                if self.is_storage_explorer_open {
+                    self.is_storage_drag_hovered = true;
+                    self.hovered_drop_name = path.file_name().and_then(|s| s.to_str()).map(|s| s.to_string());
+                }
+                Task::none()
+            }
+
+            Message::StorageFilesHoveredLeft => {
+                self.is_storage_drag_hovered = false;
+                self.hovered_drop_name = None;
+                Task::none()
+            }
+
+            Message::StorageFileDropped(path) => {
+                self.is_storage_drag_hovered = false;
+                self.hovered_drop_name = None;
+
+                if !self.is_storage_explorer_open {
+                    return Task::none();
+                }
+
+                if self.storage_active_share.is_none() {
+                    self.storage_error_msg = Some(Translations::storage_drag_drop_select_share(self.language).to_string());
+                    return Task::none();
+                }
+
+                if path.is_dir() {
+                    self.update(Message::StorageFolderPicked(Some(path)))
+                } else {
+                    self.update(Message::StorageFilePicked(Some(path)))
+                }
             }
 
             Message::StorageFilePicked(picked) => {
@@ -8580,7 +8636,55 @@ impl App {
             .style(CustomStyles::scrollbar_style())
             .height(Length::Fixed(360.0));
 
-        modal_body = modal_body.push(scrollable_files);
+        let files_area: Element<'_, Message> = if self.is_storage_drag_hovered {
+            let item_hint = if let Some(name) = &self.hovered_drop_name {
+                format!("📄 {}", name)
+            } else {
+                Translations::storage_drag_drop_hint(self.language).to_string()
+            };
+
+            let target_dest = if let Some(share) = &self.storage_active_share {
+                if self.storage_current_path.is_empty() {
+                    format!("📁 /{}/", share)
+                } else {
+                    format!("📁 /{}/{}", share, self.storage_current_path.trim_matches('/'))
+                }
+            } else {
+                Translations::storage_drag_drop_select_share(self.language).to_string()
+            };
+
+            container(
+                column![
+                    text("📥").size(48),
+                    text(Translations::storage_drag_drop_prompt(self.language))
+                        .size(15)
+                        .color(CustomStyles::accent_cyan()),
+                    text(item_hint)
+                        .size(12)
+                        .color(CustomStyles::text_primary()),
+                    text(format!("Target: {}", target_dest))
+                        .size(11)
+                        .color(CustomStyles::text_muted()),
+                ]
+                .spacing(10)
+                .align_x(Alignment::Center),
+            )
+            .padding(40)
+            .width(Length::Fill)
+            .height(Length::Fixed(360.0))
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(|_| CustomStyles::drop_zone_active())
+            .into()
+        } else {
+            container(scrollable_files)
+                .width(Length::Fill)
+                .height(Length::Fixed(360.0))
+                .style(|_| CustomStyles::drop_zone_idle())
+                .into()
+        };
+
+        modal_body = modal_body.push(files_area);
 
         // Bottom bar: item summary and close button
         let total_count = self.storage_files.len();
@@ -8589,7 +8693,13 @@ impl App {
         let summary_text = Translations::storage_summary_counts(total_count, dirs_count, regular_count, self.language);
 
         let footer = row![
-            text(summary_text).size(11).color(CustomStyles::text_muted()),
+            column![
+                text(summary_text).size(11).color(CustomStyles::text_muted()),
+                text(format!("💡 {}", Translations::storage_drag_drop_hint(self.language)))
+                    .size(10)
+                    .color(CustomStyles::accent_cyan()),
+            ]
+            .spacing(2),
             space::horizontal(),
             self.tip(
                 button(text(Translations::close(self.language)).size(12))

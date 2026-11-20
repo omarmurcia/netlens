@@ -11,13 +11,9 @@ echo "============================================================"
 echo "📦 Pacman / Shelly Repository Generator for NetLens"
 echo "============================================================"
 
-# 1. Ensure compilation in Release mode
-if [ ! -f "${RELEASE_BIN}" ]; then
-    echo "==> 1. Building NetLens in optimized Release mode..."
-    cargo build --release --manifest-path "${REPO_ROOT}/Cargo.toml"
-else
-    echo "==> 1. Release binary found at ${RELEASE_BIN}"
-fi
+# 1. Compile in Release mode
+echo "==> 1. Building NetLens in optimized Release mode..."
+cargo build --release --manifest-path "${REPO_ROOT}/Cargo.toml"
 
 # 2. Prepare packaging staging directory
 BUILD_TMP=$(mktemp -d)

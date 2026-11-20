@@ -7017,6 +7017,51 @@ impl Translations {
         }
     }
 
+    pub fn storage_drag_drop_prompt(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "📥 Suelta los archivos o carpetas aquí para subirlos",
+            Language::English => "📥 Drop files or folders here to upload",
+            Language::Chinese => "📥 将文件或文件夹拖放到此处即可上传",
+            Language::Hindi => "📥 अपलोड करने के लिए फ़ाइलें या फ़ोल्डर यहाँ छोड़ें",
+            Language::Arabic => "📥 أسقط الملفات أو المجلدات هنا لتحميلها",
+            Language::French => "📥 Déposez les fichiers ou dossiers ici pour téléverser",
+            Language::Bengali => "📥 আপলোড করতে ফাইল বা ফোল্ডার এখানে ড্রপ করুন",
+            Language::Portuguese => "📥 Solte os arquivos ou pastas aqui para enviar",
+            Language::Russian => "📥 Перетащите файлы или папки сюда для загрузки",
+            Language::Urdu => "📥 اپ لوڈ کرنے کے لیے فائلیں یا فولڈرز یہاں ڈراپ کریں",
+        }
+    }
+
+    pub fn storage_drag_drop_hint(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Arrastra archivos o carpetas desde tu explorador directamente sobre esta área",
+            Language::English => "Drag files or folders directly from your file manager onto this area",
+            Language::Chinese => "直接从文件管理器拖动文件或文件夹到此区域",
+            Language::Hindi => "फ़ाइल प्रबंधक से फ़ाइलें या फ़ोल्डर सीधे इस क्षेत्र में खींचें",
+            Language::Arabic => "اسحب الملفات أو المجلدات من مدير الملفات مباشرة إلى هذه المنطقة",
+            Language::French => "Glissez des fichiers ou dossiers depuis votre gestionnaire directement sur cette zone",
+            Language::Bengali => "আপনার ফাইল ম্যানেজার থেকে ফাইল বা ফোল্ডার সরাসরি এই অংশে টেনে আনুন",
+            Language::Portuguese => "Arraste arquivos ou pastas do gerenciador de arquivos diretamente para esta área",
+            Language::Russian => "Перетаскивайте файлы или папки из файлового менеджера прямо в эту область",
+            Language::Urdu => "اپنے فائل مینیجر سے فائلیں یا فولڈرز براہ راست اس علاقے پر گھسیٹیں",
+        }
+    }
+
+    pub fn storage_drag_drop_select_share(lang: Language) -> &'static str {
+        match lang {
+            Language::Spanish => "Selecciona un recurso compartido antes de subir archivos mediante arrastrar y soltar",
+            Language::English => "Select a shared resource before uploading files via drag and drop",
+            Language::Chinese => "在通过拖放上传文件之前，请先选择共享资源",
+            Language::Hindi => "ड्रैग और ड्रॉप द्वारा फ़ाइलें अपलोड करने से पहले एक साझा संसाधन चुनें",
+            Language::Arabic => "حدد مورداً مشتركاً قبل تحميل الملفات عبر السحب والإفلات",
+            Language::French => "Sélectionnez un partage réseau avant de téléverser des fichiers par glisser-déposer",
+            Language::Bengali => "ড্র্যাগ এবং ড্রপের মাধ্যমে ফাইল আপলোড করার আগে একটি শেয়ার নির্বাচন করুন",
+            Language::Portuguese => "Selecione um compartilhamento antes de enviar arquivos via arrastar e soltar",
+            Language::Russian => "Выберите общий ресурс перед загрузкой файлов методом перетаскивания",
+            Language::Urdu => "ڈریگ اور ڈراپ کے ذریعے فائلیں اپ لوڈ کرنے سے پہلے ایک شیئر منتخب کریں",
+        }
+    }
+
     // ==========================================
     // Universal Router UPnP / IGD
     // ==========================================

@@ -1,5 +1,5 @@
 use iced::widget::{button, container, scrollable};
-use iced::{Background, Border, Color, Shadow, Theme};
+use iced::{Background, Border, Color, Shadow, Theme, Vector};
 
 pub struct CustomStyles;
 
@@ -457,6 +457,40 @@ impl CustomStyles {
                 radius: 6.0.into(),
             },
             shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Style for router storage file list area in normal/idle state
+    pub fn drop_zone_idle() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(15, 23, 42))),
+            border: Border {
+                color: Color::from_rgb8(30, 41, 59),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Style for router storage file list area when files/folders are hovered for drop
+    pub fn drop_zone_active() -> container::Style {
+        container::Style {
+            text_color: Some(Color::WHITE),
+            background: Some(Background::Color(Color::from_rgba8(14, 165, 233, 0.15))),
+            border: Border {
+                color: Color::from_rgb8(56, 189, 248),
+                width: 2.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow {
+                color: Color::from_rgba8(14, 165, 233, 0.35),
+                offset: Vector::new(0.0, 0.0),
+                blur_radius: 12.0,
+            },
             snap: false,
         }
     }
