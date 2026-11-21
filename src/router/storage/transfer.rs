@@ -19,6 +19,11 @@ impl RouterStorageManager {
         creds: &StorageCredentials,
         progress_tx: Option<UnboundedSender<StorageUploadEvent>>,
     ) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            return Self::win_upload_file_with_progress(ip, share, local_src, remote_dest_path, creds, progress_tx).await;
+        }
+
         let clean_remote = remote_dest_path.trim_matches('/');
         let file_name = Path::new(clean_remote)
             .file_name()
@@ -59,7 +64,7 @@ impl RouterStorageManager {
             });
         }
 
-        let mut cmd = Command::new("smbclient");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg(&service)
             .arg("-c")
             .arg(&smb_command)

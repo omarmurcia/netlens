@@ -288,10 +288,21 @@ impl NotificationSettings {
         }
 
         let full_title = self.format_title(title);
+
+        self.dispatch_impl(&full_title, body, icon, custom_urgency);
+    }
+
+    #[cfg(windows)]
+    fn dispatch_impl(&self, full_title: &str, body: &str, _icon: &str, _custom_urgency: Option<NotificationUrgency>) {
+        let _ = crate::procutil::windows_toast(full_title, body);
+    }
+
+    #[cfg(not(windows))]
+    fn dispatch_impl(&self, full_title: &str, body: &str, icon: &str, custom_urgency: Option<NotificationUrgency>) {
         let urgency = custom_urgency.unwrap_or(self.urgency);
         let timeout_ms = (self.timeout_secs.max(1) * 1000).to_string();
 
-        let mut cmd = Command::new("notify-send");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("notify-send"));
         cmd.arg("-u")
             .arg(urgency.as_str())
             .arg("-a")
@@ -306,7 +317,7 @@ impl NotificationSettings {
         let _ = cmd.spawn();
 
         if self.play_sound {
-            let _ = Command::new("canberra-gtk-play")
+            let _ = crate::procutil::NoWindow::no_window(Command::new("canberra-gtk-play"))
                 .arg("-i")
                 .arg("message-new-instant")
                 .spawn();
@@ -326,17 +337,30 @@ impl NotificationSettings {
         }
 
         let full_title = self.format_title(title);
+
+        self.interactive_impl(&full_title, body, trust_label, block_label).await
+    }
+
+    /// Windows toasts launched from PowerShell cannot report button clicks back: show it as plain info
+    #[cfg(windows)]
+    async fn interactive_impl(&self, full_title: &str, body: &str, _trust_label: &str, _block_label: &str) -> String {
+        let _ = crate::procutil::windows_toast(full_title, body);
+        String::new()
+    }
+
+    #[cfg(not(windows))]
+    async fn interactive_impl(&self, full_title: &str, body: &str, trust_label: &str, block_label: &str) -> String {
         let urgency = NotificationUrgency::Critical;
         let timeout_ms = (self.timeout_secs.max(15) * 1000).to_string();
 
         if self.play_sound {
-            let _ = tokio::process::Command::new("canberra-gtk-play")
+            let _ = crate::procutil::NoWindow::no_window(tokio::process::Command::new("canberra-gtk-play"))
                 .arg("-i")
                 .arg("dialog-warning")
                 .spawn();
         }
 
-        let output = tokio::process::Command::new("notify-send")
+        let output = crate::procutil::NoWindow::no_window(tokio::process::Command::new("notify-send"))
             .arg("-u")
             .arg(urgency.as_str())
             .arg("-i")

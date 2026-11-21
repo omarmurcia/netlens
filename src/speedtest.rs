@@ -76,12 +76,8 @@ impl SpeedTest {
 
         let mut ping_ms = 0.0f32;
 
-        let ping_out = Command::new("ping")
-            .arg("-c")
-            .arg("3")
-            .arg("-W")
-            .arg("2")
-            .arg("1.1.1.1")
+        let ping_out = crate::procutil::NoWindow::no_window(Command::new("ping"))
+            .args(crate::procutil::ping_args(3, "1.1.1.1"))
             .output()
             .await;
 
@@ -97,16 +93,23 @@ impl SpeedTest {
                     }
                 }
             }
+            // Windows (and any format without an rtt summary): average the individual reply times
+            if ping_ms <= 0.0 {
+                let times: Vec<f32> = text.lines().filter_map(crate::procutil::parse_ping_reply_ms).collect();
+                if !times.is_empty() {
+                    ping_ms = times.iter().sum::<f32>() / times.len() as f32;
+                }
+            }
         }
 
         // If ICMP ping failed, use connect time to 1.1.1.1 or Cloudflare
         if ping_ms <= 0.0 {
-            let res = Command::new("curl")
+            let res = crate::procutil::NoWindow::no_window(Command::new("curl"))
                 .arg("-s")
                 .arg("--max-time")
                 .arg("4")
                 .arg("-o")
-                .arg("/dev/null")
+                .arg(if cfg!(windows) { "NUL" } else { "/dev/null" })
                 .arg("-w")
                 .arg("%{time_connect}")
                 .arg("https://1.1.1.1")
@@ -142,7 +145,7 @@ impl SpeedTest {
         let mut download_mbps = 0.0f64;
 
         // Try Fast.com API for local servers in the user's ISP
-        let fast_api_out = Command::new("curl")
+        let fast_api_out = crate::procutil::NoWindow::no_window(Command::new("curl"))
             .arg("-s")
             .arg("--max-time")
             .arg("5")
@@ -174,12 +177,12 @@ impl SpeedTest {
 
             for url in targets {
                 let handle = tokio::spawn(async move {
-                    let out = Command::new("curl")
+                    let out = crate::procutil::NoWindow::no_window(Command::new("curl"))
                         .arg("-s")
                         .arg("--max-time")
                         .arg("10")
                         .arg("-o")
-                        .arg("/dev/null")
+                        .arg(if cfg!(windows) { "NUL" } else { "/dev/null" })
                         .arg("-w")
                         .arg("%{size_download}")
                         .arg(&url)
@@ -213,12 +216,12 @@ impl SpeedTest {
         if download_mbps <= 0.0 {
             server_label = "Cloudflare Global Anycast CDN".to_string();
             let start = Instant::now();
-            let dl_res = Command::new("curl")
+            let dl_res = crate::procutil::NoWindow::no_window(Command::new("curl"))
                 .arg("-s")
                 .arg("--max-time")
                 .arg("10")
                 .arg("-o")
-                .arg("/dev/null")
+                .arg(if cfg!(windows) { "NUL" } else { "/dev/null" })
                 .arg("-w")
                 .arg("%{size_download}")
                 .arg("https://speed.cloudflare.com/__down?bytes=50000000")
@@ -246,12 +249,12 @@ impl SpeedTest {
             speed_mbps: 0.0,
         });
 
-        let mut child = match Command::new("curl")
+        let mut child = match crate::procutil::NoWindow::no_window(Command::new("curl"))
             .arg("-s")
             .arg("--max-time")
             .arg("10")
             .arg("-o")
-            .arg("/dev/null")
+            .arg(if cfg!(windows) { "NUL" } else { "/dev/null" })
             .arg("-w")
             .arg("%{size_upload} %{speed_upload} %{time_total}")
             .arg("-X")

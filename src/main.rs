@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use iced::futures::StreamExt;
 use netlens::app::App;
 use netlens::i18n;
@@ -47,6 +49,16 @@ fn main() -> iced::Result {
     let _guard = rt.enter();
 
     // Optional CLI mode: allows scanning and printing directly to terminal via --cli or --scan
+    #[cfg(windows)]
+    {
+        if args.iter().any(|a| a == "--cli" || a == "--scan" || a == "-c") {
+            // GUI-subsystem binaries have no console; attach to the parent terminal for CLI output
+            unsafe {
+                windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS);
+            }
+        }
+    }
+
     if args.iter().any(|a| a == "--cli" || a == "--scan" || a == "-c") {
         rt.block_on(run_cli_scan());
         return Ok(());

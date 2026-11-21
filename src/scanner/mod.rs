@@ -7,6 +7,7 @@ use chrono::Local;
 use iced::futures::channel::mpsc::UnboundedSender;
 use crate::oui::Oui;
 use std::collections::HashSet;
+#[cfg(not(windows))]
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
@@ -45,6 +46,7 @@ pub struct Scanner;
 
 impl Scanner {
     /// Detects current network context by inspecting interfaces and system routing table
+    #[cfg(not(windows))]
     pub fn detect_network_context() -> NetworkContext {
         let mut ctx = NetworkContext::default();
 
@@ -92,7 +94,7 @@ impl Scanner {
             }
 
             // Query assigned IP address using 'ip' command
-            if let Ok(output) = std::process::Command::new("ip")
+            if let Ok(output) = crate::procutil::NoWindow::no_window(std::process::Command::new("ip"))
                 .args(["-4", "-o", "addr", "show", &ctx.interface])
                 .output()
             {
@@ -238,8 +240,8 @@ impl Scanner {
 
                 tasks.push(tokio::spawn(async move {
                     let _permit = sem_clone.acquire().await;
-                    let _ = Command::new("ping")
-                        .args(["-c", "1", "-W", "1", &target_ip.to_string()])
+                    let _ = crate::procutil::NoWindow::no_window(Command::new("ping"))
+                        .args(crate::procutil::ping_args(1, &target_ip.to_string()))
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
                         .status()
@@ -265,27 +267,9 @@ impl Scanner {
         let mut discovered_ips: Vec<(Ipv4Addr, String, String)> = Vec::new();
         let mut seen_ips = HashSet::new();
 
-        if let Ok(arp_content) = fs::read_to_string("/proc/net/arp") {
-            for line in arp_content.lines().skip(1) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 6 {
-                    let ip_str = parts[0];
-                    let flags = parts[2];
-                    let mac_str = parts[3];
-                    let iface_str = parts[5];
-
-                    // Flags 0x2 means completed/reachable
-                    if (flags == "0x2" || flags == "2")
-                        && mac_str != "00:00:00:00:00:00"
-                        && !mac_str.is_empty()
-                    {
-                        if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
-                            if seen_ips.insert(ip) {
-                                discovered_ips.push((ip, mac_str.to_lowercase(), iface_str.to_string()));
-                            }
-                        }
-                    }
-                }
+        for (ip, mac, iface) in Self::read_arp_table(&ctx.interface) {
+            if seen_ips.insert(ip) {
+                discovered_ips.push((ip, mac, iface));
             }
         }
 
@@ -614,8 +598,8 @@ impl Scanner {
 
     /// Measures RTT latency by executing an individual ping
     pub async fn measure_ping_latency(ip: Ipv4Addr) -> Option<f32> {
-        let output = Command::new("ping")
-            .args(["-c", "1", "-W", "1", &ip.to_string()])
+        let output = crate::procutil::NoWindow::no_window(Command::new("ping"))
+            .args(crate::procutil::ping_args(1, &ip.to_string()))
             .output()
             .await
             .ok()?;
@@ -623,17 +607,8 @@ impl Scanner {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             for line in text.lines() {
-                if line.contains("time=") {
-                    if let Some(pos) = line.find("time=") {
-                        let rem = &line[pos + 5..];
-                        let num_str: String = rem
-                            .chars()
-                            .take_while(|c| c.is_ascii_digit() || *c == '.')
-                            .collect();
-                        if let Ok(val) = num_str.parse::<f32>() {
-                            return Some(val);
-                        }
-                    }
+                if let Some(v) = crate::procutil::parse_ping_reply_ms(line) {
+                    return Some(v);
                 }
             }
         }
@@ -712,13 +687,30 @@ impl Scanner {
 
     /// Executes a 4-packet ping test and extracts complete statistics
     pub async fn ping_test_detailed(ip: Ipv4Addr) -> Result<PingStats, String> {
-        let output = Command::new("ping")
-            .args(["-c", "4", "-W", "1", &ip.to_string()])
+        let output = crate::procutil::NoWindow::no_window(Command::new("ping"))
+            .args(crate::procutil::ping_args(4, &ip.to_string()))
             .output()
             .await
             .map_err(|e| format!("Error executing ping: {}", e))?;
 
         let text = String::from_utf8_lossy(&output.stdout).to_string();
+        let (transmitted, received, loss, min, avg, max) = Self::parse_ping_summary(&text);
+
+        Ok(PingStats {
+            ip,
+            transmitted,
+            received,
+            loss_percent: loss,
+            min_ms: min,
+            avg_ms: avg,
+            max_ms: max,
+            raw_output: text,
+        })
+    }
+
+    /// Parses Linux/macOS `ping` summary output
+    #[cfg(not(windows))]
+    fn parse_ping_summary(text: &str) -> (u32, u32, f32, f32, f32, f32) {
         let mut transmitted = 4;
         let mut received = 0;
         let mut loss = 100.0;
@@ -758,17 +750,194 @@ impl Scanner {
                 }
             }
         }
+        (transmitted, received, loss, min, avg, max)
+    }
 
-        Ok(PingStats {
-            ip,
-            transmitted,
-            received,
-            loss_percent: loss,
-            min_ms: min,
-            avg_ms: avg,
-            max_ms: max,
-            raw_output: text,
-        })
+    /// Parses Windows `ping` output (locale independent: counts reply lines carrying a TTL)
+    #[cfg(windows)]
+    fn parse_ping_summary(text: &str) -> (u32, u32, f32, f32, f32, f32) {
+        let transmitted = 4u32;
+        let times: Vec<f32> = text
+            .lines()
+            .filter(|l| l.to_ascii_uppercase().contains("TTL"))
+            .filter_map(crate::procutil::parse_ping_reply_ms)
+            .collect();
+        let received = times.len() as u32;
+        let loss = (transmitted.saturating_sub(received)) as f32 / transmitted as f32 * 100.0;
+        let (min, avg, max) = if times.is_empty() {
+            (0.0, 0.0, 0.0)
+        } else {
+            let min = times.iter().cloned().fold(f32::MAX, f32::min);
+            let max = times.iter().cloned().fold(0.0f32, f32::max);
+            let avg = times.iter().sum::<f32>() / times.len() as f32;
+            (min, avg, max)
+        };
+        (transmitted, received, loss, min, avg, max)
+    }
+
+    /// Reads the kernel ARP cache: /proc/net/arp
+    #[cfg(not(windows))]
+    pub(crate) fn read_arp_table(_default_iface: &str) -> Vec<(Ipv4Addr, String, String)> {
+        let mut out = Vec::new();
+        if let Ok(arp_content) = fs::read_to_string("/proc/net/arp") {
+            for line in arp_content.lines().skip(1) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 6 {
+                    let ip_str = parts[0];
+                    let flags = parts[2];
+                    let mac_str = parts[3];
+                    let iface_str = parts[5];
+
+                    // Flags 0x2 means completed/reachable
+                    if (flags == "0x2" || flags == "2")
+                        && mac_str != "00:00:00:00:00:00"
+                        && !mac_str.is_empty()
+                    {
+                        if let Ok(ip) = ip_str.parse::<Ipv4Addr>() {
+                            out.push((ip, mac_str.to_lowercase(), iface_str.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Reads the Windows ARP cache via `arp -a` (only dynamic entries are real LAN neighbours)
+    #[cfg(windows)]
+    pub(crate) fn read_arp_table(default_iface: &str) -> Vec<(Ipv4Addr, String, String)> {
+        let mut out = Vec::new();
+        let Ok(output) = crate::procutil::NoWindow::no_window(std::process::Command::new("arp"))
+            .arg("-a")
+            .output()
+        else {
+            return out;
+        };
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let Ok(ip) = parts[0].parse::<Ipv4Addr>() else { continue };
+            let mac = parts[1];
+            let is_mac = mac.len() == 17 && mac.split('-').count() == 6;
+            // "dynamic" / "dinámico"; static entries are multicast/broadcast
+            let kind = parts[2].to_lowercase();
+            let is_dynamic = kind.starts_with("dyn") || kind.starts_with("din");
+            if is_mac && is_dynamic && !ip.is_multicast() && !ip.is_broadcast() {
+                out.push((ip, mac.replace('-', ":").to_lowercase(), default_iface.to_string()));
+            }
+        }
+        out
+    }
+
+    /// Windows: gateway, local IP, subnet and MAC from `route print` + `ipconfig /all` (values are parsed by shape, not by label, to survive localization)
+    #[cfg(windows)]
+    pub fn detect_network_context() -> NetworkContext {
+        let mut ctx = NetworkContext::default();
+
+        // 1. Default route: "0.0.0.0  0.0.0.0  <gateway>  <interface ip>  <metric>"
+        if let Ok(output) = crate::procutil::NoWindow::no_window(std::process::Command::new("route"))
+            .args(["print", "-4"])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut best_metric = u32::MAX;
+            for line in text.lines() {
+                let p: Vec<&str> = line.split_whitespace().collect();
+                if p.len() >= 5 && p[0] == "0.0.0.0" && p[1] == "0.0.0.0" {
+                    if let (Ok(gw), Ok(local), Ok(metric)) =
+                        (p[2].parse::<Ipv4Addr>(), p[3].parse::<Ipv4Addr>(), p[4].parse::<u32>())
+                    {
+                        if metric < best_metric {
+                            best_metric = metric;
+                            ctx.gateway_ip = Some(gw);
+                            ctx.local_ip = Some(local);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Adapter details from ipconfig /all
+        if let Ok(output) = crate::procutil::NoWindow::no_window(std::process::Command::new("ipconfig"))
+            .arg("/all")
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            // Split into adapter blocks: header lines are not indented and end with ':'
+            let mut blocks: Vec<(String, Vec<String>)> = Vec::new();
+            for line in text.lines() {
+                let trimmed_end = line.trim_end();
+                if trimmed_end.is_empty() {
+                    continue;
+                }
+                if !line.starts_with(' ') && trimmed_end.ends_with(':') {
+                    blocks.push((trimmed_end.trim_end_matches(':').to_string(), Vec::new()));
+                } else if let Some(b) = blocks.last_mut() {
+                    b.1.push(line.to_string());
+                }
+            }
+
+            let wanted = ctx.local_ip.map(|ip| ip.to_string());
+            for (header, lines) in &blocks {
+                let has_ip = wanted.as_ref().map_or(false, |w| {
+                    lines.iter().any(|l| {
+                        l.split(':').nth(1).map_or(false, |v| {
+                            v.trim().trim_end_matches("(Preferred)").trim_end_matches("(Preferido)").trim() == w.as_str()
+                        })
+                    })
+                });
+                if !has_ip {
+                    continue;
+                }
+                // "Ethernet adapter Ethernet 2" / "Adaptador de LAN inalámbrica Wi-Fi" -> keep the adapter name (last words after "adapter"/"adaptador ... ")
+                let lower = header.to_lowercase();
+                ctx.interface = if let Some(i) = lower.find("adapter ") {
+                    header[i + 8..].trim().to_string()
+                } else {
+                    header.split_whitespace().last().unwrap_or("").to_string()
+                };
+                for l in lines {
+                    if let Some((_, v)) = l.split_once(':') {
+                        let v = v.trim();
+                        let v_clean = v.trim_end_matches("(Preferred)").trim_end_matches("(Preferido)").trim();
+                        if v_clean.len() == 17 && v_clean.split('-').count() == 6 && ctx.local_mac.is_none() {
+                            ctx.local_mac = Some(v_clean.replace('-', ":").to_lowercase());
+                        } else if v_clean.starts_with("255.") {
+                            if let Ok(mask) = v_clean.parse::<Ipv4Addr>() {
+                                let prefix = u32::from(mask).count_ones();
+                                if let Some(ip) = ctx.local_ip {
+                                    let o = ip.octets();
+                                    ctx.subnet_cidr = format!("{}.{}.{}.0/{}", o[0], o[1], o[2], prefix);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        if ctx.interface.is_empty() {
+            ctx.interface = "Ethernet".to_string();
+        }
+
+        // Fallback subnet, same policy as the Unix implementation
+        if ctx.subnet_cidr.is_empty() {
+            if let Some(ip) = ctx.local_ip {
+                let o = ip.octets();
+                ctx.subnet_cidr = format!("{}.{}.{}.0/24", o[0], o[1], o[2]);
+            } else if let Some(gw) = ctx.gateway_ip {
+                let o = gw.octets();
+                ctx.subnet_cidr = format!("{}.{}.{}.0/24", o[0], o[1], o[2]);
+            } else {
+                ctx.subnet_cidr = "192.168.1.0/24".to_string();
+            }
+        }
+
+        ctx
     }
 
     /// Sends a Wake-on-LAN (WoL) magic packet to remotely wake a computer

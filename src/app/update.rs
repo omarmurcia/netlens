@@ -18,14 +18,8 @@ use std::time::{Duration, Instant};
 async fn probe_heartbeat_device(ip: Ipv4Addr) -> bool {
     // 1. ICMP Ping probe with 600ms timeout
     let ping_ok = tokio::time::timeout(Duration::from_millis(600), async {
-        tokio::process::Command::new("ping")
-            .args(["-c", "1", "-W", "1", &ip.to_string()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map(|s| s.success())
-            .unwrap_or(false)
+        crate::procutil::ping_alive(ip).await
+
     })
     .await
     .unwrap_or(false);
@@ -199,7 +193,7 @@ impl App {
             }
 
             Message::OpenExternalUrl(url) => {
-                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                let _ = crate::procutil::opener().arg(&url).spawn();
                 let notif_msg = match self.language {
                     Language::Spanish => "Abriendo enlace en el navegador...".to_string(),
                     Language::English => "Opening link in browser...".to_string(),

@@ -38,10 +38,12 @@ impl UpdateChecker {
         "https://omarmurcia.github.io/netlens-repo/version.json";
     pub const CURRENT_VERSION: &'static str = env!("CARGO_PKG_VERSION");
     pub const CURRENT_PKGREL: u32 = 1;
+    #[cfg(windows)]
+    pub const WINDOWS_RELEASES_URL: &'static str = "https://github.com/omarmurcia/netlens/releases";
 
     /// Asynchronously queries GitHub Pages for the latest published version
     pub async fn check_for_updates() -> UpdateStatus {
-        let out = match Command::new("curl")
+        let out = match crate::procutil::NoWindow::no_window(Command::new("curl"))
             .arg("-sSL")
             .arg("--max-time")
             .arg("4")
@@ -102,6 +104,16 @@ impl UpdateChecker {
 
     /// Automatically applies the update in-app (via pkexec for pacman or in-place download for AppImage)
     pub async fn apply_update_in_app() -> Result<String, String> {
+        // Windows: there is no package manager / AppImage; send the user to the releases page
+        #[cfg(windows)]
+        {
+            let _ = crate::procutil::opener().arg(Self::WINDOWS_RELEASES_URL).spawn();
+            return Err(format!(
+                "Actualización automática no disponible en Windows. Descarga la última versión desde {}",
+                Self::WINDOWS_RELEASES_URL
+            ));
+        }
+
         // 1. If running as AppImage, download the latest AppImage and atomically replace it
         if let Ok(appimage_path) = std::env::var("APPIMAGE") {
             let p = std::path::PathBuf::from(appimage_path.trim());
@@ -114,13 +126,14 @@ impl UpdateChecker {
         Self::update_pacman_package().await
     }
 
+    #[allow(dead_code)]
     async fn update_pacman_package() -> Result<String, String> {
         if !std::path::Path::new("/usr/bin/pkexec").exists() {
             return Err("pkexec no está instalado en el sistema para elevar permisos.".to_string());
         }
 
         let cmd = "rm -f /var/cache/pacman/pkg/netlens* && pacman -Syy --noconfirm netlens";
-        let output = Command::new("pkexec")
+        let output = crate::procutil::NoWindow::no_window(Command::new("pkexec"))
             .arg("bash")
             .arg("-c")
             .arg(cmd)
@@ -143,11 +156,12 @@ impl UpdateChecker {
         }
     }
 
+    #[allow(dead_code)]
     async fn update_appimage(target_path: &std::path::Path) -> Result<String, String> {
         let download_url = "https://omarmurcia.github.io/netlens-repo/NetLens-x86_64.AppImage";
         let temp_download = target_path.with_extension("tmp_download");
 
-        let status = Command::new("curl")
+        let status = crate::procutil::NoWindow::no_window(Command::new("curl"))
             .arg("-sSL")
             .arg("--max-time")
             .arg("120")
@@ -181,6 +195,15 @@ impl UpdateChecker {
 
     /// Launches a visible terminal emulator running the interactive install script
     pub fn launch_terminal_updater() -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            return crate::procutil::opener()
+                .arg(Self::WINDOWS_RELEASES_URL)
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("No se pudo abrir el navegador: {}", e));
+        }
+
         let script = "curl -sSL https://omarmurcia.github.io/netlens-repo/install-repo.sh | bash; echo ''; read -p 'Presione Enter para salir...'";
         let terminals: &[(&str, &[&str])] = &[
             ("konsole", &["-e", "bash", "-c", script]),
@@ -192,7 +215,7 @@ impl UpdateChecker {
         ];
         for (term, args) in terminals {
             if std::path::Path::new(&format!("/usr/bin/{}", term)).exists() {
-                if std::process::Command::new(term).args(*args).spawn().is_ok() {
+                if crate::procutil::NoWindow::no_window(std::process::Command::new(term)).args(*args).spawn().is_ok() {
                     return Ok(());
                 }
             }
@@ -221,7 +244,7 @@ impl UpdateChecker {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-            let mut cmd = std::process::Command::new(&exe_path);
+            let mut cmd = crate::procutil::NoWindow::no_window(std::process::Command::new(&exe_path));
             cmd.arg("--from-restart");
             cmd.stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
@@ -237,7 +260,7 @@ impl UpdateChecker {
             if let Err(e) = cmd.spawn() {
                 eprintln!("Error al reiniciar NetLens ({:?}): {}", exe_path, e);
                 // Fallback attempt with gtk-launch
-                let _ = std::process::Command::new("gtk-launch")
+                let _ = crate::procutil::NoWindow::no_window(std::process::Command::new("gtk-launch"))
                     .arg("netlens")
                     .spawn();
             }
@@ -245,7 +268,7 @@ impl UpdateChecker {
 
         #[cfg(not(unix))]
         {
-            let mut cmd = std::process::Command::new(&exe_path);
+            let mut cmd = crate::procutil::NoWindow::no_window(std::process::Command::new(&exe_path));
             cmd.arg("--from-restart");
             let _ = cmd.spawn();
         }

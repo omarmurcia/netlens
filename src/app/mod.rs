@@ -31,7 +31,7 @@ use crate::speedtest::{SpeedTestEvent, SpeedTestResult, SpeedTestStage};
 use crate::storage::DeviceMetadata;
 use crate::telemetry::{Telemetry, TelemetrySnapshot};
 use crate::traceroute::HopInfo;
-use crate::tray::{NetLensTray, TrayState};
+use crate::tray::{TrayHandle, TrayState};
 use crate::updater::{InAppUpdateProgress, UpdateStatus};
 use crate::uptime::UptimeTracker;
 use crate::wifi_analyzer::WifiAnalyzerReport;
@@ -144,7 +144,7 @@ pub struct App {
 
     // System Tray
     pub tray_state: Arc<Mutex<TrayState>>,
-    pub tray_handle: Arc<Mutex<Option<ksni::Handle<NetLensTray>>>>,
+    pub tray_handle: Arc<Mutex<Option<TrayHandle>>>,
 
     // Event History & Timeline
     pub network_events: Vec<NetworkEvent>,

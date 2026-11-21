@@ -114,6 +114,16 @@ pub struct Storage;
 impl Storage {
     /// Persistent configuration file path according to XDG (~/.config/netlens/state.json)
     pub fn get_storage_path() -> PathBuf {
+        // Windows: %APPDATA%\netlens\state.json
+        #[cfg(windows)]
+        let base_dir = std::env::var_os("XDG_CONFIG_HOME")
+            .filter(|v| !v.is_empty())
+            .or_else(|| std::env::var_os("APPDATA").filter(|v| !v.is_empty()))
+            .map(PathBuf::from)
+            .or_else(|| crate::procutil::home_dir().map(|h| h.join("AppData").join("Roaming")))
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        #[cfg(not(windows))]
         let base_dir = if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
             PathBuf::from(xdg_config)
         } else if let Ok(home) = std::env::var("HOME") {

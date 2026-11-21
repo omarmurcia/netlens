@@ -1,4 +1,6 @@
 mod transfer;
+#[cfg(windows)]
+mod windows;
 
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -472,7 +474,12 @@ impl RouterStorageManager {
         ip: Ipv4Addr,
         creds: &StorageCredentials,
     ) -> Result<Vec<StorageShare>, String> {
-        let mut cmd = Command::new("smbclient");
+        #[cfg(windows)]
+        {
+            return Self::win_list_shares(ip, creds).await;
+        }
+
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg("-L")
             .arg(ip.to_string())
             .arg("-g")
@@ -504,7 +511,7 @@ impl RouterStorageManager {
         let shares = Self::parse_shares_output(&stdout);
         if shares.is_empty() {
             // Try without -g for compatibility with legacy samba servers
-            let mut fallback_cmd = Command::new("smbclient");
+            let mut fallback_cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
             fallback_cmd
                 .arg("-L")
                 .arg(ip.to_string())
@@ -533,6 +540,11 @@ impl RouterStorageManager {
         subpath: &str,
         creds: &StorageCredentials,
     ) -> Result<(Vec<StorageFileEntry>, Option<StorageDiskInfo>), String> {
+        #[cfg(windows)]
+        {
+            return Self::win_list_directory(ip, share, subpath, creds).await;
+        }
+
         let clean_subpath = subpath.trim_matches('/');
         let service = format!("//{}/{}", ip, share);
 
@@ -544,7 +556,7 @@ impl RouterStorageManager {
             format!("cd \"{}\"; ls", win_path)
         };
 
-        let mut cmd = Command::new("smbclient");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg(&service)
             .arg("-c")
             .arg(&smb_command)
@@ -586,6 +598,11 @@ impl RouterStorageManager {
         folder_name: &str,
         creds: &StorageCredentials,
     ) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            return Self::win_create_folder(ip, share, parent_path, folder_name, creds).await;
+        }
+
         let clean_parent = parent_path.trim_matches('/');
         let target_path = if clean_parent.is_empty() {
             folder_name.to_string()
@@ -597,7 +614,7 @@ impl RouterStorageManager {
         let service = format!("//{}/{}", ip, share);
         let smb_command = format!("mkdir \"{}\"", win_path);
 
-        let mut cmd = Command::new("smbclient");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg(&service)
             .arg("-c")
             .arg(&smb_command)
@@ -629,6 +646,11 @@ impl RouterStorageManager {
         is_dir: bool,
         creds: &StorageCredentials,
     ) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            return Self::win_delete_entry(ip, share, relative_path, is_dir, creds).await;
+        }
+
         let clean_path = relative_path.trim_matches('/');
         let parent_dir = Path::new(clean_path)
             .parent()
@@ -659,7 +681,7 @@ impl RouterStorageManager {
             }
         };
 
-        let mut cmd = Command::new("smbclient");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg(&service)
             .arg("-c")
             .arg(&smb_command)
@@ -699,7 +721,7 @@ impl RouterStorageManager {
                 format!("cd \"{}\\{}\"; recurse ON; prompt OFF; mdel *; cd ..; rmdir \"{}\"", win_parent, entry_name, entry_name)
             };
 
-            let mut fcmd = Command::new("smbclient");
+            let mut fcmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
             fcmd.arg(&service)
                 .arg("-c")
                 .arg(&fallback_clean)
@@ -731,7 +753,7 @@ impl RouterStorageManager {
                 format!("cd \"{}\"; rmdir \"{}\"", win_parent, entry_name)
             };
 
-            let mut rcmd = Command::new("smbclient");
+            let mut rcmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
             rcmd.arg(&service)
                 .arg("-c")
                 .arg(&fallback_cmd)
@@ -775,13 +797,18 @@ impl RouterStorageManager {
         local_dest: &Path,
         creds: &StorageCredentials,
     ) -> Result<PathBuf, String> {
+        #[cfg(windows)]
+        {
+            return Self::win_download_file(ip, share, remote_path, local_dest, creds).await;
+        }
+
         let clean_remote = remote_path.trim_matches('/');
         let win_remote = clean_remote.replace('/', "\\");
 
         let service = format!("//{}/{}", ip, share);
         let smb_command = format!("get \"{}\" \"{}\"", win_remote, local_dest.display());
 
-        let mut cmd = Command::new("smbclient");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("smbclient"));
         cmd.arg(&service)
             .arg("-c")
             .arg(&smb_command)
@@ -807,8 +834,13 @@ impl RouterStorageManager {
 
     /// Displays native OS picker (zenity / kdialog) to select a local file or folder
     pub async fn pick_path_with_file_dialog(is_directory: bool, title: &str) -> Option<PathBuf> {
+        #[cfg(windows)]
+        {
+            return Self::win_pick_path(is_directory, title).await;
+        }
+
         // 1. Try with zenity (GTK / GNOME / Cinnamon / XFCE / MATE environments)
-        let mut cmd = Command::new("zenity");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("zenity"));
         cmd.arg("--file-selection");
         cmd.arg(format!("--title={}", title));
         if is_directory {
@@ -828,7 +860,7 @@ impl RouterStorageManager {
         }
 
         // 2. Try with kdialog (KDE Plasma / Qt environments)
-        let mut kcmd = Command::new("kdialog");
+        let mut kcmd = crate::procutil::NoWindow::no_window(Command::new("kdialog"));
         kcmd.arg(format!("--title={}", title));
         if is_directory {
             kcmd.arg("--getexistingdirectory");

@@ -37,9 +37,96 @@ pub struct WifiAnalyzer;
 
 impl WifiAnalyzer {
     /// Scans surrounding Wi-Fi networks and generates an analytical report on channels and saturation
+    #[cfg(windows)]
+    pub async fn scan() -> Result<WifiAnalyzerReport, String> {
+        let output = crate::procutil::NoWindow::no_window(Command::new("netsh"))
+            .args(["wlan", "show", "networks", "mode=bssid"])
+            .output()
+            .await
+            .map_err(|e| format!("Error executing netsh: {}", e))?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let mut networks = Self::parse_netsh_networks(&raw);
+
+        let current = crate::telemetry::Telemetry::detect_wifi();
+        let current_ssid = current.as_ref().and_then(|w| w.ssid.clone());
+        let mut current_channel = None;
+        if let Some(cur) = &current_ssid {
+            for n in networks.iter_mut().filter(|n| &n.ssid == cur) {
+                n.is_current = true;
+                if current_channel.is_none() {
+                    current_channel = Some(n.channel);
+                }
+            }
+        }
+        Ok(Self::analyze_networks(networks, current_ssid, current_channel))
+    }
+
+    /// Parses `netsh wlan show networks mode=bssid` (keys matched by prefix / value shape to survive localization)
+    #[cfg(windows)]
+    fn parse_netsh_networks(text: &str) -> Vec<WifiNetworkInfo> {
+        let mut result: Vec<WifiNetworkInfo> = Vec::new();
+        let mut cur: Option<WifiNetworkInfo> = None;
+        let mut ssid = String::new();
+        let mut security = String::new();
+
+        for line in text.lines() {
+            let Some((key, value)) = line.split_once(':') else { continue };
+            let key = key.trim();
+            let value = value.trim();
+            let lower = key.to_lowercase();
+
+            if lower.starts_with("bssid") {
+                if let Some(n) = cur.take() {
+                    result.push(n);
+                }
+                cur = Some(WifiNetworkInfo {
+                    ssid: ssid.clone(),
+                    bssid: value.to_string(),
+                    channel: 0,
+                    frequency_mhz: 2412,
+                    signal_percent: 0,
+                    security: security.clone(),
+                    is_current: false,
+                });
+            } else if lower.starts_with("ssid") {
+                if let Some(n) = cur.take() {
+                    result.push(n);
+                }
+                ssid = value.to_string();
+                security.clear();
+            } else if lower.starts_with("auth") || lower.starts_with("autent") {
+                security = value.to_string();
+                if let Some(n) = cur.as_mut() {
+                    n.security = security.clone();
+                }
+            } else if let Some(n) = cur.as_mut() {
+                if value.ends_with('%') {
+                    n.signal_percent = value.trim_end_matches('%').trim().parse().unwrap_or(50);
+                } else if lower == "channel" || lower == "canal" {
+                    if let Ok(ch) = value.parse::<u32>() {
+                        n.channel = ch;
+                        n.frequency_mhz = if ch == 14 {
+                            2484
+                        } else if ch <= 13 {
+                            2407 + 5 * ch
+                        } else {
+                            5000 + 5 * ch
+                        };
+                    }
+                }
+            }
+        }
+        if let Some(n) = cur.take() {
+            result.push(n);
+        }
+        result.retain(|n| n.channel != 0);
+        result
+    }
+
+    #[cfg(not(windows))]
     pub async fn scan() -> Result<WifiAnalyzerReport, String> {
         // Execute nmcli to list Wi-Fi networks
-        let output = Command::new("nmcli")
+        let output = crate::procutil::NoWindow::no_window(Command::new("nmcli"))
             .args(["-t", "-f", "IN-USE,SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY", "dev", "wifi", "list"])
             .output()
             .await
@@ -63,7 +150,7 @@ impl WifiAnalyzer {
 
         // If nmcli failed or output is empty, try without IN-USE
         if networks.is_empty() {
-            let output_fallback = Command::new("nmcli")
+            let output_fallback = crate::procutil::NoWindow::no_window(Command::new("nmcli"))
                 .args(["-t", "-f", "SSID,BSSID,CHAN,FREQ,SIGNAL,SECURITY", "dev", "wifi", "list"])
                 .output()
                 .await

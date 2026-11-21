@@ -96,7 +96,7 @@ impl LinksysRouter {
         password: Option<&str>,
     ) -> Result<JnapGenericResponse<T>, String> {
         let url = format!("http://{}/JNAP/", ip);
-        let mut cmd = Command::new("curl");
+        let mut cmd = crate::procutil::NoWindow::no_window(Command::new("curl"));
         cmd.arg("-s")
             .arg("--max-time")
             .arg("4")

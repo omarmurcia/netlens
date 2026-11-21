@@ -1,7 +1,9 @@
 use iced::futures::channel::mpsc;
 use std::net::Ipv4Addr;
 use std::time::Duration;
+#[cfg(not(windows))]
 use tokio::io::{AsyncBufReadExt, BufReader};
+#[cfg(not(windows))]
 use tokio::process::Command;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,11 +94,42 @@ impl RealtimeMonitor {
         None
     }
 
+    /// Windows has no neighbour-event stream: poll the ARP cache and report newly seen / changed neighbours.
+    #[cfg(windows)]
+    pub fn spawn_listener(sender: mpsc::UnboundedSender<NeighborAction>) {
+        tokio::spawn(async move {
+            let mut known: std::collections::HashMap<Ipv4Addr, String> = std::collections::HashMap::new();
+            let mut first_pass = true;
+            loop {
+                let table = tokio::task::spawn_blocking(|| {
+                    let iface = crate::scanner::Scanner::detect_network_context().interface;
+                    crate::scanner::Scanner::read_arp_table(&iface)
+                })
+                .await
+                .unwrap_or_default();
+
+                for (ip, mac, iface) in table {
+                    let changed = known.get(&ip).map_or(true, |m| *m != mac);
+                    if changed {
+                        known.insert(ip, mac.clone());
+                        // The first pass only seeds the cache so existing neighbours are not reported as new
+                        if !first_pass && sender.unbounded_send(NeighborAction::Appeared { ip, mac, iface }).is_err() {
+                            return;
+                        }
+                    }
+                }
+                first_pass = false;
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
+    }
+
     /// Spawns the background asynchronous listener connected to Linux kernel events
+    #[cfg(not(windows))]
     pub fn spawn_listener(sender: mpsc::UnboundedSender<NeighborAction>) {
         tokio::spawn(async move {
             loop {
-                let mut cmd = Command::new("ip");
+                let mut cmd = crate::procutil::NoWindow::no_window(Command::new("ip"));
                 cmd.args(["monitor", "neigh"])
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null());

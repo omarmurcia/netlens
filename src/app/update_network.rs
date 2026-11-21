@@ -561,7 +561,7 @@ impl App {
 
             Message::OpenInBrowser(ip) => {
                 let url = format!("http://{}", ip);
-                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                let _ = crate::procutil::opener().arg(&url).spawn();
                 let notif_msg = match self.language {
                     Language::Spanish => format!("Abriendo {} en el navegador...", url),
                     Language::English => format!("Opening {} in browser...", url),

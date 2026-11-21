@@ -92,14 +92,8 @@ impl UptimeTracker {
 
     /// Quick ping test
     async fn probe_ping(ip: Ipv4Addr) -> bool {
-        tokio::process::Command::new("ping")
-            .args(["-c", "1", "-W", "1", &ip.to_string()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map(|s| s.success())
-            .unwrap_or(false)
+        crate::procutil::ping_alive(ip).await
+
     }
 
     /// Records connectivity probe result and returns an event message on state change

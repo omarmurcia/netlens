@@ -1,3 +1,4 @@
+#[cfg(not(windows))]
 use std::fs;
 use std::time::Instant;
 
@@ -130,6 +131,7 @@ impl Telemetry {
     }
 
     /// Discovers the first wireless network interface name from /sys/class/net
+    #[cfg(not(windows))]
     pub fn find_wifi_interface() -> Option<String> {
         let entries = fs::read_dir("/sys/class/net").ok()?;
         for entry in entries.flatten() {
@@ -150,7 +152,7 @@ impl Telemetry {
         query_iw: bool,
     ) -> TelemetrySnapshot {
         let wifi_iface = match cached_wifi_iface {
-            Some(iface) if std::path::Path::new(&format!("/sys/class/net/{}", iface)).exists() => {
+            Some(iface) if Self::iface_exists(&iface) => {
                 Some(iface)
             }
             _ => tokio::task::spawn_blocking(Self::find_wifi_interface)
@@ -256,6 +258,7 @@ impl Telemetry {
     }
 
     /// Reads total transmitted and received bytes in /proc/net/dev without heap allocations per line
+    #[cfg(not(windows))]
     pub fn sample_total_traffic() -> (u64, u64) {
         let mut total_rx = 0u64;
         let mut total_tx = 0u64;
@@ -279,6 +282,7 @@ impl Telemetry {
         (total_rx, total_tx)
     }
 
+    #[cfg(not(windows))]
     fn parse_iw_output(iface: &str, text: &str) -> Option<WifiStatus> {
         if !text.contains("Connected to") {
             return None;
@@ -317,6 +321,7 @@ impl Telemetry {
     }
 
     /// Reads live Wi-Fi signal directly from /proc/net/wireless without spawning processes
+    #[cfg(not(windows))]
     pub fn detect_wifi_proc_only(iface: &str) -> Option<WifiStatus> {
         let wireless_content = fs::read_to_string("/proc/net/wireless").ok()?;
         for line in wireless_content.lines().skip(2) {
@@ -339,8 +344,9 @@ impl Telemetry {
     }
 
     /// Asynchronous `iw dev <iface> link` query
+    #[cfg(not(windows))]
     async fn detect_wifi_iw_async(iface: &str) -> Option<WifiStatus> {
-        let output = tokio::process::Command::new("iw")
+        let output = crate::procutil::NoWindow::no_window(tokio::process::Command::new("iw"))
             .args(["dev", iface, "link"])
             .output()
             .await
@@ -350,10 +356,11 @@ impl Telemetry {
     }
 
     /// Detects and parses Wi-Fi signal information synchronously
+    #[cfg(not(windows))]
     pub fn detect_wifi() -> Option<WifiStatus> {
         let iface = Self::find_wifi_interface()?;
 
-        if let Ok(output) = std::process::Command::new("iw")
+        if let Ok(output) = crate::procutil::NoWindow::no_window(std::process::Command::new("iw"))
             .args(["dev", &iface, "link"])
             .output()
         {
@@ -377,6 +384,7 @@ impl Telemetry {
     }
 
     /// Detects and parses Ethernet wired interface information
+    #[cfg(not(windows))]
     pub fn detect_ethernet(iface: &str) -> Option<EthernetStatus> {
         let path = format!("/sys/class/net/{}", iface);
         let speed_path = format!("{}/speed", path);
@@ -457,5 +465,138 @@ impl Telemetry {
     /// Total bytes uploaded during this session
     pub fn session_upload_bytes(&self) -> u64 {
         self.current_tx_bytes.saturating_sub(self.initial_tx_bytes)
+    }
+}
+
+#[cfg(not(windows))]
+impl Telemetry {
+    fn iface_exists(iface: &str) -> bool {
+        std::path::Path::new(&format!("/sys/class/net/{}", iface)).exists()
+    }
+}
+
+/// Windows backends: `netstat -e` for traffic counters and `netsh wlan` for Wi-Fi status.
+#[cfg(windows)]
+impl Telemetry {
+    fn iface_exists(_iface: &str) -> bool {
+        true
+    }
+
+    fn run_netsh_wlan_sync() -> Option<String> {
+        let output = crate::procutil::NoWindow::no_window(std::process::Command::new("netsh"))
+            .args(["wlan", "show", "interfaces"])
+            .output()
+            .ok()?;
+        Some(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Returns the Wi-Fi adapter name reported by `netsh wlan show interfaces` (None if there is no Wi-Fi adapter)
+    pub fn find_wifi_interface() -> Option<String> {
+        let text = Self::run_netsh_wlan_sync()?;
+        for line in text.lines() {
+            if let Some((key, value)) = line.split_once(':') {
+                let key = key.trim().to_lowercase();
+                if key == "name" || key == "nombre" {
+                    let v = value.trim();
+                    if !v.is_empty() {
+                        return Some(v.to_string());
+                    }
+                }
+            }
+        }
+        // Localized output: fall back to a generic name if any SSID line is present
+        if text.lines().any(|l| l.trim_start().starts_with("SSID")) {
+            return Some("Wi-Fi".to_string());
+        }
+        None
+    }
+
+    /// Total received/transmitted bytes of all interfaces via `netstat -e` (locale independent numeric parsing)
+    pub fn sample_total_traffic() -> (u64, u64) {
+        let output = crate::procutil::NoWindow::no_window(std::process::Command::new("netstat"))
+            .arg("-e")
+            .output();
+        if let Ok(out) = output {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let tokens: Vec<&str> = line.split_whitespace().collect();
+                if tokens.len() >= 3 {
+                    let rx = tokens[tokens.len() - 2].parse::<u64>();
+                    let tx = tokens[tokens.len() - 1].parse::<u64>();
+                    if let (Ok(rx), Ok(tx)) = (rx, tx) {
+                        return (rx, tx);
+                    }
+                }
+            }
+        }
+        (0, 0)
+    }
+
+    fn channel_to_mhz(channel: u32) -> Option<f32> {
+        match channel {
+            1..=13 => Some(2407.0 + 5.0 * channel as f32),
+            14 => Some(2484.0),
+            32..=177 => Some(5000.0 + 5.0 * channel as f32),
+            _ => None,
+        }
+    }
+
+    fn parse_netsh_output(iface: &str, text: &str) -> Option<WifiStatus> {
+        let mut status = WifiStatus {
+            interface: iface.to_string(),
+            ..Default::default()
+        };
+        for line in text.lines() {
+            let Some((key, value)) = line.split_once(':') else { continue };
+            let key = key.trim().to_lowercase();
+            let value = value.trim();
+            if key == "ssid" {
+                if !value.is_empty() {
+                    status.ssid = Some(value.to_string());
+                    status.is_connected = true;
+                }
+            } else if value.ends_with('%') {
+                if let Ok(pct) = value.trim_end_matches('%').trim().parse::<u8>() {
+                    status.signal_percent = pct.min(100);
+                    // Windows reports quality %, approximate dBm = quality/2 - 100
+                    status.signal_dbm = Some((pct.min(100) as i32) / 2 - 100);
+                }
+            } else if key == "channel" || key == "canal" {
+                if let Ok(ch) = value.parse::<u32>() {
+                    status.frequency_mhz = Self::channel_to_mhz(ch);
+                }
+            } else if key.contains("transmit") || key.contains("transmisi") || key.contains("transmit rate") {
+                if let Ok(rate) = value.parse::<f32>() {
+                    status.bitrate_mbps = Some(rate);
+                }
+            }
+        }
+        if status.is_connected { Some(status) } else { None }
+    }
+
+    /// Cheap live polling is not available on Windows without spawning a process; the periodic `netsh` query is used instead.
+    pub fn detect_wifi_proc_only(_iface: &str) -> Option<WifiStatus> {
+        None
+    }
+
+    async fn detect_wifi_iw_async(iface: &str) -> Option<WifiStatus> {
+        let output = crate::procutil::NoWindow::no_window(tokio::process::Command::new("netsh"))
+            .args(["wlan", "show", "interfaces"])
+            .output()
+            .await
+            .ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        Self::parse_netsh_output(iface, &text)
+    }
+
+    pub fn detect_wifi() -> Option<WifiStatus> {
+        let iface = Self::find_wifi_interface()?;
+        let text = Self::run_netsh_wlan_sync()?;
+        Self::parse_netsh_output(&iface, &text)
+    }
+
+    /// Wired adapter details are not queried on Windows (would require PowerShell/WMI); Wi-Fi/traffic are still reported.
+    pub fn detect_ethernet(_iface: &str) -> Option<EthernetStatus> {
+        None
     }
 }

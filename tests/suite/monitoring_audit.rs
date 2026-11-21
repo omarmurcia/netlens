@@ -53,6 +53,8 @@ fn test_topology_and_auto_scan_state_serde() {
     assert_eq!(clean_state.auto_scan_interval_secs, 30);
 }
 
+#[cfg(unix)]
+
 #[test]
 fn test_autostart_manager_entry_generation() {
     use netlens::autostart::AutostartManager;
@@ -71,6 +73,8 @@ fn test_autostart_manager_entry_generation() {
     let spaced_entry = AutostartManager::generate_desktop_entry(spaced_exec);
     assert!(spaced_entry.contains("Exec=\"/home/user/My Apps/netlens\" --minimized"));
 }
+
+#[cfg(unix)]
 
 #[test]
 fn test_autostart_persistent_path_resolution() {
@@ -92,6 +96,8 @@ fn test_autostart_persistent_path_resolution() {
         env::remove_var("APPIMAGE");
     }
 }
+
+#[cfg(unix)]
 
 #[test]
 fn test_autostart_set_and_clear() {
@@ -154,6 +160,7 @@ fn test_i18n_autostart_and_notifications_all_languages() {
     }
 }
 
+#[cfg(not(windows))]
 #[test]
 fn test_system_tray_and_icons() {
     use ksni::Tray;
@@ -866,3 +873,10 @@ fn test_i18n_heartbeat_and_settings_buttons_all_languages() {
     }
 }
 
+
+
+#[cfg(windows)]
+#[test]
+fn test_window_icon_windows() {
+    assert!(netlens::tray::get_window_icon().is_some(), "Window icon should load successfully");
+}

@@ -4,7 +4,7 @@
 
 ![Rust](https://img.shields.io/badge/Language-Rust_1.88+-orange.svg)
 ![GUI](https://img.shields.io/badge/GUI-Iced_0.14-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-Linux_(Wayland_/_X11)-green.svg)
+![Platform](https://img.shields.io/badge/Platform-Linux_(Wayland_/_X11)_|_Windows-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-purple.svg)
 
 ---
@@ -131,6 +131,38 @@ To run an instant terminal network scan without launching the graphical interfac
 
 ---
 
+## 🪟 Windows Version (`windows` branch)
+
+This branch adds native **Windows 10/11 (x86_64)** support. Linux builds are unaffected (all platform code is behind `cfg(windows)` / `cfg(not(windows))`).
+
+**Build (needs Rust MSVC toolchain + Visual Studio Build Tools):**
+```powershell
+./build-windows.ps1        # produces dist\netlens-<version>-windows-x86_64.zip
+# or simply
+cargo run --release
+```
+
+**How the Linux-only parts were replaced on Windows**
+
+| Feature | Linux | Windows |
+|---|---|---|
+| System tray | StatusNotifierItem (`ksni`) | Notification area icon (`tray-icon`) |
+| Single instance / restore | Unix socket | Loopback TCP `127.0.0.1:47613` |
+| Config path | `~/.config/netlens/state.json` | `%APPDATA%\netlens\state.json` |
+| Autostart | `.desktop` file | `HKCU\...\Run` registry value |
+| Network context, ARP table | `/proc/net/*`, `ip` | `route print`, `ipconfig /all`, `arp -a` |
+| Traffic counters | `/proc/net/dev` | `netstat -e` |
+| Wi-Fi status / analyzer | `iw`, `nmcli` | `netsh wlan` |
+| Traceroute | `tracepath` | `tracert` |
+| Router storage (SMB) | `smbclient` | Native SMB client (`net use` + UNC paths) |
+| Notifications | `notify-send` | PowerShell toast |
+| File dialogs | `zenity` / `kdialog` | WinForms dialogs via PowerShell |
+| Live neighbour events | `ip monitor neigh` | ARP cache polling (5 s) |
+
+**Known limitations on Windows:** no in-app auto-updater (opens the releases page), wired-Ethernet link speed is not shown, and the interactive *Trust / Block* notification buttons are shown as plain toasts.
+Child processes run with `CREATE_NO_WINDOW`, so no console windows flash.
+
+---
 ## 🛠️ Project Architecture
 
 ```

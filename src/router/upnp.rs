@@ -106,7 +106,7 @@ impl UpnpClient {
 
     /// Downloads device description XML and extracts control URL
     async fn parse_desc_xml(desc_url: &str) -> Option<(String, String)> {
-        let output = Command::new("curl")
+        let output = crate::procutil::NoWindow::no_window(Command::new("curl"))
             .args(["-s", "--max-time", "2", desc_url])
             .output()
             .await
@@ -165,7 +165,7 @@ impl UpnpClient {
 
         let soap_action_header = format!("\"{}#{}\"", service_type, action);
 
-        let output = Command::new("curl")
+        let output = crate::procutil::NoWindow::no_window(Command::new("curl"))
             .args([
                 "-s",
                 "--max-time", "3",

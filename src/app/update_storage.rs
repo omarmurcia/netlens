@@ -436,7 +436,7 @@ impl App {
                         file_name, share, share, full_rel_path
                     );
                     let _ = std::fs::write(&dest_path, dummy_text);
-                    let _ = std::process::Command::new("xdg-open").arg(&dest_path).spawn();
+                    let _ = crate::procutil::opener().arg(&dest_path).spawn();
                     self.storage_status_msg = Some(format!("Opening file '{}'...", file_name));
                     return Task::none();
                 }
@@ -462,7 +462,7 @@ impl App {
                     .await;
                     match res {
                         Ok(p) => {
-                            let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+                            let _ = crate::procutil::opener().arg(&p).spawn();
                             Message::StorageOperationCompleted(Ok(format!("File '{}' opened successfully", file_name_clone)))
                         }
                         Err(e) => Message::StorageOperationCompleted(Err(format!("Error opening file: {}", e))),
@@ -492,9 +492,9 @@ impl App {
                     format!("{}/{}", self.storage_current_path.trim_matches('/'), file_name)
                 };
 
-                let dest_dir = std::env::var("HOME")
-                    .map(|h| PathBuf::from(h).join("Downloads"))
-                    .unwrap_or_else(|_| PathBuf::from("/tmp"));
+                let dest_dir = crate::procutil::home_dir()
+                    .map(|h| h.join("Downloads"))
+                    .unwrap_or_else(std::env::temp_dir);
                 let dest_path = dest_dir.join(&file_name);
 
                 let creds = self.storage_credentials.clone();

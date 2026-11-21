@@ -7,6 +7,7 @@ pub mod i18n;
 pub mod model;
 pub mod notification;
 pub mod oui;
+pub mod procutil;
 pub mod realtime_monitor;
 pub mod router;
 pub mod scanner;

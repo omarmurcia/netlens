@@ -84,7 +84,12 @@ impl HistoryManager {
     /// Dispatches a native desktop notification on Linux (via notify-send)
     #[allow(dead_code)]
     pub fn send_desktop_notification(title: &str, body: &str) {
-        let _ = Command::new("notify-send")
+        #[cfg(windows)]
+        {
+            let _ = crate::procutil::windows_toast(title, body);
+        }
+        #[cfg(not(windows))]
+        let _ = crate::procutil::NoWindow::no_window(Command::new("notify-send"))
             .arg("-a")
             .arg("NetLens")
             .arg("-i")

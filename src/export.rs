@@ -31,16 +31,36 @@ impl Exporter {
 
     /// Resolves the default export path in user's Downloads or home folder
     pub fn get_export_path(filename: &str) -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let downloads = PathBuf::from(&home).join("Downloads");
+        let home = crate::procutil::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let downloads = home.join("Downloads");
         if downloads.exists() {
             downloads.join(filename)
         } else {
-            PathBuf::from(&home).join(filename)
+            home.join(filename)
         }
     }
 
+    /// Windows: native "Save as" dialog through PowerShell / WinForms
+    #[cfg(windows)]
+    pub fn pick_save_path_with_file_dialog(
+        default_path: &Path,
+        filter_name: &str,
+        filter_ext: &str,
+        title: &str,
+    ) -> Option<PathBuf> {
+        match crate::procutil::windows_save_dialog(default_path, filter_name, filter_ext, title) {
+            Some(Some(mut p)) => {
+                if p.extension().is_none() {
+                    p.set_extension(filter_ext);
+                }
+                Some(p)
+            }
+            Some(None) => None, // user cancelled
+            None => Some(default_path.to_path_buf()),
+        }
+    }
     /// Opens native desktop file dialog (zenity or kdialog) for user to choose save destination
+    #[cfg(not(windows))]
     pub fn pick_save_path_with_file_dialog(
         default_path: &Path,
         filter_name: &str,
@@ -48,7 +68,7 @@ impl Exporter {
         title: &str,
     ) -> Option<PathBuf> {
         // 1. Try zenity (standard in GNOME / Wayland / GTK environments)
-        let zenity_res = Command::new("zenity")
+        let zenity_res = crate::procutil::NoWindow::no_window(Command::new("zenity"))
             .arg("--file-selection")
             .arg("--save")
             .arg("--confirm-overwrite")
@@ -77,7 +97,7 @@ impl Exporter {
         }
 
         // 2. Try kdialog (standard in KDE Plasma desktop environments)
-        let kdialog_res = Command::new("kdialog")
+        let kdialog_res = crate::procutil::NoWindow::no_window(Command::new("kdialog"))
             .arg("--getsavefilename")
             .arg(default_path.to_string_lossy().to_string())
             .arg(format!("*.{}|{} (*.{})", filter_ext, filter_name, filter_ext))

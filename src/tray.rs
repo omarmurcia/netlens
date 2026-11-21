@@ -1,4 +1,5 @@
 use crate::i18n::{Language, Translations};
+#[cfg(not(windows))]
 use ksni::{menu::*, Category, Handle, Icon, MenuItem, Status, ToolTip, Tray, TrayMethods};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::broadcast;
@@ -23,6 +24,7 @@ pub fn send_tray_action(action: TrayAction) {
     let _ = get_tray_sender().send(action);
 }
 
+#[cfg(not(windows))]
 /// Extracts and converts NetLens icon to ARGB32 format for System Tray (64x64 to minimize D-Bus payload)
 pub fn get_icon_argb() -> Option<Icon> {
     let png_bytes = include_bytes!("../assets/netlens.png");
@@ -55,11 +57,13 @@ pub struct TrayState {
     pub language: Language,
 }
 
+#[cfg(not(windows))]
 pub struct NetLensTray {
     pub state: Arc<Mutex<TrayState>>,
     pub icon_cache: Option<Icon>,
 }
 
+#[cfg(not(windows))]
 impl Tray for NetLensTray {
     fn id(&self) -> String {
         "netlens".to_string()
@@ -164,10 +168,25 @@ impl Tray for NetLensTray {
     }
 }
 
+/// Handle used by the app to ask the tray to refresh itself after TrayState changed.
+#[cfg(not(windows))]
+pub struct TrayHandle(Handle<NetLensTray>);
+
+#[cfg(not(windows))]
+impl TrayHandle {
+    pub fn refresh(&self) {
+        let h = self.0.clone();
+        tokio::spawn(async move {
+            let _ = h.update(|_| ()).await;
+        });
+    }
+}
+
 /// Registers StatusNotifierItem in system tray (System Tray D-Bus)
+#[cfg(not(windows))]
 pub fn spawn_tray(
     state: Arc<Mutex<TrayState>>,
-    handle_holder: Arc<Mutex<Option<Handle<NetLensTray>>>>,
+    handle_holder: Arc<Mutex<Option<TrayHandle>>>,
 ) {
     let icon_cache = get_icon_argb();
 
@@ -184,7 +203,7 @@ pub fn spawn_tray(
             match tray.assume_sni_available(true).spawn().await {
                 Ok(handle) => {
                     if let Ok(mut lock) = handle_holder.lock() {
-                        *lock = Some(handle);
+                        *lock = Some(TrayHandle(handle));
                     }
                     return;
                 }
@@ -199,6 +218,161 @@ pub fn spawn_tray(
                     }
                 }
             }
+        }
+    });
+}
+
+
+// ---------------------------------------------------------------------------
+// Windows notification-area (system tray) implementation
+// ---------------------------------------------------------------------------
+
+/// Handle used by the app to ask the tray to refresh itself after `TrayState` changed.
+#[cfg(windows)]
+pub struct TrayHandle(std::sync::mpsc::Sender<()>);
+
+#[cfg(windows)]
+impl TrayHandle {
+    pub fn refresh(&self) {
+        let _ = self.0.send(());
+    }
+}
+
+/// Registers the NetLens icon in the Windows notification area.
+/// The icon lives on a dedicated thread running a Win32 message pump (required by `tray-icon`).
+#[cfg(windows)]
+pub fn spawn_tray(
+    state: Arc<Mutex<TrayState>>,
+    handle_holder: Arc<Mutex<Option<TrayHandle>>>,
+) {
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+    use tray_icon::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+    };
+
+    let (refresh_tx, refresh_rx) = std::sync::mpsc::channel::<()>();
+    if let Ok(mut lock) = handle_holder.lock() {
+        *lock = Some(TrayHandle(refresh_tx));
+    }
+
+    std::thread::spawn(move || {
+        let snapshot = |state: &Arc<Mutex<TrayState>>| -> TrayState {
+            state.lock().map(|s| s.clone()).unwrap_or_default()
+        };
+        let describe = |s: &TrayState| -> (String, String) {
+            let lang = s.language;
+            let tooltip = if s.is_scanning {
+                Translations::tray_tooltip_scanning(lang).to_string()
+            } else if let Some(gw) = &s.gateway_ip {
+                Translations::tray_tooltip_with_gw(s.device_count, gw, lang)
+            } else {
+                Translations::tray_tooltip_devices(s.device_count, lang)
+            };
+            let status = if s.is_scanning {
+                Translations::tray_menu_scanning(lang).to_string()
+            } else {
+                Translations::tray_menu_devices(s.device_count, lang)
+            };
+            (format!("{}\n{}", Translations::tray_tooltip_title(lang), tooltip), status)
+        };
+
+        let initial = snapshot(&state);
+        let lang = initial.language;
+        let (tooltip, status_text) = describe(&initial);
+
+        let open_item = MenuItem::new(Translations::tray_menu_open(lang), true, None);
+        let scan_item = MenuItem::new(Translations::tray_menu_scan_now(lang), !initial.is_scanning, None);
+        let status_item = MenuItem::new(status_text, false, None);
+        let exit_item = MenuItem::new(Translations::tray_menu_exit(lang), true, None);
+
+        let menu = Menu::new();
+        let _ = menu.append_items(&[
+            &open_item,
+            &PredefinedMenuItem::separator(),
+            &scan_item,
+            &status_item,
+            &PredefinedMenuItem::separator(),
+            &exit_item,
+        ]);
+
+        let icon = {
+            let png_bytes = include_bytes!("../assets/netlens.png");
+            image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+                .ok()
+                .and_then(|img| {
+                    let rgba = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3).into_rgba8();
+                    let (w, h) = (rgba.width(), rgba.height());
+                    tray_icon::Icon::from_rgba(rgba.into_raw(), w, h).ok()
+                })
+        };
+
+        let mut builder = TrayIconBuilder::new()
+            .with_menu(Box::new(menu))
+            .with_menu_on_left_click(false)
+            .with_tooltip(tooltip);
+        if let Some(icon) = icon {
+            builder = builder.with_icon(icon);
+        }
+        let tray = match builder.build() {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Warning: could not create the Windows tray icon: {}", e);
+                return;
+            }
+        };
+
+        let open_id = open_item.id().clone();
+        let scan_id = scan_item.id().clone();
+        let exit_id = exit_item.id().clone();
+
+        loop {
+            // Pump Win32 messages for this thread (needed for tray icon & popup menu)
+            unsafe {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+
+            while let Ok(event) = MenuEvent::receiver().try_recv() {
+                if event.id == open_id {
+                    send_tray_action(TrayAction::RestoreWindow);
+                } else if event.id == scan_id {
+                    send_tray_action(TrayAction::TriggerScan);
+                } else if event.id == exit_id {
+                    send_tray_action(TrayAction::Exit);
+                }
+            }
+
+            while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    send_tray_action(TrayAction::RestoreWindow);
+                }
+            }
+
+            let mut needs_refresh = false;
+            while refresh_rx.try_recv().is_ok() {
+                needs_refresh = true;
+            }
+            if needs_refresh {
+                let s = snapshot(&state);
+                let (tooltip, status_text) = describe(&s);
+                let _ = tray.set_tooltip(Some(tooltip));
+                open_item.set_text(Translations::tray_menu_open(s.language));
+                scan_item.set_text(Translations::tray_menu_scan_now(s.language));
+                scan_item.set_enabled(!s.is_scanning);
+                status_item.set_text(status_text);
+                exit_item.set_text(Translations::tray_menu_exit(s.language));
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(40));
         }
     });
 }

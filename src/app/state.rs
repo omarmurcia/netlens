@@ -282,10 +282,7 @@ impl App {
         }
         if let Ok(lock) = self.tray_handle.lock() {
             if let Some(h) = lock.as_ref() {
-                let h_clone = h.clone();
-                tokio::spawn(async move {
-                    let _ = h_clone.update(|_| ()).await;
-                });
+                h.refresh();
             }
         }
     }
