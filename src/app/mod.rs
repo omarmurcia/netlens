@@ -245,7 +245,7 @@ pub enum Message {
     StorageToggleDemoMode,
     StorageUploadEventReceived(StorageUploadEvent),
     StorageDismissUploadProgress,
-    StorageSharesLoaded(Result<Vec<StorageShare>, String>),
+    StorageSharesLoaded(Option<Ipv4Addr>, Result<Vec<StorageShare>, String>),
     StorageDirectoryLoaded(Result<(Vec<StorageFileEntry>, Option<StorageDiskInfo>), String>),
     StorageOperationCompleted(Result<String, String>),
 
