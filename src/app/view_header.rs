@@ -279,31 +279,14 @@ impl App {
         .spacing(6)
         .align_y(Alignment::Center);
 
-        let mut top_bar = row![
+        let top_bar = row![
             title_col,
             space::horizontal(),
+            top_right_actions,
         ]
-        .align_y(Alignment::Center);
-
-        if let UpdateStatus::UpdateAvailable { ref remote_version, remote_pkgrel, .. } = self.update_status {
-            top_bar = top_bar.push(
-                button(
-                    row![
-                        text("🚀").size(12),
-                        text(format!("{} (v{}-{})", Translations::update_available(self.language), remote_version, remote_pkgrel))
-                            .size(11),
-                    ]
-                    .spacing(5)
-                    .align_y(Alignment::Center)
-                )
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([5, 10]))
-                .on_press(Message::OpenUpdateModal)
-            ).push(space::horizontal());
-        }
-
-        top_bar = top_bar.push(top_right_actions);
-        let header_top_bar = top_bar.width(Length::Fill);
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
+        let header_top_bar = top_bar;
 
         // 2. Modular navigation dock (Tools Bar) with per-tool accent pills, counter badges, and group dividers
         let nav_divider = || {
@@ -526,11 +509,33 @@ impl App {
             .width(Length::Fill)
             .style(|_| CustomStyles::nav_toolbar_container());
 
-        column![
+        let mut header_col = column![
             header_top_bar,
             tools_toolbar,
         ]
-        .spacing(8)
-        .into()
+        .spacing(8);
+
+        if let UpdateStatus::UpdateAvailable { ref remote_version, remote_pkgrel, .. } = self.update_status {
+            let update_btn = button(
+                row![
+                    text("🚀").size(12),
+                    text(format!("{} (v{}-{})", Translations::update_available(self.language), remote_version, remote_pkgrel))
+                        .size(11),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center)
+            )
+            .style(|_, _| CustomStyles::primary_button())
+            .padding(Padding::from([5, 12]))
+            .on_press(Message::OpenUpdateModal);
+
+            let update_banner = container(update_btn)
+                .width(Length::Fill)
+                .align_x(Alignment::Center);
+
+            header_col = header_col.push(update_banner);
+        }
+
+        header_col.into()
     }
 }

@@ -459,7 +459,7 @@ impl App {
                     .size(28)
                     .color(score_color),
                 text(format!(
-                    "{}: {}",
+                    "{} {}",
                     Translations::audit_score_label(self.language),
                     grade_str
                 ))

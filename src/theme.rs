@@ -75,6 +75,59 @@ impl CustomStyles {
         }
     }
 
+    // Interactive button style for clickable device list cards
+    pub fn device_row_button(is_selected: bool, status: button::Status) -> button::Style {
+        let (bg, border_color, border_width, shadow) = if is_selected {
+            (
+                Color::from_rgb8(24, 38, 63),
+                Color::from_rgb8(14, 165, 233),
+                1.5,
+                Shadow {
+                    color: Color::from_rgba8(14, 165, 233, 0.22),
+                    offset: Vector::new(0.0, 2.0),
+                    blur_radius: 8.0,
+                },
+            )
+        } else {
+            match status {
+                button::Status::Active | button::Status::Disabled => (
+                    Self::card_bg(),
+                    Self::card_border(),
+                    1.0,
+                    Shadow::default(),
+                ),
+                button::Status::Hovered => (
+                    Color::from_rgb8(38, 51, 73),
+                    Color::from_rgb8(56, 189, 248),
+                    1.2,
+                    Shadow {
+                        color: Color::from_rgba8(14, 165, 233, 0.15),
+                        offset: Vector::new(0.0, 2.0),
+                        blur_radius: 6.0,
+                    },
+                ),
+                button::Status::Pressed => (
+                    Color::from_rgb8(20, 32, 52),
+                    Color::from_rgb8(14, 165, 233),
+                    1.2,
+                    Shadow::default(),
+                ),
+            }
+        };
+
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: Self::text_primary(),
+            border: Border {
+                color: border_color,
+                width: border_width,
+                radius: 10.0.into(),
+            },
+            shadow,
+            snap: false,
+        }
+    }
+
     // Style for highlighted card (Gateway or local host)
     pub fn card_highlighted() -> container::Style {
         container::Style {

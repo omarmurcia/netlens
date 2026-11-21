@@ -511,22 +511,26 @@ impl App {
         .padding(Padding::from([2, 6]))
         .style(move |_| CustomStyles::badge_pill(Color::from_rgb8(18, 25, 38), quality_color));
 
-        // Details button
+        // Details button with icon and responsive highlight
         let btn_details = self.tip(
             button(
-                container(
+                row![
+                    text("🔍").size(11).align_y(alignment::Vertical::Center),
                     text(Translations::details_btn(self.language))
                         .size(11)
-                        .align_x(alignment::Horizontal::Center)
                         .align_y(alignment::Vertical::Center),
-                )
-                .center(Length::Shrink),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center),
             )
-            .style(move |_, _| {
+            .style(move |_, status| {
                 if is_selected {
                     CustomStyles::primary_button()
                 } else {
-                    CustomStyles::secondary_button()
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Primary,
+                        status,
+                    )
                 }
             })
             .padding(Padding::from([4, 10]))
@@ -708,16 +712,11 @@ impl App {
         .spacing(8)
         .width(Length::Fill);
 
-        container(card_content)
+        button(card_content)
             .padding(Padding::from([10, 12]))
             .width(Length::Fill)
-            .style(move |_| {
-                if is_selected {
-                    CustomStyles::card_highlighted()
-                } else {
-                    CustomStyles::card_container()
-                }
-            })
+            .style(move |_, status| CustomStyles::device_row_button(is_selected, status))
+            .on_press(Message::SelectDevice(device.ip))
             .into()
     }
 
