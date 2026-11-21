@@ -3,13 +3,24 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_DIR="${REPO_ROOT}/packaging/archlinux"
-DIST_REPO="${REPO_ROOT}/dist/repo/x86_64"
-EXTERNAL_REPO="${REPO_ROOT}/../netlens-repo/x86_64"
+DIST_ROOT="${REPO_ROOT}/dist/repo"
+DIST_REPO="${DIST_ROOT}/x86_64"
+EXTERNAL_REPO_ROOT="${REPO_ROOT}/../netlens-repo"
+EXTERNAL_REPO="${EXTERNAL_REPO_ROOT}/x86_64"
 RELEASE_BIN="${REPO_ROOT}/target/release/netlens"
 
 echo "============================================================"
 echo "📦 Pacman / Shelly Repository Generator for NetLens"
 echo "============================================================"
+
+# 0. Single Source of Truth: Extract version from Cargo.toml
+APP_VERSION=$(grep -m1 '^version' "${REPO_ROOT}/Cargo.toml" | cut -d '"' -f2)
+TODAY=$(date +%Y-%m-%d)
+echo "==> 0. Detected version from Cargo.toml: ${APP_VERSION}"
+
+# Automatically synchronize PKGBUILD pkgver
+sed -i -E "s/^pkgver=.*/pkgver=${APP_VERSION}/" "${PKG_DIR}/PKGBUILD"
+echo "✅ Synced PKGBUILD: pkgver=${APP_VERSION}"
 
 # 1. Compile in Release mode
 echo "==> 1. Building NetLens in optimized Release mode..."
@@ -64,20 +75,38 @@ echo "==> 5. Updating package database with shelly repo-db / repo-add..."
     rm -f *.lock *.old
 )
 
-# 6. Synchronize with external repository if present
-if [ -d "${REPO_ROOT}/../netlens-repo" ]; then
-    echo "==> 6. Synchronizing with GitHub Pages repo at ${EXTERNAL_REPO}..."
+# 6. Generate synchronized version.json
+echo "==> 6. Generating synchronized version.json..."
+VERSION_JSON=$(cat << EOF
+{
+  "version": "${APP_VERSION}",
+  "pkgrel": 1,
+  "release_date": "${TODAY}",
+  "changelog": "NetLens ${APP_VERSION}: Actualización de versión",
+  "url": "https://omarmurcia.github.io/netlens-repo"
+}
+EOF
+)
+
+mkdir -p "${DIST_ROOT}"
+echo "${VERSION_JSON}" > "${DIST_ROOT}/version.json"
+
+# 7. Synchronize with external repository if present
+if [ -d "${EXTERNAL_REPO_ROOT}" ]; then
+    echo "==> 7. Synchronizing with GitHub Pages repo at ${EXTERNAL_REPO_ROOT}..."
     mkdir -p "${EXTERNAL_REPO}"
     rm -f "${EXTERNAL_REPO}"/netlens-*.pkg.tar.zst
     cp -r "${DIST_REPO}"/* "${EXTERNAL_REPO}/"
+    echo "${VERSION_JSON}" > "${EXTERNAL_REPO_ROOT}/version.json"
 fi
 
 echo ""
 echo "============================================================"
-echo "🎉 Pacman repository successfully generated at:"
+echo "🎉 Pacman repository & version.json successfully generated at:"
 echo "   ${DIST_REPO}"
-if [ -d "${REPO_ROOT}/../netlens-repo" ]; then
-    echo "   ${EXTERNAL_REPO}"
+echo "   Version: ${APP_VERSION} (Date: ${TODAY})"
+if [ -d "${EXTERNAL_REPO_ROOT}" ]; then
+    echo "   ${EXTERNAL_REPO_ROOT}/version.json"
 fi
 echo "============================================================"
 ls -lh "${DIST_REPO}"

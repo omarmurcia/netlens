@@ -2211,7 +2211,7 @@ dependencies = [
 
 [[package]]
 name = "netlens"
-version = "0.2.23"
+version = "0.2.30"
 dependencies = [
  "chrono",
  "dns-lookup",
