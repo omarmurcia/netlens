@@ -38,6 +38,16 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Helper to strip leading icon/emoji from localized modal titles
+fn strip_title_icon(s: &str) -> &str {
+    let trimmed = s.trim_start();
+    if let Some((idx, _)) = trimmed.char_indices().find(|&(_, c)| c.is_alphanumeric()) {
+        &trimmed[idx..]
+    } else {
+        trimmed
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct IntruderAlert {
     pub ip: Ipv4Addr,
@@ -4448,16 +4458,26 @@ impl App {
         let top_right_actions = row![
             self.tip(
                 button(text("📊 CSV").size(11))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([5, 9]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Neutral,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([5, 10]))
                     .on_press(Message::ExportCsv),
                 Translations::tip_export_csv(self.language),
                 tooltip::Position::Bottom,
             ),
             self.tip(
                 button(text("📥 JSON").size(11))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([5, 9]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Neutral,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([5, 10]))
                     .on_press(Message::ExportJson),
                 Translations::tip_export_json(self.language),
                 tooltip::Position::Bottom,
@@ -4497,29 +4517,87 @@ impl App {
         top_bar = top_bar.push(top_right_actions);
         let header_top_bar = top_bar.width(Length::Fill);
 
-        // 2. Modular navigation toolbar (Tools Bar)
-        // Redesigned dedicated bar so buttons never overflow when resizing window
-        let audit_label = if let Some(audit) = &self.security_audit_report {
-            format!("{} ({})", Translations::security_audit_btn(self.language), audit.score)
-        } else {
-            Translations::security_audit_btn(self.language).to_string()
+        // 2. Modular navigation dock (Tools Bar) with per-tool accent pills, counter badges, and group dividers
+        let nav_divider = || {
+            container(text(""))
+                .width(1)
+                .height(18)
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba8(71, 85, 105, 0.55))),
+                    ..Default::default()
+                })
         };
 
-        let timeline_label = format!("{} ({})", Translations::timeline_btn(self.language), self.network_events.len());
+        let settings_open = self.is_settings_open;
+        let speed_open = self.is_speed_test_open;
+        let audit_open = self.is_audit_open;
+        let timeline_open = self.is_timeline_open;
+        let wifi_open = self.is_wifi_analyzer_open;
+        let storage_open = self.is_storage_explorer_open;
+        let about_open = self.is_about_open;
+
+        // Security Audit button with dynamic score pill
+        let audit_accent = if let Some(audit) = &self.security_audit_report {
+            if audit.score >= 85 {
+                CustomStyles::accent_emerald()
+            } else if audit.score >= 60 {
+                CustomStyles::accent_amber()
+            } else {
+                CustomStyles::accent_red()
+            }
+        } else {
+            CustomStyles::accent_cyan()
+        };
+
+        let audit_btn_content: Element<'_, Message> = if let Some(audit) = &self.security_audit_report {
+            row![
+                text(Translations::security_audit_btn(self.language)).size(11),
+                container(
+                    text(format!("{}", audit.score))
+                        .size(9)
+                        .color(audit_accent),
+                )
+                .padding(Padding::from([1, 6]))
+                .style(move |_| CustomStyles::tinted_badge_box(audit_accent)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            text(Translations::security_audit_btn(self.language))
+                .size(11)
+                .into()
+        };
+
+        // Timeline button with event count pill
+        let events_cnt = self.network_events.len();
+        let timeline_btn_content: Element<'_, Message> = row![
+            text(Translations::timeline_btn(self.language)).size(11),
+            container(
+                text(format!("{}", events_cnt))
+                    .size(9)
+                    .color(CustomStyles::accent_purple()),
+            )
+            .padding(Padding::from([1, 6]))
+            .style(|_| CustomStyles::tinted_badge_box(CustomStyles::accent_purple())),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into();
 
         let nav_tools = row![
             // Settings button
             self.tip(
                 button(text(Translations::settings(self.language)).size(11))
-                    .style(|_, _| {
-                        if self.is_settings_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            settings_open,
+                            CustomStyles::accent_cyan(),
+                            status,
+                        )
                     })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_settings_open {
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if settings_open {
                         Message::CloseSettings
                     } else {
                         Message::OpenSettings
@@ -4527,19 +4605,19 @@ impl App {
                 Translations::tip_settings(self.language),
                 tooltip::Position::Bottom,
             ),
-
+            nav_divider(),
             // Speed Test button
             self.tip(
                 button(text(Translations::speed_test_btn(self.language)).size(11))
-                    .style(|_, _| {
-                        if self.is_speed_test_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            speed_open,
+                            CustomStyles::accent_emerald(),
+                            status,
+                        )
                     })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_speed_test_open {
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if speed_open {
                         Message::CloseSpeedTest
                     } else {
                         Message::OpenSpeedTest
@@ -4547,59 +4625,18 @@ impl App {
                 Translations::tip_speed_test(self.language),
                 tooltip::Position::Bottom,
             ),
-
-            // Security Audit button
-            self.tip(
-                button(text(audit_label).size(11))
-                    .style(|_, _| {
-                        if self.is_audit_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
-                    })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_audit_open {
-                        Message::CloseSecurityAudit
-                    } else {
-                        Message::OpenSecurityAudit
-                    }),
-                Translations::tip_security_audit(self.language),
-                tooltip::Position::Bottom,
-            ),
-
-            // Event History button (Timeline)
-            self.tip(
-                button(text(timeline_label).size(11))
-                    .style(|_, _| {
-                        if self.is_timeline_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
-                    })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_timeline_open {
-                        Message::CloseTimeline
-                    } else {
-                        Message::OpenTimeline
-                    }),
-                Translations::tip_timeline(self.language),
-                tooltip::Position::Bottom,
-            ),
-
             // Wi-Fi Spectrum Analyzer button
             self.tip(
                 button(text(Translations::wifi_analyzer_btn(self.language)).size(11))
-                    .style(|_, _| {
-                        if self.is_wifi_analyzer_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            wifi_open,
+                            CustomStyles::accent_amber(),
+                            status,
+                        )
                     })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_wifi_analyzer_open {
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if wifi_open {
                         Message::CloseWifiAnalyzer
                     } else {
                         Message::OpenWifiAnalyzer
@@ -4607,19 +4644,54 @@ impl App {
                 Translations::tip_wifi_analyzer(self.language),
                 tooltip::Position::Bottom,
             ),
-
+            nav_divider(),
+            // Security Audit button
+            self.tip(
+                button(audit_btn_content)
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(audit_open, audit_accent, status)
+                    })
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if audit_open {
+                        Message::CloseSecurityAudit
+                    } else {
+                        Message::OpenSecurityAudit
+                    }),
+                Translations::tip_security_audit(self.language),
+                tooltip::Position::Bottom,
+            ),
+            // Event History button (Timeline)
+            self.tip(
+                button(timeline_btn_content)
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            timeline_open,
+                            CustomStyles::accent_purple(),
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if timeline_open {
+                        Message::CloseTimeline
+                    } else {
+                        Message::OpenTimeline
+                    }),
+                Translations::tip_timeline(self.language),
+                tooltip::Position::Bottom,
+            ),
+            nav_divider(),
             // Router USB Storage Explorer button (NAS)
             self.tip(
                 button(text(Translations::storage_btn_header(self.language)).size(11))
-                    .style(|_, _| {
-                        if self.is_storage_explorer_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            storage_open,
+                            CustomStyles::accent_cyan(),
+                            status,
+                        )
                     })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_storage_explorer_open {
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if storage_open {
                         Message::CloseStorageExplorer
                     } else {
                         Message::OpenStorageExplorer
@@ -4627,19 +4699,19 @@ impl App {
                 Translations::tip_router_storage(self.language),
                 tooltip::Position::Bottom,
             ),
-
+            nav_divider(),
             // Classic About NetLens button
             self.tip(
                 button(text(Translations::about_btn(self.language)).size(11))
-                    .style(|_, _| {
-                        if self.is_about_open {
-                            CustomStyles::primary_button()
-                        } else {
-                            CustomStyles::secondary_button()
-                        }
+                    .style(move |_, status| {
+                        CustomStyles::nav_tool_button(
+                            about_open,
+                            CustomStyles::accent_cyan(),
+                            status,
+                        )
                     })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(if self.is_about_open {
+                    .padding(Padding::from([5, 11]))
+                    .on_press(if about_open {
                         Message::CloseAbout
                     } else {
                         Message::OpenAbout
@@ -4648,35 +4720,23 @@ impl App {
                 tooltip::Position::Bottom,
             ),
         ]
-        .spacing(6)
-        .align_y(Alignment::Center)
-        .padding(Padding {
-            top: 2.0,
-            right: 2.0,
-            bottom: 4.0,
-            left: 2.0,
-        });
+        .spacing(7)
+        .align_y(Alignment::Center);
 
         let tools_scroll = scrollable(nav_tools)
             .direction(scrollable::Direction::Horizontal(
                 scrollable::Scrollbar::new()
                     .width(3.0)
-                    .margin(1.0)
-                    .scroller_width(3.0)
-                    .spacing(3.0),
+                    .margin(0.0)
+                    .scroller_width(3.0),
             ))
             .style(CustomStyles::discrete_horizontal_scrollbar_style())
             .width(Length::Fill);
 
         let tools_toolbar = container(tools_scroll)
-            .padding(Padding {
-                top: 4.0,
-                right: 8.0,
-                bottom: 2.0,
-                left: 8.0,
-            })
+            .padding(Padding::from([6, 8]))
             .width(Length::Fill)
-            .style(|_| CustomStyles::card_container());
+            .style(|_| CustomStyles::nav_toolbar_container());
 
         column![
             header_top_bar,
@@ -4688,53 +4748,93 @@ impl App {
 
     /// Settings / Configuration Panel (UI Theme and Language among top 10 world languages)
     fn view_settings_panel(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("⚙").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::settings(self.language))
-                .size(20)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::settings(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::theme_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseSettings),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
 
-        // Setting 1: UI Theme
-        let theme_row = row![
-            column![
-                text(Translations::theme_label(self.language)).size(14).color(CustomStyles::text_primary()),
-                text(Translations::theme_desc(self.language)).size(11).color(CustomStyles::text_muted()),
+        // Setting 1 & 2: UI Theme & Application Language grouped in a clean card
+        let theme_box = container(
+            row![
+                column![
+                    text(Translations::theme_label(self.language))
+                        .size(13)
+                        .color(CustomStyles::text_primary()),
+                    text(Translations::theme_desc(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                pick_list(
+                    AVAILABLE_THEMES,
+                    Some(&self.current_theme),
+                    |t| Message::ThemeChanged(t.clone()),
+                ),
             ]
-            .width(Length::Fill),
-            pick_list(
-                AVAILABLE_THEMES,
-                Some(&self.current_theme),
-                |t| Message::ThemeChanged(t.clone()),
-            ),
-        ]
-        .align_y(Alignment::Center)
-        .spacing(12);
+            .align_y(Alignment::Center)
+            .spacing(10),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
 
-        // Setting 2: Application Language (Top 10 most spoken languages)
-        let lang_row = row![
-            column![
-                text(Translations::language_label(self.language)).size(14).color(CustomStyles::text_primary()),
-                text(Translations::language_desc(self.language)).size(11).color(CustomStyles::text_muted()),
+        let lang_box = container(
+            row![
+                column![
+                    text(Translations::language_label(self.language))
+                        .size(13)
+                        .color(CustomStyles::text_primary()),
+                    text(Translations::language_desc(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                ]
+                .spacing(2)
+                .width(Length::Fill),
+                pick_list(
+                    Language::ALL,
+                    Some(self.language),
+                    Message::LanguageChanged,
+                ),
             ]
-            .width(Length::Fill),
-            pick_list(
-                Language::ALL,
-                Some(self.language),
-                Message::LanguageChanged,
-            ),
-        ]
-        .align_y(Alignment::Center)
-        .spacing(12);
+            .align_y(Alignment::Center)
+            .spacing(10),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
+
+        let appearance_card = container(row![theme_box, lang_box].spacing(10))
+            .padding(12)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
 
         // Setting 3: Periodic Automatic Scan (Auto-Discovery)
         let intervals: &[(u32, &'static str)] = &[
@@ -4749,118 +4849,158 @@ impl App {
         for &(secs, label) in intervals {
             let is_active = self.auto_scan_interval_secs == secs;
             let btn = button(text(label).size(11))
-                .style(move |_, _| {
+                .style(move |_, status| {
                     if is_active {
                         CustomStyles::primary_button()
                     } else {
-                        CustomStyles::secondary_button()
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Neutral,
+                            status,
+                        )
                     }
                 })
-                .padding(Padding::from([4, 8]))
+                .padding(Padding::from([5, 10]))
                 .on_press(Message::AutoScanIntervalChanged(secs));
             auto_scan_buttons = auto_scan_buttons.push(btn);
         }
 
-        let auto_scan_section = column![
-            text(Translations::auto_scan_title(self.language))
-                .size(13)
-                .color(CustomStyles::accent_cyan()),
-            text(Translations::auto_scan_desc(self.language))
-                .size(11)
-                .color(CustomStyles::text_muted()),
+        let auto_scan_section = row![
+            column![
+                text(Translations::auto_scan_title(self.language))
+                    .size(13)
+                    .color(CustomStyles::accent_cyan()),
+                text(Translations::auto_scan_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(2)
+            .width(Length::Fill),
             auto_scan_buttons,
         ]
-        .spacing(6);
+        .spacing(12)
+        .align_y(Alignment::Center);
 
         let auto_scan_card = container(auto_scan_section)
             .padding(12)
+            .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
-        // Setting 4: Background & System Autostart
+        // Setting 4: Background & System Autostart (2 side-by-side inset tiles)
+        let autostart_active = self.autostart_enabled;
         let autostart_btn = button(
-            text(if self.autostart_enabled {
+            text(if autostart_active {
                 Translations::btn_enabled(self.language)
             } else {
                 Translations::btn_disabled(self.language)
             })
             .size(11),
         )
-        .style(move |_, _| {
-            if self.autostart_enabled {
-                CustomStyles::primary_button()
+        .style(move |_, status| {
+            let tone = if autostart_active {
+                crate::theme::StorageActionTone::Success
             } else {
-                CustomStyles::secondary_button()
-            }
+                crate::theme::StorageActionTone::Neutral
+            };
+            CustomStyles::storage_action_button(tone, status)
         })
-        .padding(Padding::from([4, 10]))
+        .padding(Padding::from([5, 12]))
         .on_press(Message::ToggleAutostart(!self.autostart_enabled));
 
+        let minimize_active = self.minimize_on_close;
         let minimize_btn = button(
-            text(if self.minimize_on_close {
+            text(if minimize_active {
                 Translations::btn_enabled(self.language)
             } else {
                 Translations::btn_disabled(self.language)
             })
             .size(11),
         )
-        .style(move |_, _| {
-            if self.minimize_on_close {
-                CustomStyles::primary_button()
+        .style(move |_, status| {
+            let tone = if minimize_active {
+                crate::theme::StorageActionTone::Success
             } else {
-                CustomStyles::secondary_button()
-            }
+                crate::theme::StorageActionTone::Neutral
+            };
+            CustomStyles::storage_action_button(tone, status)
         })
-        .padding(Padding::from([4, 10]))
+        .padding(Padding::from([5, 12]))
         .on_press(Message::ToggleMinimizeOnClose(!self.minimize_on_close));
 
-        let background_section = column![
+        let autostart_tile = container(
             row![
                 column![
-                    text(Translations::autostart_title(self.language)).size(12).color(CustomStyles::text_primary()),
-                    text(Translations::autostart_desc(self.language)).size(10).color(CustomStyles::text_muted()),
+                    text(Translations::autostart_title(self.language))
+                        .size(12)
+                        .color(CustomStyles::text_primary()),
+                    text(Translations::autostart_desc(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
                 ]
+                .spacing(2)
                 .width(Length::Fill),
                 autostart_btn,
             ]
             .align_y(Alignment::Center)
             .spacing(10),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
+
+        let minimize_tile = container(
             row![
                 column![
-                    text(Translations::minimize_on_close_title(self.language)).size(12).color(CustomStyles::text_primary()),
-                    text(Translations::minimize_on_close_desc(self.language)).size(10).color(CustomStyles::text_muted()),
+                    text(Translations::minimize_on_close_title(self.language))
+                        .size(12)
+                        .color(CustomStyles::text_primary()),
+                    text(Translations::minimize_on_close_desc(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
                 ]
+                .spacing(2)
                 .width(Length::Fill),
                 minimize_btn,
             ]
             .align_y(Alignment::Center)
             .spacing(10),
-        ]
-        .spacing(10);
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
 
-        let background_card = container(background_section)
+        let background_card = container(row![autostart_tile, minimize_tile].spacing(10))
             .padding(12)
+            .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
         // Setting 5: Router Control (Linksys MR73 Mesh / JNAP)
         let router_ip_input = text_input("192.168.1.1", &self.router_ip_input)
             .on_input(Message::RouterIpChanged)
             .padding(Padding::from([5, 8]))
-            .width(140);
+            .width(150);
 
-        let router_pass_input = text_input(Translations::router_pass_label(self.language), &self.router_password_input)
-            .on_input(Message::RouterPasswordChanged)
-            .secure(true)
-            .padding(Padding::from([5, 8]))
-            .width(Length::Fill);
+        let router_pass_input = text_input(
+            Translations::router_pass_label(self.language),
+            &self.router_password_input,
+        )
+        .on_input(Message::RouterPasswordChanged)
+        .secure(true)
+        .padding(Padding::from([5, 8]))
+        .width(Length::Fill);
 
         let test_router_btn = if self.is_testing_router {
             button(text("...").size(11))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([5, 10]))
+                .padding(Padding::from([5, 12]))
         } else {
             button(text(Translations::router_test_btn(self.language)).size(11))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([5, 10]))
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Primary,
+                        status,
+                    )
+                })
+                .padding(Padding::from([5, 12]))
                 .on_press(Message::TestRouterConnection)
         };
 
@@ -4868,48 +5008,61 @@ impl App {
             text(Translations::router_settings_title(self.language))
                 .size(13)
                 .color(CustomStyles::accent_cyan()),
-            row![
-                text(Translations::router_ip_label(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
-                router_ip_input,
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8),
-            row![
-                text(Translations::router_pass_label(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
-                router_pass_input,
-                test_router_btn,
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8),
+            container(
+                row![
+                    text(Translations::router_ip_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary()),
+                    router_ip_input,
+                    space::horizontal().width(10),
+                    text(Translations::router_pass_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary()),
+                    router_pass_input,
+                    test_router_btn,
+                ]
+                .align_y(Alignment::Center)
+                .spacing(8),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::inset_container()),
         ]
         .spacing(8);
 
         if let Some((msg, is_ok)) = &self.router_status_msg {
-            let color = if *is_ok { CustomStyles::accent_emerald() } else { Color::from_rgb8(239, 68, 68) };
+            let color = if *is_ok {
+                CustomStyles::accent_emerald()
+            } else {
+                Color::from_rgb8(239, 68, 68)
+            };
             router_section = router_section.push(text(msg).size(11).color(color));
         }
 
         let router_card = container(router_section)
             .padding(12)
+            .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
         // Setting 6: System Notifications & Parameterizable Alerts
+        let notif_enabled = self.notification_settings.enabled;
         let notif_master_btn = button(
-            text(if self.notification_settings.enabled {
+            text(if notif_enabled {
                 Translations::notif_master_enabled(self.language)
             } else {
                 Translations::notif_master_disabled(self.language)
             })
             .size(11),
         )
-        .style(move |_, _| {
-            if self.notification_settings.enabled {
-                CustomStyles::primary_button()
+        .style(move |_, status| {
+            let tone = if notif_enabled {
+                crate::theme::StorageActionTone::Success
             } else {
-                CustomStyles::secondary_button()
-            }
+                crate::theme::StorageActionTone::Neutral
+            };
+            CustomStyles::storage_action_button(tone, status)
         })
-        .padding(Padding::from([4, 10]))
+        .padding(Padding::from([5, 12]))
         .on_press(Message::ToggleNotificationsMaster(!self.notification_settings.enabled));
 
         let mut notif_section = column![
@@ -4922,6 +5075,7 @@ impl App {
                         .size(11)
                         .color(CustomStyles::text_muted()),
                 ]
+                .spacing(2)
                 .width(Length::Fill),
                 notif_master_btn,
             ]
@@ -4931,47 +5085,87 @@ impl App {
         .spacing(10);
 
         if self.notification_settings.enabled {
-            // Subsection A: Event Triggers
             let trigger_btn = |active: bool, msg: Message| {
-                button(text(if active {
-                    Translations::btn_enabled(self.language)
-                } else {
-                    Translations::btn_disabled(self.language)
-                }).size(10))
-                .style(move |_, _| {
-                    if active {
-                        CustomStyles::primary_button()
+                button(
+                    text(if active {
+                        Translations::btn_enabled(self.language)
                     } else {
-                        CustomStyles::secondary_button()
-                    }
+                        Translations::btn_disabled(self.language)
+                    })
+                    .size(10),
+                )
+                .style(move |_, status| {
+                    let tone = if active {
+                        crate::theme::StorageActionTone::Success
+                    } else {
+                        crate::theme::StorageActionTone::Neutral
+                    };
+                    CustomStyles::storage_action_button(tone, status)
                 })
-                .padding(Padding::from([3, 8]))
+                .padding(Padding::from([3, 10]))
                 .on_press(msg)
             };
 
             let triggers_col = column![
-                text(Translations::notif_section_triggers(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                text(Translations::notif_section_triggers(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_cyan()),
                 row![
                     column![
-                        text(Translations::notif_realtime_label(self.language)).size(11).color(CustomStyles::accent_cyan()),
-                        text(Translations::notif_realtime_desc(self.language)).size(9).color(CustomStyles::text_muted()),
-                    ].width(Length::Fill),
-                    trigger_btn(self.notification_settings.realtime_netlink_monitor, Message::ToggleRealtimeMonitor(!self.notification_settings.realtime_netlink_monitor)),
-                ].align_y(Alignment::Center),
+                        text(Translations::notif_realtime_label(self.language))
+                            .size(11)
+                            .color(CustomStyles::accent_cyan()),
+                        text(Translations::notif_realtime_desc(self.language))
+                            .size(9)
+                            .color(CustomStyles::text_muted()),
+                    ]
+                    .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.realtime_netlink_monitor,
+                        Message::ToggleRealtimeMonitor(
+                            !self.notification_settings.realtime_netlink_monitor
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
                     column![
-                        text(Translations::notif_heartbeat_label(self.language)).size(11).color(CustomStyles::accent_cyan()),
-                        text(Translations::notif_heartbeat_desc(self.language)).size(9).color(CustomStyles::text_muted()),
-                    ].width(Length::Fill),
-                    trigger_btn(self.notification_settings.fast_disconnection_heartbeat, Message::ToggleHeartbeat(!self.notification_settings.fast_disconnection_heartbeat)),
-                ].align_y(Alignment::Center),
+                        text(Translations::notif_heartbeat_label(self.language))
+                            .size(11)
+                            .color(CustomStyles::accent_cyan()),
+                        text(Translations::notif_heartbeat_desc(self.language))
+                            .size(9)
+                            .color(CustomStyles::text_muted()),
+                    ]
+                    .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.fast_disconnection_heartbeat,
+                        Message::ToggleHeartbeat(
+                            !self.notification_settings.fast_disconnection_heartbeat
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_trigger_unknown(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
-                    trigger_btn(self.notification_settings.notify_unknown_intruders, Message::ToggleNotifyUnknown(!self.notification_settings.notify_unknown_intruders)),
-                ].align_y(Alignment::Center),
+                    text(Translations::notif_trigger_unknown(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.notify_unknown_intruders,
+                        Message::ToggleNotifyUnknown(
+                            !self.notification_settings.notify_unknown_intruders
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
                     row![
-                        text(Translations::notif_trigger_unwhitelisted_reconnect(self.language)).size(11).color(Color::from_rgb8(245, 158, 11)),
+                        text(Translations::notif_trigger_unwhitelisted_reconnect(
+                            self.language
+                        ))
+                        .size(11)
+                        .color(Color::from_rgb8(245, 158, 11)),
                         container(
                             text(Translations::badge_priority(self.language))
                                 .size(9)
@@ -4981,26 +5175,75 @@ impl App {
                         )
                         .center(Length::Shrink)
                         .padding(Padding::from([1, 6]))
-                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(180, 83, 9), Color::WHITE)),
-                    ].spacing(6).width(Length::Fill).align_y(Alignment::Center),
-                    trigger_btn(self.notification_settings.notify_known_unwhitelisted_reconnect, Message::ToggleNotifyKnownUnwhitelisted(!self.notification_settings.notify_known_unwhitelisted_reconnect)),
-                ].align_y(Alignment::Center),
+                        .style(|_| {
+                            CustomStyles::badge_pill(Color::from_rgb8(180, 83, 9), Color::WHITE)
+                        }),
+                    ]
+                    .spacing(6)
+                    .width(Length::Fill)
+                    .align_y(Alignment::Center),
+                    trigger_btn(
+                        self.notification_settings.notify_known_unwhitelisted_reconnect,
+                        Message::ToggleNotifyKnownUnwhitelisted(
+                            !self.notification_settings.notify_known_unwhitelisted_reconnect
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_trigger_whitelisted_reconnect(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
-                    trigger_btn(self.notification_settings.notify_whitelisted_reconnect, Message::ToggleNotifyWhitelisted(!self.notification_settings.notify_whitelisted_reconnect)),
-                ].align_y(Alignment::Center),
+                    text(Translations::notif_trigger_whitelisted_reconnect(
+                        self.language
+                    ))
+                    .size(11)
+                    .color(CustomStyles::text_primary())
+                    .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.notify_whitelisted_reconnect,
+                        Message::ToggleNotifyWhitelisted(
+                            !self.notification_settings.notify_whitelisted_reconnect
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_trigger_disconnected(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
-                    trigger_btn(self.notification_settings.notify_device_disconnected, Message::ToggleNotifyDisconnected(!self.notification_settings.notify_device_disconnected)),
-                ].align_y(Alignment::Center),
+                    text(Translations::notif_trigger_disconnected(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.notify_device_disconnected,
+                        Message::ToggleNotifyDisconnected(
+                            !self.notification_settings.notify_device_disconnected
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_trigger_outages(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
-                    trigger_btn(self.notification_settings.notify_internet_outages, Message::ToggleNotifyOutages(!self.notification_settings.notify_internet_outages)),
-                ].align_y(Alignment::Center),
+                    text(Translations::notif_trigger_outages(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.notify_internet_outages,
+                        Message::ToggleNotifyOutages(
+                            !self.notification_settings.notify_internet_outages
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_trigger_security(self.language)).size(11).color(CustomStyles::text_primary()).width(Length::Fill),
-                    trigger_btn(self.notification_settings.notify_security_critical, Message::ToggleNotifySecurity(!self.notification_settings.notify_security_critical)),
-                ].align_y(Alignment::Center),
+                    text(Translations::notif_trigger_security(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    trigger_btn(
+                        self.notification_settings.notify_security_critical,
+                        Message::ToggleNotifySecurity(
+                            !self.notification_settings.notify_security_critical
+                        )
+                    ),
+                ]
+                .align_y(Alignment::Center),
             ]
             .spacing(6);
 
@@ -5010,57 +5253,75 @@ impl App {
             for &u in urgencies {
                 let is_active = self.notification_settings.urgency == u;
                 let btn = button(text(u.label(self.language)).size(10))
-                    .style(move |_, _| {
+                    .style(move |_, status| {
                         if is_active {
                             CustomStyles::primary_button()
                         } else {
-                            CustomStyles::secondary_button()
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Neutral,
+                                status,
+                            )
                         }
                     })
-                    .padding(Padding::from([3, 8]))
+                    .padding(Padding::from([3, 9]))
                     .on_press(Message::ChangeNotificationUrgency(u));
                 urgency_buttons = urgency_buttons.push(btn);
             }
 
-            let timeouts: &[(u32, &'static str)] = &[
-                (3, "3s"),
-                (5, "5s"),
-                (7, "7s"),
-                (15, "15s"),
-                (30, "30s"),
-            ];
+            let timeouts: &[(u32, &'static str)] =
+                &[(3, "3s"), (5, "5s"), (7, "7s"), (15, "15s"), (30, "30s")];
             let mut timeout_buttons = row![].spacing(6).align_y(Alignment::Center);
             for &(s, label) in timeouts {
                 let is_active = self.notification_settings.timeout_secs == s;
                 let btn = button(text(label).size(10))
-                    .style(move |_, _| {
+                    .style(move |_, status| {
                         if is_active {
                             CustomStyles::primary_button()
                         } else {
-                            CustomStyles::secondary_button()
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Neutral,
+                                status,
+                            )
                         }
                     })
-                    .padding(Padding::from([3, 8]))
+                    .padding(Padding::from([3, 9]))
                     .on_press(Message::ChangeNotificationTimeout(s));
                 timeout_buttons = timeout_buttons.push(btn);
             }
 
-            let sound_btn = trigger_btn(self.notification_settings.play_sound, Message::ToggleNotificationPlaySound(!self.notification_settings.play_sound));
+            let sound_btn = trigger_btn(
+                self.notification_settings.play_sound,
+                Message::ToggleNotificationPlaySound(!self.notification_settings.play_sound),
+            );
 
             let behavior_col = column![
-                text(Translations::notif_section_behavior(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                text(Translations::notif_section_behavior(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_cyan()),
                 row![
-                    text(Translations::notif_urgency_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    text(Translations::notif_urgency_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(140),
                     urgency_buttons,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_timeout_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    text(Translations::notif_timeout_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(140),
                     timeout_buttons,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_sound_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    text(Translations::notif_sound_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(Length::Fill),
                     sound_btn,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
             ]
             .spacing(6);
 
@@ -5070,131 +5331,233 @@ impl App {
             for &d in details {
                 let is_active = self.notification_settings.detail_level == d;
                 let btn = button(text(d.label(self.language)).size(10))
-                    .style(move |_, _| {
+                    .style(move |_, status| {
                         if is_active {
                             CustomStyles::primary_button()
                         } else {
-                            CustomStyles::secondary_button()
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Neutral,
+                                status,
+                            )
                         }
                     })
-                    .padding(Padding::from([3, 8]))
+                    .padding(Padding::from([3, 9]))
                     .on_press(Message::ChangeNotificationDetail(d));
                 detail_buttons = detail_buttons.push(btn);
             }
 
-            let mac_btn = trigger_btn(self.notification_settings.show_mac, Message::ToggleNotificationShowMac(!self.notification_settings.show_mac));
-            let vendor_btn = trigger_btn(self.notification_settings.show_vendor, Message::ToggleNotificationShowVendor(!self.notification_settings.show_vendor));
+            let mac_btn = trigger_btn(
+                self.notification_settings.show_mac,
+                Message::ToggleNotificationShowMac(!self.notification_settings.show_mac),
+            );
+            let vendor_btn = trigger_btn(
+                self.notification_settings.show_vendor,
+                Message::ToggleNotificationShowVendor(!self.notification_settings.show_vendor),
+            );
             let prefix_input = text_input("NetLens", &self.notification_prefix_input)
                 .on_input(Message::NotificationPrefixChanged)
-                .padding(Padding::from([3, 8]))
+                .padding(Padding::from([4, 8]))
                 .width(160);
 
             let test_btn = button(text(Translations::notif_test_btn(self.language)).size(10))
-                .style(|_, _| CustomStyles::secondary_button())
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Primary,
+                        status,
+                    )
+                })
                 .padding(Padding::from([4, 10]))
                 .on_press(Message::SendTestNotification);
 
             let content_col = column![
-                text(Translations::notif_section_content(self.language)).size(11).color(CustomStyles::accent_cyan()),
+                text(Translations::notif_section_content(self.language))
+                    .size(11)
+                    .color(CustomStyles::accent_cyan()),
                 row![
-                    text(Translations::notif_detail_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    text(Translations::notif_detail_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(140),
                     detail_buttons,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_show_mac_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    text(Translations::notif_show_mac_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(Length::Fill),
                     mac_btn,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_show_vendor_label(self.language)).size(11).color(CustomStyles::text_muted()).width(Length::Fill),
+                    text(Translations::notif_show_vendor_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(Length::Fill),
                     vendor_btn,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 row![
-                    text(Translations::notif_prefix_label(self.language)).size(11).color(CustomStyles::text_muted()).width(140),
+                    text(Translations::notif_prefix_label(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_secondary())
+                        .width(140),
                     prefix_input,
                     space::horizontal(),
                     test_btn,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
             ]
             .spacing(6);
 
             notif_section = notif_section
-                .push(container(triggers_col).padding(8).style(|_| CustomStyles::card_container()))
-                .push(container(behavior_col).padding(8).style(|_| CustomStyles::card_container()))
-                .push(container(content_col).padding(8).style(|_| CustomStyles::card_container()));
+                .push(
+                    container(triggers_col)
+                        .padding(10)
+                        .width(Length::Fill)
+                        .style(|_| CustomStyles::inset_container()),
+                )
+                .push(
+                    container(behavior_col)
+                        .padding(10)
+                        .width(Length::Fill)
+                        .style(|_| CustomStyles::inset_container()),
+                )
+                .push(
+                    container(content_col)
+                        .padding(10)
+                        .width(Length::Fill)
+                        .style(|_| CustomStyles::inset_container()),
+                );
         }
 
         let notifications_card = container(notif_section)
             .padding(12)
+            .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
-        // Technical system summary
-        let info_col = column![
-            text(Translations::sys_info_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
-            row![
-                text(Translations::sys_active_iface(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
-                text(&self.network.interface).size(12).color(CustomStyles::text_primary()),
-            ],
-            row![
-                text(Translations::sys_subnet(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
-                text(&self.network.subnet_cidr).size(12).color(CustomStyles::text_primary()),
-            ],
-            row![
-                text(Translations::sys_gateway(self.language)).size(12).color(CustomStyles::text_muted()).width(140),
-                text(self.network.gateway_ip.map(|g| g.to_string()).unwrap_or_else(|| Translations::not_detected(self.language).to_string())).size(12).color(CustomStyles::text_primary()),
-            ],
+        // Technical system summary as 3 recessed metric tiles
+        let gw_text = self
+            .network
+            .gateway_ip
+            .map(|g| g.to_string())
+            .unwrap_or_else(|| Translations::not_detected(self.language).to_string());
+
+        let sys_tiles = row![
+            container(
+                column![
+                    text(Translations::sys_active_iface(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                    text(&self.network.interface)
+                        .size(13)
+                        .color(CustomStyles::accent_cyan()),
+                ]
+                .spacing(2),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::inset_container()),
+            container(
+                column![
+                    text(Translations::sys_subnet(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                    text(&self.network.subnet_cidr)
+                        .size(13)
+                        .color(CustomStyles::text_primary()),
+                ]
+                .spacing(2),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::inset_container()),
+            container(
+                column![
+                    text(Translations::sys_gateway(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                    text(gw_text)
+                        .size(13)
+                        .color(CustomStyles::accent_emerald()),
+                ]
+                .spacing(2),
+            )
+            .padding(10)
+            .width(Length::FillPortion(1))
+            .style(|_| CustomStyles::inset_container()),
         ]
-        .spacing(6);
+        .spacing(10);
+
+        let sys_info_card = container(
+            column![
+                text(Translations::sys_info_title(self.language))
+                    .size(13)
+                    .color(CustomStyles::accent_cyan()),
+                sys_tiles,
+            ]
+            .spacing(8),
+        )
+        .padding(12)
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
 
         // Setting 7: About NetLens & Author Info
         let about_card = container(
             row![
                 column![
-                    text(Translations::about_modal_title(self.language)).size(13).color(CustomStyles::accent_cyan()),
-                    text(format!("Omar Murcia • MIT License • v{}", env!("CARGO_PKG_VERSION"))).size(11).color(CustomStyles::text_muted()),
+                    text(Translations::about_modal_title(self.language))
+                        .size(13)
+                        .color(CustomStyles::accent_cyan()),
+                    text(format!(
+                        "Omar Murcia • MIT License • v{}",
+                        env!("CARGO_PKG_VERSION")
+                    ))
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
                 ]
+                .spacing(2)
                 .width(Length::Fill),
                 button(text(Translations::about_btn(self.language)).size(11))
-                    .style(|_, _| CustomStyles::primary_button())
-                    .padding(Padding::from([5, 12]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Primary,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([6, 14]))
                     .on_press(Message::OpenAbout),
             ]
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         )
         .padding(12)
-        .style(|_| CustomStyles::card_container());
-
-        let close_btn = button(text(Translations::close(self.language)).size(13))
-            .style(|_, _| CustomStyles::primary_button())
-            .padding(Padding::from([7, 20]))
-            .on_press(Message::CloseSettings);
-
-        let footer_row = row![space::horizontal(), close_btn].align_y(Alignment::Center);
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_highlighted());
 
         let body_content = column![
-            theme_row,
-            lang_row,
+            appearance_card,
             auto_scan_card,
             background_card,
             router_card,
             notifications_card,
-            container(info_col).padding(12).style(|_| CustomStyles::card_container()),
+            sys_info_card,
             about_card,
         ]
-        .spacing(12)
+        .spacing(10)
         .padding(Padding {
             top: 2.0,
-            right: 10.0,
+            right: 0.0,
             bottom: 4.0,
-            left: 2.0,
+            left: 0.0,
         });
 
         let scrollable_body = scrollable(body_content)
             .direction(scrollable::Direction::Vertical(
                 scrollable::Scrollbar::new()
-                    .width(6.0)
-                    .scroller_width(6.0)
+                    .width(5.0)
+                    .scroller_width(5.0)
                     .margin(2.0)
-                    .spacing(8.0),
+                    .spacing(6.0),
             ))
             .style(CustomStyles::scrollbar_style())
             .height(Length::Shrink);
@@ -5203,41 +5566,60 @@ impl App {
             title_row,
             container(scrollable_body)
                 .width(Length::Fill)
-                .max_height(530.0),
-            footer_row,
+                .max_height(565.0),
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(panel_layout)
             .padding(22)
-            .width(820)
-            .max_height(680)
-            .style(|_| CustomStyles::settings_panel())
+            .width(860)
+            .max_height(685)
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
 
     /// Modal: Classic "About NetLens" with author information, repositories, logo and dynamic language switching
     fn view_about_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("ℹ️").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::about_modal_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::about_modal_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::app_subtitle(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseAbout),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
 
-        // 1. App Header Card with official Logo
-        let app_icon = iced::widget::image(self.logo_handle.clone())
-            .width(68)
-            .height(68);
+        // 1. App Header Card with official Logo inside a framed container
+        let app_icon = container(
+            iced::widget::image(self.logo_handle.clone())
+                .width(64)
+                .height(64),
+        )
+        .padding(8)
+        .style(|_| CustomStyles::inset_container());
 
         let update_status_element: Element<'_, Message> = match &self.update_status {
             UpdateStatus::Checking => container(
@@ -5248,8 +5630,13 @@ impl App {
                     .align_y(alignment::Vertical::Center),
             )
             .center(Length::Shrink)
-            .padding(Padding::from([3, 8]))
-            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(25, 30, 45), CustomStyles::text_muted()))
+            .padding(Padding::from([3, 9]))
+            .style(|_| {
+                CustomStyles::badge_pill(
+                    Color::from_rgb8(25, 30, 45),
+                    CustomStyles::text_muted(),
+                )
+            })
             .into(),
             UpdateStatus::UpdateAvailable {
                 remote_version,
@@ -5273,8 +5660,13 @@ impl App {
                     .align_y(Alignment::Center),
                 )
                 .center(Length::Shrink)
-                .padding(Padding::from([3, 8]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 35, 55), CustomStyles::accent_cyan())),
+                .padding(Padding::from([3, 9]))
+                .style(|_| {
+                    CustomStyles::badge_pill(
+                        Color::from_rgb8(15, 35, 55),
+                        CustomStyles::accent_cyan(),
+                    )
+                }),
                 button(
                     container(
                         text(Translations::update_btn(self.language))
@@ -5285,7 +5677,7 @@ impl App {
                     .center(Length::Shrink),
                 )
                 .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([3, 8]))
+                .padding(Padding::from([3, 10]))
                 .on_press(Message::OpenUpdateModal),
             ]
             .spacing(6)
@@ -5293,7 +5685,10 @@ impl App {
             .into(),
             UpdateStatus::UpToDate | UpdateStatus::Idle | UpdateStatus::CheckFailed => container(
                 row![
-                    text("✓").size(10).color(CustomStyles::accent_emerald()).align_y(alignment::Vertical::Center),
+                    text("✓")
+                        .size(10)
+                        .color(CustomStyles::accent_emerald())
+                        .align_y(alignment::Vertical::Center),
                     text(Translations::update_latest_version(self.language))
                         .size(10)
                         .color(CustomStyles::accent_emerald())
@@ -5303,16 +5698,31 @@ impl App {
                 .align_y(Alignment::Center),
             )
             .center(Length::Shrink)
-            .padding(Padding::from([3, 8]))
-            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald()))
+            .padding(Padding::from([3, 9]))
+            .style(|_| {
+                CustomStyles::badge_pill(
+                    Color::from_rgb8(15, 45, 30),
+                    CustomStyles::accent_emerald(),
+                )
+            })
             .into(),
         };
 
         let check_updates_btn = self.tip(
-            button(text("🔄").size(10).align_x(alignment::Horizontal::Center).align_y(alignment::Vertical::Center))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([2, 5]))
-                .on_press(Message::CheckForUpdates),
+            button(
+                text("🔄")
+                    .size(10)
+                    .align_x(alignment::Horizontal::Center)
+                    .align_y(alignment::Vertical::Center),
+            )
+            .style(|_, status| {
+                CustomStyles::storage_action_button(
+                    crate::theme::StorageActionTone::Neutral,
+                    status,
+                )
+            })
+            .padding(Padding::from([3, 7]))
+            .on_press(Message::CheckForUpdates),
             Translations::check_for_updates(self.language),
             tooltip::Position::Top,
         );
@@ -5321,15 +5731,24 @@ impl App {
             row![
                 text("NetLens").size(24).color(CustomStyles::accent_cyan()),
                 container(
-                    text(format!("v{}-{}", env!("CARGO_PKG_VERSION"), UpdateChecker::CURRENT_PKGREL))
-                        .size(11)
-                        .color(CustomStyles::accent_emerald())
-                        .align_x(alignment::Horizontal::Center)
-                        .align_y(alignment::Vertical::Center),
+                    text(format!(
+                        "v{}-{}",
+                        env!("CARGO_PKG_VERSION"),
+                        UpdateChecker::CURRENT_PKGREL
+                    ))
+                    .size(11)
+                    .color(CustomStyles::accent_emerald())
+                    .align_x(alignment::Horizontal::Center)
+                    .align_y(alignment::Vertical::Center),
                 )
                 .center(Length::Shrink)
                 .padding(Padding::from([3, 9]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
+                .style(|_| {
+                    CustomStyles::badge_pill(
+                        Color::from_rgb8(15, 45, 30),
+                        CustomStyles::accent_emerald(),
+                    )
+                }),
                 container(
                     text("CachyOS / Arch Linux")
                         .size(10)
@@ -5339,11 +5758,13 @@ impl App {
                 )
                 .center(Length::Shrink)
                 .padding(Padding::from([3, 9]))
-                .style(|_| CustomStyles::badge_pill(Color::from_rgb8(35, 20, 50), CustomStyles::accent_purple())),
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
-            row![
+                .style(|_| {
+                    CustomStyles::badge_pill(
+                        Color::from_rgb8(35, 20, 50),
+                        CustomStyles::accent_purple(),
+                    )
+                }),
+                space::horizontal(),
                 update_status_element,
                 check_updates_btn,
             ]
@@ -5351,151 +5772,261 @@ impl App {
             .align_y(Alignment::Center),
             text(Translations::app_subtitle(self.language))
                 .size(12)
-                .color(CustomStyles::text_secondary()),
+                .color(CustomStyles::text_primary()),
             text(Translations::about_app_description(self.language))
                 .size(11)
-                .color(CustomStyles::text_muted()),
+                .color(CustomStyles::text_secondary()),
         ]
-        .spacing(4)
+        .spacing(5)
         .width(Length::Fill);
 
         let branding_card = container(
-            row![
-                app_icon,
-                app_info,
-            ]
-            .spacing(16)
-            .align_y(Alignment::Center)
+            row![app_icon, app_info]
+                .spacing(16)
+                .align_y(Alignment::Center),
         )
         .padding(14)
         .width(Length::Fill)
-        .style(|_| CustomStyles::card_container());
+        .style(|_| CustomStyles::card_highlighted());
 
         // 2. Author & Developer Card
         let author_col = column![
             text(Translations::about_author_section(self.language))
-                .size(13)
+                .size(12)
                 .color(CustomStyles::accent_cyan()),
-            row![
-                column![
-                    text("Omar Murcia").size(16).color(CustomStyles::text_primary()),
-                    text(Translations::about_role(self.language)).size(11).color(CustomStyles::text_muted()),
-                ]
-                .width(Length::Fill),
+            container(
                 row![
-                    text(format!("✉️ {}: ing.omarmurcia@gmail.com", Translations::about_email_label(self.language)))
-                        .size(12)
+                    container(text("👨‍💻").size(18))
+                        .width(36)
+                        .height(36)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
+                        .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_cyan())),
+                    column![
+                        text("Omar Murcia")
+                            .size(15)
+                            .color(CustomStyles::text_primary()),
+                        text(Translations::about_role(self.language))
+                            .size(11)
+                            .color(CustomStyles::text_muted()),
+                    ]
+                    .spacing(1)
+                    .width(Length::Fill),
+                    row![
+                        text(format!(
+                            "✉️ {}: ing.omarmurcia@gmail.com",
+                            Translations::about_email_label(self.language)
+                        ))
+                        .size(11)
                         .color(CustomStyles::text_secondary()),
-                    button(text(format!("📋 {}", Translations::about_copy_email(self.language))).size(10))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([4, 8]))
-                        .on_press(Message::CopyToClipboard("ing.omarmurcia@gmail.com".to_string(), "Email".to_string())),
-                    button(text(format!("✉️ {}", Translations::about_send_email(self.language))).size(10))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([4, 8]))
-                        .on_press(Message::OpenExternalUrl("mailto:ing.omarmurcia@gmail.com".to_string())),
+                        button(
+                            text(format!(
+                                "📋 {}",
+                                Translations::about_copy_email(self.language)
+                            ))
+                            .size(10),
+                        )
+                        .style(|_, status| {
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Neutral,
+                                status,
+                            )
+                        })
+                        .padding(Padding::from([4, 9]))
+                        .on_press(Message::CopyToClipboard(
+                            "ing.omarmurcia@gmail.com".to_string(),
+                            "Email".to_string()
+                        )),
+                        button(
+                            text(format!(
+                                "✉️ {}",
+                                Translations::about_send_email(self.language)
+                            ))
+                            .size(10),
+                        )
+                        .style(|_, status| {
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Primary,
+                                status,
+                            )
+                        })
+                        .padding(Padding::from([4, 9]))
+                        .on_press(Message::OpenExternalUrl(
+                            "mailto:ing.omarmurcia@gmail.com".to_string()
+                        )),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
                 ]
-                .spacing(8)
+                .spacing(12)
                 .align_y(Alignment::Center),
-            ]
-            .align_y(Alignment::Center),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::inset_container()),
         ]
-        .spacing(6);
+        .spacing(8);
 
         let author_card = container(author_col)
-            .padding(14)
+            .padding(12)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
         // 3. Repositories & Distribution Card
-        let make_repo_row = |icon: &'static str, title: &'static str, url: &'static str, open_label: &'static str, copy_label: &'static str| {
-            row![
-                column![
-                    text(format!("{} {}", icon, title)).size(12).color(CustomStyles::text_primary()),
-                    text(url).size(10).color(CustomStyles::accent_cyan()),
-                ]
-                .width(Length::Fill),
+        let make_repo_row = |icon: &'static str,
+                             title: &'static str,
+                             url: &'static str,
+                             open_label: &'static str,
+                             copy_label: &'static str| {
+            container(
                 row![
-                    button(text(format!("🌐 {}", open_label)).size(10))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([3, 8]))
-                        .on_press(Message::OpenExternalUrl(url.to_string())),
-                    button(text(format!("📋 {}", copy_label)).size(10))
-                        .style(|_, _| CustomStyles::secondary_button())
-                        .padding(Padding::from([3, 8]))
-                        .on_press(Message::CopyToClipboard(url.to_string(), title.to_string())),
+                    column![
+                        text(format!("{} {}", icon, title))
+                            .size(12)
+                            .color(CustomStyles::text_primary()),
+                        text(url).size(10).color(CustomStyles::accent_cyan()),
+                    ]
+                    .spacing(1)
+                    .width(Length::Fill),
+                    row![
+                        button(text(format!("🌐 {}", open_label)).size(10))
+                            .style(|_, status| {
+                                CustomStyles::storage_action_button(
+                                    crate::theme::StorageActionTone::Primary,
+                                    status,
+                                )
+                            })
+                            .padding(Padding::from([4, 9]))
+                            .on_press(Message::OpenExternalUrl(url.to_string())),
+                        button(text(format!("📋 {}", copy_label)).size(10))
+                            .style(|_, status| {
+                                CustomStyles::storage_action_button(
+                                    crate::theme::StorageActionTone::Neutral,
+                                    status,
+                                )
+                            })
+                            .padding(Padding::from([4, 9]))
+                            .on_press(Message::CopyToClipboard(
+                                url.to_string(),
+                                title.to_string()
+                            )),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
                 ]
-                .spacing(6)
-                .align_y(Alignment::Center),
-            ]
-            .align_y(Alignment::Center)
-            .spacing(8)
+                .align_y(Alignment::Center)
+                .spacing(8),
+            )
+            .padding(Padding::from([7, 10]))
+            .width(Length::Fill)
+            .style(|_| CustomStyles::inset_container())
         };
 
         let repos_col = column![
             text(Translations::about_repositories_section(self.language))
-                .size(13)
+                .size(12)
                 .color(CustomStyles::accent_cyan()),
-            make_repo_row("💻", Translations::about_source_code(self.language), "https://github.com/omarmurcia/netlens", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
-            make_repo_row("📦", Translations::about_pacman_repo(self.language), "https://github.com/omarmurcia/netlens-repo", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
-            make_repo_row("🚀", Translations::about_web_portal(self.language), "https://omarmurcia.github.io/netlens-repo", Translations::about_open_in_browser(self.language), Translations::about_copy_url(self.language)),
+            make_repo_row(
+                "💻",
+                Translations::about_source_code(self.language),
+                "https://github.com/omarmurcia/netlens",
+                Translations::about_open_in_browser(self.language),
+                Translations::about_copy_url(self.language)
+            ),
+            make_repo_row(
+                "📦",
+                Translations::about_pacman_repo(self.language),
+                "https://github.com/omarmurcia/netlens-repo",
+                Translations::about_open_in_browser(self.language),
+                Translations::about_copy_url(self.language)
+            ),
+            make_repo_row(
+                "🚀",
+                Translations::about_web_portal(self.language),
+                "https://omarmurcia.github.io/netlens-repo",
+                Translations::about_open_in_browser(self.language),
+                Translations::about_copy_url(self.language)
+            ),
         ]
-        .spacing(8);
+        .spacing(6);
 
         let repos_card = container(repos_col)
-            .padding(14)
+            .padding(12)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
-        // 4. Technical Specs & License Card
+        // 4. Technical Specs & License Card as 3 clean inset tiles
         let specs_col = column![
             text(Translations::about_tech_specs(self.language))
-                .size(13)
+                .size(12)
                 .color(CustomStyles::accent_cyan()),
             row![
-                column![
-                    text(format!("⚖️ {}", Translations::about_license(self.language))).size(11).color(CustomStyles::text_muted()),
-                    text("MIT License (Free & Open Source)").size(11).color(CustomStyles::text_primary()),
-                ]
-                .width(Length::Fill),
-                column![
-                    text("⚡ Target OS").size(11).color(CustomStyles::text_muted()),
-                    text("Linux x86_64 (CachyOS / Arch / System Tray)").size(11).color(CustomStyles::text_primary()),
-                ]
-                .width(Length::Fill),
-                column![
-                    text("🦀 Core Engine").size(11).color(CustomStyles::text_muted()),
-                    text("Rust + Iced 0.14 + Tokio Runtime").size(11).color(CustomStyles::text_primary()),
-                ]
-                .width(Length::Fill),
+                container(
+                    column![
+                        text(format!("⚖️ {}", Translations::about_license(self.language)))
+                            .size(10)
+                            .color(CustomStyles::text_muted()),
+                        text("MIT License (Free & Open Source)")
+                            .size(11)
+                            .color(CustomStyles::text_primary()),
+                    ]
+                    .spacing(2),
+                )
+                .padding(9)
+                .width(Length::FillPortion(1))
+                .style(|_| CustomStyles::inset_container()),
+                container(
+                    column![
+                        text("⚡ Target OS")
+                            .size(10)
+                            .color(CustomStyles::text_muted()),
+                        text("Linux x86_64 (CachyOS / Arch)")
+                            .size(11)
+                            .color(CustomStyles::text_primary()),
+                    ]
+                    .spacing(2),
+                )
+                .padding(9)
+                .width(Length::FillPortion(1))
+                .style(|_| CustomStyles::inset_container()),
+                container(
+                    column![
+                        text("🦀 Core Engine")
+                            .size(10)
+                            .color(CustomStyles::text_muted()),
+                        text("Rust + Iced 0.14 + Tokio")
+                            .size(11)
+                            .color(CustomStyles::text_primary()),
+                    ]
+                    .spacing(2),
+                )
+                .padding(9)
+                .width(Length::FillPortion(1))
+                .style(|_| CustomStyles::inset_container()),
             ]
-            .spacing(12),
-            text("© 2026 Omar Murcia. All rights reserved.")
-                .size(10)
-                .color(CustomStyles::text_muted()),
+            .spacing(8),
         ]
         .spacing(6);
 
         let specs_card = container(specs_col)
-            .padding(14)
+            .padding(12)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
-        // 5. Footer with Language Switcher and Close Button
+        // 5. Footer with Language Switcher and Copyright
         let footer_row = row![
             text(format!("🌐 {}", Translations::language_label(self.language)))
-                .size(12)
-                .color(CustomStyles::text_muted()),
+                .size(11)
+                .color(CustomStyles::text_secondary()),
             pick_list(
                 Language::ALL,
                 Some(self.language),
                 Message::LanguageChanged,
             ),
             space::horizontal(),
-            button(text(Translations::close(self.language)).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 20]))
-                .on_press(Message::CloseAbout),
+            text("© 2026 Omar Murcia. All rights reserved.")
+                .size(10)
+                .color(CustomStyles::text_muted()),
         ]
         .spacing(10)
         .align_y(Alignment::Center);
@@ -5508,11 +6039,11 @@ impl App {
             specs_card,
             footer_row,
         ]
-        .spacing(12);
+        .spacing(10);
 
         container(content)
             .padding(22)
-            .width(760)
+            .width(790)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -5535,7 +6066,7 @@ impl App {
         };
 
         let title_row = row![
-            text(Translations::update_modal_title(self.language))
+            text(strip_title_icon(Translations::update_modal_title(self.language)))
                 .size(20)
                 .color(CustomStyles::accent_cyan()),
             space::horizontal(),
@@ -5752,39 +6283,110 @@ impl App {
             || self.speed_test_stage == SpeedTestStage::TestingDownload
             || self.speed_test_stage == SpeedTestStage::TestingUpload;
 
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("🚀").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::speed_test_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::speed_test_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::speed_test_subtitle(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseSpeedTest),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
-
-        let subtitle = text(Translations::speed_test_subtitle(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
 
         let (progress, stage_text, stage_color) = match self.speed_test_stage {
-            SpeedTestStage::Idle => (0.0, Translations::speed_stage_idle(self.language), CustomStyles::text_muted()),
-            SpeedTestStage::TestingPing => (0.25, Translations::speed_stage_ping(self.language), CustomStyles::accent_amber()),
-            SpeedTestStage::TestingDownload => (0.65, Translations::speed_stage_download(self.language), CustomStyles::accent_emerald()),
-            SpeedTestStage::TestingUpload => (0.90, Translations::speed_stage_upload(self.language), CustomStyles::accent_purple()),
-            SpeedTestStage::Completed => (1.0, Translations::speed_stage_complete(self.language), CustomStyles::accent_emerald()),
-            SpeedTestStage::Failed => (0.0, Translations::speed_stage_failed(self.language), Color::from_rgb8(239, 68, 68)),
+            SpeedTestStage::Idle => (
+                0.0,
+                Translations::speed_stage_idle(self.language),
+                CustomStyles::text_secondary(),
+            ),
+            SpeedTestStage::TestingPing => (
+                0.25,
+                Translations::speed_stage_ping(self.language),
+                CustomStyles::accent_amber(),
+            ),
+            SpeedTestStage::TestingDownload => (
+                0.65,
+                Translations::speed_stage_download(self.language),
+                CustomStyles::accent_emerald(),
+            ),
+            SpeedTestStage::TestingUpload => (
+                0.90,
+                Translations::speed_stage_upload(self.language),
+                CustomStyles::accent_purple(),
+            ),
+            SpeedTestStage::Completed => (
+                1.0,
+                Translations::speed_stage_complete(self.language),
+                CustomStyles::accent_emerald(),
+            ),
+            SpeedTestStage::Failed => (
+                0.0,
+                Translations::speed_stage_failed(self.language),
+                Color::from_rgb8(239, 68, 68),
+            ),
         };
 
-        let status_row = row![
-            text(stage_text).size(13).color(stage_color),
-        ]
-        .align_y(Alignment::Center);
+        let server_name = self
+            .speed_test_result
+            .as_ref()
+            .map(|r| r.server.as_str())
+            .unwrap_or("Netflix Open Connect / Cloudflare CDN");
+
+        // Top Stage & Server Status Bar
+        let status_banner = container(
+            column![
+                row![
+                    text(stage_text).size(12).color(stage_color),
+                    space::horizontal(),
+                    container(
+                        text(format!("🌐 {}", server_name))
+                            .size(10)
+                            .color(CustomStyles::text_secondary()),
+                    )
+                    .padding(Padding::from([2, 8]))
+                    .style(|_| CustomStyles::inset_container()),
+                    container(
+                        text(format!("🔌 {}", self.network.interface))
+                            .size(10)
+                            .color(CustomStyles::accent_cyan()),
+                    )
+                    .padding(Padding::from([2, 8]))
+                    .style(|_| CustomStyles::inset_container()),
+                    text(format!("{:.0}%", progress * 100.0))
+                        .size(11)
+                        .color(stage_color),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+                progress_bar(0.0..=1.0, progress),
+            ]
+            .spacing(8),
+        )
+        .padding(12)
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_container());
 
         // Metric Cards (Ping, Download, Upload)
         let ping_str = self
@@ -5793,18 +6395,26 @@ impl App {
             .unwrap_or_else(|| "-- ms".to_string());
 
         let card_ping = container(
-            column![
-                text(Translations::speed_test_ping(self.language))
-                    .size(11)
-                    .color(CustomStyles::accent_amber()),
-                text(ping_str)
-                    .size(22)
-                    .color(CustomStyles::accent_amber()),
-                text("Round-Trip Time")
-                    .size(10)
-                    .color(CustomStyles::text_muted()),
+            row![
+                container(text("⚡").size(16))
+                    .width(34)
+                    .height(34)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_amber())),
+                column![
+                    text(Translations::speed_test_ping(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_amber()),
+                    text(ping_str).size(22).color(CustomStyles::accent_amber()),
+                    text("Round-Trip Time")
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                ]
+                .spacing(2),
             ]
-            .spacing(4),
+            .spacing(12)
+            .align_y(Alignment::Center),
         )
         .padding(14)
         .width(Length::FillPortion(1))
@@ -5820,18 +6430,24 @@ impl App {
             .unwrap_or_else(|| "-- MB/s".to_string());
 
         let card_dl = container(
-            column![
-                text(Translations::speed_test_download(self.language))
-                    .size(11)
-                    .color(CustomStyles::accent_emerald()),
-                text(dl_str)
-                    .size(22)
-                    .color(CustomStyles::accent_emerald()),
-                text(dl_sub)
-                    .size(11)
-                    .color(CustomStyles::text_secondary()),
+            row![
+                container(text("⬇").size(16))
+                    .width(34)
+                    .height(34)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_emerald())),
+                column![
+                    text(Translations::speed_test_download(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald()),
+                    text(dl_str).size(22).color(CustomStyles::accent_emerald()),
+                    text(dl_sub).size(10).color(CustomStyles::text_secondary()),
+                ]
+                .spacing(2),
             ]
-            .spacing(4),
+            .spacing(12)
+            .align_y(Alignment::Center),
         )
         .padding(14)
         .width(Length::FillPortion(1))
@@ -5847,18 +6463,24 @@ impl App {
             .unwrap_or_else(|| "-- MB/s".to_string());
 
         let card_ul = container(
-            column![
-                text(Translations::speed_test_upload(self.language))
-                    .size(11)
-                    .color(CustomStyles::accent_purple()),
-                text(ul_str)
-                    .size(22)
-                    .color(CustomStyles::accent_purple()),
-                text(ul_sub)
-                    .size(11)
-                    .color(CustomStyles::text_secondary()),
+            row![
+                container(text("⬆").size(16))
+                    .width(34)
+                    .height(34)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_purple())),
+                column![
+                    text(Translations::speed_test_upload(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_purple()),
+                    text(ul_str).size(22).color(CustomStyles::accent_purple()),
+                    text(ul_sub).size(10).color(CustomStyles::text_secondary()),
+                ]
+                .spacing(2),
             ]
-            .spacing(4),
+            .spacing(12)
+            .align_y(Alignment::Center),
         )
         .padding(14)
         .width(Length::FillPortion(1))
@@ -5866,52 +6488,19 @@ impl App {
 
         let metrics_row = row![card_ping, card_dl, card_ul].spacing(10);
 
-        // Network / server information
-        let server_info = column![
-            row![
-                text(Translations::speed_test_server(self.language))
-                    .size(12)
-                    .color(CustomStyles::text_muted())
-                    .width(130),
-                text(
-                    self.speed_test_result
-                        .as_ref()
-                        .map(|r| r.server.as_str())
-                        .unwrap_or("Netflix Open Connect / Cloudflare CDN"),
-                )
-                    .size(12)
-                    .color(CustomStyles::text_primary()),
-            ],
-            row![
-                text(Translations::sys_active_iface(self.language))
-                    .size(12)
-                    .color(CustomStyles::text_muted())
-                    .width(130),
-                text(&self.network.interface)
-                    .size(12)
-                    .color(CustomStyles::accent_cyan()),
-            ],
-        ]
-        .spacing(6);
-
-        // Action buttons
+        // Action button
         let start_btn = if is_running {
-            button(text(Translations::speed_test_running(self.language)).size(13))
+            button(text(Translations::speed_test_running(self.language)).size(12))
                 .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([8, 18]))
+                .padding(Padding::from([7, 18]))
         } else {
-            button(text(Translations::speed_test_start(self.language)).size(13))
+            button(text(Translations::speed_test_start(self.language)).size(12))
                 .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([8, 18]))
+                .padding(Padding::from([7, 20]))
                 .on_press(Message::StartSpeedTest)
         };
 
-        let close_btn = button(text(Translations::close(self.language)).size(13))
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([8, 16]))
-            .on_press(Message::CloseSpeedTest);
-
-        // Section: Persistent Speed Test History
+        // Section: Persistent Speed Test History using our harmonized table design
         let mut history_header = row![
             text(Translations::speed_test_history_title(self.language))
                 .size(13)
@@ -5923,88 +6512,138 @@ impl App {
         if !self.speed_test_history.is_empty() {
             history_header = history_header.push(
                 button(text(Translations::speed_test_history_clear(self.language)).size(10))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 6]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Danger,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([3, 8]))
                     .on_press(Message::ClearSpeedTestHistory),
             );
         }
 
-        let mut history_col = Column::new().spacing(4);
-        history_col = history_col.push(history_header);
+        let hist_table_header = container(
+            row![
+                container(
+                    text(Translations::speed_test_col_time_server(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_muted())
+                )
+                .width(Length::Fill)
+                .align_x(Alignment::Start),
+                container(
+                    text(Translations::speed_test_ping(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_amber())
+                )
+                .width(120)
+                .align_x(Alignment::Center),
+                container(
+                    text(Translations::speed_test_col_download(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald())
+                )
+                .width(140)
+                .align_x(Alignment::Center),
+                container(
+                    text(Translations::speed_test_col_upload(self.language))
+                        .size(11)
+                        .color(CustomStyles::accent_purple())
+                )
+                .width(140)
+                .align_x(Alignment::Center),
+            ]
+            .align_y(Alignment::Center)
+            .padding(Padding::from([6, 12])),
+        )
+        .width(Length::Fill)
+        .style(|_| CustomStyles::storage_table_header());
+
+        let mut hist_rows = Column::new().spacing(2).padding(4);
 
         if self.speed_test_history.is_empty() {
-            history_col = history_col.push(
-                text(Translations::speed_test_history_empty(self.language))
-                    .size(11)
-                    .color(CustomStyles::text_muted()),
+            hist_rows = hist_rows.push(
+                container(
+                    text(Translations::speed_test_history_empty(self.language))
+                        .size(11)
+                        .color(CustomStyles::text_muted()),
+                )
+                .padding(16)
+                .width(Length::Fill)
+                .align_x(Alignment::Center),
             );
         } else {
-            history_col = history_col.push(
-                row![
-                    text(Translations::speed_test_col_time_server(self.language)).size(10).color(CustomStyles::text_muted()).width(160),
-                    text(Translations::speed_test_ping(self.language)).size(10).color(CustomStyles::accent_amber()).width(70),
-                    text(Translations::speed_test_col_download(self.language)).size(10).color(CustomStyles::accent_emerald()).width(90),
-                    text(Translations::speed_test_col_upload(self.language)).size(10).color(CustomStyles::accent_purple()).width(90),
-                ]
-                .spacing(8),
-            );
-
-            for test in self.speed_test_history.iter().take(4) {
-                let srv_truncated = if test.server.chars().count() > 20 {
-                    let head: String = test.server.chars().take(18).collect();
-                    format!("{}...", head)
-                } else {
-                    test.server.clone()
-                };
-                history_col = history_col.push(
-                    row![
-                        column![
-                            text(&test.timestamp).size(11).color(CustomStyles::text_primary()),
-                            text(srv_truncated).size(9).color(CustomStyles::text_muted()),
+            for (idx, test) in self.speed_test_history.iter().take(5).enumerate() {
+                hist_rows = hist_rows.push(
+                    container(
+                        row![
+                            column![
+                                text(&test.timestamp)
+                                    .size(11)
+                                    .color(CustomStyles::text_primary()),
+                                text(&test.server)
+                                    .size(10)
+                                    .color(CustomStyles::text_muted()),
+                            ]
+                            .width(Length::Fill),
+                            container(
+                                text(format!("{:.1} ms", test.ping_ms))
+                                    .size(11)
+                                    .color(CustomStyles::accent_amber())
+                            )
+                            .width(120)
+                            .align_x(Alignment::Center),
+                            container(
+                                text(format!("{:.1} Mbps", test.download_mbps))
+                                    .size(11)
+                                    .color(CustomStyles::accent_emerald())
+                            )
+                            .width(140)
+                            .align_x(Alignment::Center),
+                            container(
+                                text(format!("{:.1} Mbps", test.upload_mbps))
+                                    .size(11)
+                                    .color(CustomStyles::accent_purple())
+                            )
+                            .width(140)
+                            .align_x(Alignment::Center),
                         ]
-                        .width(160),
-                        text(format!("{:.1} ms", test.ping_ms))
-                            .size(11)
-                            .color(CustomStyles::accent_amber())
-                            .width(70),
-                        text(format!("{:.1} Mbps", test.download_mbps))
-                            .size(11)
-                            .color(CustomStyles::accent_emerald())
-                            .width(90),
-                        text(format!("{:.1} Mbps", test.upload_mbps))
-                            .size(11)
-                            .color(CustomStyles::accent_purple())
-                            .width(90),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
+                        .align_y(Alignment::Center)
+                        .padding(Padding::from([5, 8])),
+                    )
+                    .width(Length::Fill)
+                    .style(move |_| CustomStyles::storage_file_row(idx)),
                 );
             }
         }
 
-        let history_card = container(history_col)
-            .padding(12)
-            .style(|_| CustomStyles::card_container());
+        let hist_table_body = container(hist_rows)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::drop_zone_idle());
+
+        let history_section = column![
+            history_header,
+            column![hist_table_header, hist_table_body].spacing(0),
+        ]
+        .spacing(6);
 
         let content = column![
             title_row,
-            subtitle,
-            status_row,
-            progress_bar(0.0..=1.0, progress),
+            status_banner,
             metrics_row,
-            container(server_info)
-                .padding(12)
-                .style(|_| CustomStyles::card_container()),
-            history_card,
-            row![space::horizontal(), close_btn, start_btn].spacing(10),
+            history_section,
+            row![space::horizontal(), start_btn]
+                .spacing(10)
+                .align_y(Alignment::Center),
         ]
-        .spacing(14);
+        .spacing(12);
 
         container(content)
             .padding(22)
-            .width(850)
+            .width(860)
             .max_height(680)
-            .style(|_| CustomStyles::settings_panel())
+            .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
 
@@ -7430,32 +8069,54 @@ impl App {
 
     /// Modal: Comprehensive Network Security Audit
     fn view_security_audit_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("🛡").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::audit_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::audit_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::audit_subtitle(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseSecurityAudit),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
 
-        let subtitle = text(Translations::audit_subtitle(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
-
-        let (score_val, grade_str, issues_cnt, crit_cnt) = if let Some(audit) = &self.security_audit_report {
-            (audit.score, Translations::audit_grade_label(audit.score, self.language), audit.issues_count, audit.critical_count)
-        } else {
-            (100, Translations::audit_not_run(self.language), 0, 0)
-        };
-        let checks_list = self.security_audit_report.as_ref().map(|a| a.checks.as_slice()).unwrap_or(&[]);
+        let (score_val, grade_str, issues_cnt, crit_cnt) =
+            if let Some(audit) = &self.security_audit_report {
+                (
+                    audit.score,
+                    Translations::audit_grade_label(audit.score, self.language),
+                    audit.issues_count,
+                    audit.critical_count,
+                )
+            } else {
+                (100, Translations::audit_not_run(self.language), 0, 0)
+            };
+        let checks_list = self
+            .security_audit_report
+            .as_ref()
+            .map(|a| a.checks.as_slice())
+            .unwrap_or(&[]);
 
         let score_color = if score_val >= 85 {
             CustomStyles::accent_emerald()
@@ -7465,59 +8126,160 @@ impl App {
             Color::from_rgb8(239, 68, 68)
         };
 
-        // Score Card
-        let score_card = container(
-            row![
-                column![
-                    text(format!("{}/100", score_val)).size(32).color(score_color),
-                    text(format!("{}: {}", Translations::audit_score_label(self.language), grade_str)).size(12).color(score_color),
-                ]
-                .spacing(2),
-                space::horizontal(),
-                column![
-                    text(Translations::audit_devices_audited(self.devices.len(), self.language)).size(11).color(CustomStyles::text_secondary()),
-                    text(Translations::audit_observations(issues_cnt, self.language)).size(11).color(if issues_cnt > 0 { CustomStyles::accent_amber() } else { CustomStyles::accent_emerald() }),
-                    text(Translations::audit_critical_risks(crit_cnt, self.language)).size(11).color(if crit_cnt > 0 { Color::from_rgb8(239, 68, 68) } else { CustomStyles::accent_emerald() }),
-                ]
-                .spacing(3),
+        // Top KPI Score Dashboard Card
+        let score_badge_box = container(
+            column![
+                text(format!("{}/100", score_val))
+                    .size(28)
+                    .color(score_color),
+                text(format!(
+                    "{}: {}",
+                    Translations::audit_score_label(self.language),
+                    grade_str
+                ))
+                .size(11)
+                .color(score_color),
             ]
-            .align_y(Alignment::Center)
-            .padding(14),
+            .spacing(2)
+            .align_x(Alignment::Center),
         )
+        .padding(Padding::from([10, 18]))
+        .style(move |_| CustomStyles::tinted_badge_box(score_color));
+
+        let kpi_devices = container(
+            column![
+                text(
+                    Translations::audit_devices_audited(self.devices.len(), self.language)
+                )
+                .size(11)
+                .color(CustomStyles::text_primary()),
+                text(format!("{} Checks", checks_list.len()))
+                    .size(10)
+                    .color(CustomStyles::accent_cyan()),
+            ]
+            .spacing(2),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
+
+        let obs_color = if issues_cnt > 0 {
+            CustomStyles::accent_amber()
+        } else {
+            CustomStyles::accent_emerald()
+        };
+        let kpi_issues = container(
+            column![
+                text(Translations::audit_observations(issues_cnt, self.language))
+                    .size(11)
+                    .color(obs_color),
+                text("⚠ Warnings / Info")
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(2),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
+
+        let crit_color = if crit_cnt > 0 {
+            Color::from_rgb8(239, 68, 68)
+        } else {
+            CustomStyles::accent_emerald()
+        };
+        let kpi_crit = container(
+            column![
+                text(Translations::audit_critical_risks(crit_cnt, self.language))
+                    .size(11)
+                    .color(crit_color),
+                text("🚨 High Priority")
+                    .size(10)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(2),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(|_| CustomStyles::inset_container());
+
+        let score_card = container(
+            row![score_badge_box, kpi_devices, kpi_issues, kpi_crit]
+                .spacing(10)
+                .align_y(Alignment::Center),
+        )
+        .padding(12)
         .width(Length::Fill)
         .style(|_| CustomStyles::card_container());
 
-        let mut checks_col = Column::new().spacing(10).padding(Padding {
+        let mut checks_col = Column::new().spacing(8).padding(Padding {
             top: 2.0,
-            right: 10.0,
+            right: 0.0,
             bottom: 4.0,
-            left: 2.0,
+            left: 0.0,
         });
 
         for check in checks_list {
-            let (icon, icon_color, border_bg, border_stroke) = match check.severity {
-                AuditSeverity::Pass => ("✅", CustomStyles::accent_emerald(), Color::from_rgb8(15, 35, 25), Color::from_rgb8(22, 101, 52)),
-                AuditSeverity::Info => ("ℹ️", CustomStyles::accent_cyan(), Color::from_rgb8(15, 30, 45), Color::from_rgb8(21, 94, 117)),
-                AuditSeverity::Warning => ("⚠️", CustomStyles::accent_amber(), Color::from_rgb8(45, 35, 15), Color::from_rgb8(146, 64, 14)),
-                AuditSeverity::Critical => ("🚨", Color::from_rgb8(239, 68, 68), Color::from_rgb8(50, 15, 15), Color::from_rgb8(153, 27, 27)),
+            let (icon, sev_label, icon_color, border_bg, border_stroke) = match check.severity {
+                AuditSeverity::Pass => (
+                    "✅",
+                    "PASS",
+                    CustomStyles::accent_emerald(),
+                    Color::from_rgb8(14, 32, 26),
+                    Color::from_rgb8(22, 101, 52),
+                ),
+                AuditSeverity::Info => (
+                    "ℹ️",
+                    "INFO",
+                    CustomStyles::accent_cyan(),
+                    Color::from_rgb8(14, 28, 44),
+                    Color::from_rgb8(21, 94, 117),
+                ),
+                AuditSeverity::Warning => (
+                    "⚠️",
+                    "WARN",
+                    CustomStyles::accent_amber(),
+                    Color::from_rgb8(40, 30, 14),
+                    Color::from_rgb8(146, 64, 14),
+                ),
+                AuditSeverity::Critical => (
+                    "🚨",
+                    "CRIT",
+                    Color::from_rgb8(239, 68, 68),
+                    Color::from_rgb8(46, 16, 18),
+                    Color::from_rgb8(153, 27, 27),
+                ),
             };
 
             let mut check_body = column![
                 row![
                     text(icon).size(14),
-                    text(check.title_localized(self.language)).size(13).color(icon_color),
+                    text(check.title_localized(self.language))
+                        .size(13)
+                        .color(icon_color),
+                    space::horizontal(),
+                    container(text(sev_label).size(9).color(icon_color))
+                        .padding(Padding::from([2, 8]))
+                        .style(move |_| CustomStyles::tinted_badge_box(icon_color)),
                 ]
                 .spacing(6)
                 .align_y(Alignment::Center),
-                text(check.description_localized(self.language)).size(11).color(CustomStyles::text_secondary()),
+                text(check.description_localized(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
             ]
-            .spacing(4);
+            .spacing(5);
 
             if !check.affected_devices.is_empty() {
                 let mut dev_col = Column::new().spacing(5);
-                let count_label = Translations::audit_affected_devices(check.affected_devices.len(), self.language);
+                let count_label = Translations::audit_affected_devices(
+                    check.affected_devices.len(),
+                    self.language,
+                );
                 dev_col = dev_col.push(
-                    text(count_label).size(11).color(CustomStyles::text_muted())
+                    text(count_label)
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
                 );
 
                 for chunk in check.affected_devices.chunks(3) {
@@ -7532,26 +8294,43 @@ impl App {
                                     .align_y(alignment::Vertical::Center),
                             )
                             .center(Length::Shrink)
-                            .padding(Padding::from([3, 8]))
-                            .style(|_| CustomStyles::badge_pill(Color::from_rgb8(45, 35, 15), CustomStyles::accent_amber())),
+                            .padding(Padding::from([2, 8]))
+                            .style(|_| {
+                                CustomStyles::badge_pill(
+                                    Color::from_rgb8(45, 35, 15),
+                                    CustomStyles::accent_amber(),
+                                )
+                            }),
                         );
                     }
                     dev_col = dev_col.push(chunk_row);
                 }
-                check_body = check_body.push(dev_col);
+                check_body = check_body.push(
+                    container(dev_col)
+                        .padding(8)
+                        .width(Length::Fill)
+                        .style(|_| CustomStyles::inset_container()),
+                );
             }
 
             check_body = check_body.push(
-                row![
-                    text("💡").size(11),
-                    text(check.recommendation_localized(self.language)).size(10).color(CustomStyles::accent_cyan()),
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center),
+                container(
+                    row![
+                        text("💡").size(11),
+                        text(check.recommendation_localized(self.language))
+                            .size(10)
+                            .color(CustomStyles::accent_cyan()),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding(Padding::from([5, 8]))
+                .width(Length::Fill)
+                .style(|_| CustomStyles::inset_container()),
             );
 
             let check_card = container(check_body)
-                .padding(14)
+                .padding(12)
                 .width(Length::Fill)
                 .style(move |_| CustomStyles::audit_card(border_bg, border_stroke));
 
@@ -7562,10 +8341,10 @@ impl App {
             scrollable(checks_col)
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new()
-                        .width(6.0)
-                        .scroller_width(6.0)
+                        .width(5.0)
+                        .scroller_width(5.0)
                         .margin(2.0)
-                        .spacing(8.0),
+                        .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
                 .height(Length::Shrink),
@@ -7574,21 +8353,21 @@ impl App {
         .max_height(430.0);
 
         let actions_row = row![
-            button(text(Translations::audit_rerun_btn(self.language)).size(12))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([6, 14]))
-                .on_press(Message::RunSecurityAudit),
             space::horizontal(),
-            button(text(Translations::close(self.language)).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 18]))
-                .on_press(Message::CloseSecurityAudit),
+            button(text(Translations::audit_rerun_btn(self.language)).size(12))
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Primary,
+                        status,
+                    )
+                })
+                .padding(Padding::from([6, 16]))
+                .on_press(Message::RunSecurityAudit),
         ]
         .align_y(Alignment::Center);
 
         let content = column![
             title_row,
-            subtitle,
             score_card,
             checks_scrollable,
             actions_row,
@@ -7605,58 +8384,103 @@ impl App {
 
     /// Modal: Network Event History & Timeline
     fn view_timeline_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_purple();
+        let header_badge = container(text("🕒").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::timeline_modal_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_purple()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::timeline_modal_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::timeline_modal_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseTimeline),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
-
-        let subtitle = text(Translations::timeline_modal_desc(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
 
         let uptime_pct = self.uptime_tracker.uptime_percentage();
         let online_status = if self.uptime_tracker.is_online {
-            (Translations::timeline_online(self.language), CustomStyles::accent_emerald())
+            (
+                Translations::timeline_online(self.language),
+                CustomStyles::accent_emerald(),
+            )
         } else {
-            (Translations::timeline_outage(self.language), Color::from_rgb8(239, 68, 68))
+            (
+                Translations::timeline_outage(self.language),
+                Color::from_rgb8(239, 68, 68),
+            )
         };
 
         let summary_row = container(
             row![
-                text(Translations::timeline_total_events(self.network_events.len(), self.language)).size(12).color(CustomStyles::text_primary()),
-                text("•").size(10).color(CustomStyles::text_muted()),
-                text(online_status.0).size(12).color(online_status.1),
-                text("•").size(10).color(CustomStyles::text_muted()),
-                text(Translations::timeline_uptime_pct(uptime_pct as f64, self.language)).size(12).color(CustomStyles::accent_cyan()),
+                container(
+                    text(Translations::timeline_total_events(
+                        self.network_events.len(),
+                        self.language
+                    ))
+                    .size(11)
+                    .color(CustomStyles::text_primary()),
+                )
+                .padding(Padding::from([5, 10]))
+                .style(|_| CustomStyles::inset_container()),
+                container(
+                    text(online_status.0)
+                        .size(11)
+                        .color(online_status.1),
+                )
+                .padding(Padding::from([5, 10]))
+                .style(move |_| CustomStyles::tinted_badge_box(online_status.1)),
+                container(
+                    text(Translations::timeline_uptime_pct(
+                        uptime_pct as f64,
+                        self.language
+                    ))
+                    .size(11)
+                    .color(CustomStyles::accent_cyan()),
+                )
+                .padding(Padding::from([5, 10]))
+                .style(|_| CustomStyles::inset_container()),
                 space::horizontal(),
                 button(text(Translations::timeline_clear_btn(self.language)).size(11))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([3, 8]))
+                    .style(|_, status| {
+                        CustomStyles::storage_action_button(
+                            crate::theme::StorageActionTone::Danger,
+                            status,
+                        )
+                    })
+                    .padding(Padding::from([5, 12]))
                     .on_press(Message::ClearTimeline),
             ]
             .spacing(8)
-            .align_y(Alignment::Center)
-            .padding(10),
+            .align_y(Alignment::Center),
         )
+        .padding(10)
         .width(Length::Fill)
         .style(|_| CustomStyles::card_container());
 
         let mut events_col = Column::new().spacing(8).padding(Padding {
             top: 2.0,
-            right: 10.0,
+            right: 0.0,
             bottom: 4.0,
-            left: 2.0,
+            left: 0.0,
         });
 
         if self.network_events.is_empty() {
@@ -7666,21 +8490,28 @@ impl App {
                         .size(12)
                         .color(CustomStyles::text_muted()),
                 )
-                .padding(20)
+                .padding(28)
                 .align_x(Alignment::Center)
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(|_| CustomStyles::inset_container()),
             );
         } else {
             for evt in &self.network_events {
-                let time_str = evt.timestamp.format("%H:%M:%S (%d/%m)").to_string();
+                let time_str = evt.timestamp.format("%H:%M:%S • %d/%m").to_string();
                 let icon = evt.event_type.icon();
                 let type_label = evt.event_type.label_localized(self.language);
 
+                let evt_badge = container(text(icon).size(14))
+                    .width(32)
+                    .height(32)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center)
+                    .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_purple()));
+
                 let mut meta_row = row![
-                    text(icon).size(12),
-                    text(type_label).size(11).color(CustomStyles::accent_purple()),
-                    space::horizontal(),
-                    text(time_str).size(10).color(CustomStyles::text_muted()),
+                    text(type_label)
+                        .size(11)
+                        .color(CustomStyles::accent_purple()),
                 ]
                 .align_y(Alignment::Center)
                 .spacing(6);
@@ -7695,18 +8526,43 @@ impl App {
                                 .align_y(alignment::Vertical::Center),
                         )
                         .center(Length::Shrink)
-                        .padding(Padding::from([1, 5]))
-                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
+                        .padding(Padding::from([1, 6]))
+                        .style(|_| {
+                            CustomStyles::badge_pill(
+                                Color::from_rgb8(15, 30, 45),
+                                CustomStyles::accent_cyan(),
+                            )
+                        }),
                     );
                 }
 
+                meta_row = meta_row.push(space::horizontal()).push(
+                    container(
+                        text(time_str)
+                            .size(10)
+                            .color(CustomStyles::text_muted()),
+                    )
+                    .padding(Padding::from([2, 7]))
+                    .style(|_| CustomStyles::inset_container()),
+                );
+
                 let evt_card = container(
-                    column![
-                        meta_row,
-                        text(evt.title_localized(self.language)).size(12).color(CustomStyles::text_primary()),
-                        text(evt.details_localized(self.language)).size(11).color(CustomStyles::text_secondary()),
+                    row![
+                        evt_badge,
+                        column![
+                            meta_row,
+                            text(evt.title_localized(self.language))
+                                .size(12)
+                                .color(CustomStyles::text_primary()),
+                            text(evt.details_localized(self.language))
+                                .size(11)
+                                .color(CustomStyles::text_secondary()),
+                        ]
+                        .spacing(2)
+                        .width(Length::Fill),
                     ]
-                    .spacing(3),
+                    .spacing(10)
+                    .align_y(Alignment::Center),
                 )
                 .padding(10)
                 .width(Length::Fill)
@@ -7720,32 +8576,21 @@ impl App {
             scrollable(events_col)
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new()
-                        .width(6.0)
-                        .scroller_width(6.0)
+                        .width(5.0)
+                        .scroller_width(5.0)
                         .margin(2.0)
-                        .spacing(8.0),
+                        .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
                 .height(Length::Shrink),
         )
         .width(Length::Fill)
-        .max_height(430.0);
-
-        let close_row = row![
-            space::horizontal(),
-            button(text(Translations::close(self.language)).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 18]))
-                .on_press(Message::CloseTimeline),
-        ]
-        .align_y(Alignment::Center);
+        .max_height(475.0);
 
         let content = column![
             title_row,
-            subtitle,
             summary_row,
             events_scrollable,
-            close_row,
         ]
         .spacing(12);
 
@@ -7759,66 +8604,118 @@ impl App {
 
     /// Modal: Wi-Fi Channel & RF Spectrum Analyzer
     fn view_wifi_analyzer_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_amber();
+        let header_badge = container(text("📶").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::wifi_modal_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_amber()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::wifi_modal_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::wifi_modal_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseWifiAnalyzer),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
-
-        let subtitle = text(Translations::wifi_modal_desc(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
 
         let scan_btn_label = Translations::wifi_scan_btn(self.is_scanning_wifi, self.language);
 
         let current_conn_info = if let Some(report) = &self.wifi_analyzer_report {
-            Translations::wifi_current_network(report.current_ssid.as_deref(), report.current_channel, self.language)
+            Translations::wifi_current_network(
+                report.current_ssid.as_deref(),
+                report.current_channel,
+                self.language,
+            )
         } else {
             Translations::wifi_current_network_none(self.language)
         };
 
-        let action_row = row![
-            text(current_conn_info).size(12).color(CustomStyles::accent_cyan()),
-            space::horizontal(),
-            button(text(scan_btn_label).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 14]))
-                .on_press(Message::ScanWifi),
-        ]
-        .align_y(Alignment::Center);
+        let action_bar = container(
+            row![
+                text("📡").size(14),
+                text(current_conn_info)
+                    .size(12)
+                    .color(CustomStyles::accent_cyan()),
+                space::horizontal(),
+                button(text(scan_btn_label).size(11))
+                    .style(|_, _| CustomStyles::primary_button())
+                    .padding(Padding::from([6, 16]))
+                    .on_press(Message::ScanWifi),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding(Padding::from([8, 12]))
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_highlighted());
 
         let mut modal_body = Column::new().spacing(10).padding(Padding {
-            top: 4.0,
-            right: 12.0,
-            bottom: 8.0,
-            left: 4.0,
+            top: 2.0,
+            right: 0.0,
+            bottom: 6.0,
+            left: 0.0,
         });
 
         if let Some(report) = &self.wifi_analyzer_report {
             // Recommendation Card
             let reco_card = container(
-                column![
-                    row![
-                        text(Translations::wifi_optimal_channels_title(self.language)).size(13).color(CustomStyles::accent_emerald()),
-                        space::horizontal(),
-                        text(Translations::wifi_channel_24_label(report.recommended_channel_24, self.language)).size(12).color(CustomStyles::accent_emerald()),
-                        text(" | ").size(10).color(CustomStyles::text_muted()),
-                        text(Translations::wifi_channel_5_label(report.recommended_channel_5, self.language)).size(12).color(CustomStyles::accent_cyan()),
+                row![
+                    column![
+                        text(Translations::wifi_optimal_channels_title(self.language))
+                            .size(13)
+                            .color(CustomStyles::accent_emerald()),
+                        text(Translations::wifi_recommendation_text(
+                            report.current_channel,
+                            report.recommended_channel_24,
+                            report.recommended_channel_5,
+                            self.language
+                        ))
+                        .size(11)
+                        .color(CustomStyles::text_secondary()),
                     ]
-                    .align_y(Alignment::Center),
-                    text(Translations::wifi_recommendation_text(report.current_channel, report.recommended_channel_24, report.recommended_channel_5, self.language)).size(11).color(CustomStyles::text_secondary()),
+                    .spacing(3)
+                    .width(Length::Fill),
+                    container(
+                        text(Translations::wifi_channel_24_label(
+                            report.recommended_channel_24,
+                            self.language
+                        ))
+                        .size(11)
+                        .color(CustomStyles::accent_emerald()),
+                    )
+                    .padding(Padding::from([5, 10]))
+                    .style(|_| CustomStyles::tinted_badge_box(CustomStyles::accent_emerald())),
+                    container(
+                        text(Translations::wifi_channel_5_label(
+                            report.recommended_channel_5,
+                            self.language
+                        ))
+                        .size(11)
+                        .color(CustomStyles::accent_cyan()),
+                    )
+                    .padding(Padding::from([5, 10]))
+                    .style(|_| CustomStyles::tinted_badge_box(CustomStyles::accent_cyan())),
                 ]
-                .spacing(5),
+                .spacing(10)
+                .align_y(Alignment::Center),
             )
             .padding(12)
             .width(Length::Fill)
@@ -7827,53 +8724,113 @@ impl App {
             modal_body = modal_body.push(reco_card);
 
             // 2.4 GHz Channel Summary
-            modal_body = modal_body.push(
-                text(Translations::wifi_occupancy_24_title(self.language))
-                    .size(12)
-                    .color(CustomStyles::accent_amber()),
-            );
-
-            let mut ch24_row = row![].spacing(8);
+            let mut ch24_row = row![].spacing(6);
             for ch in &report.channels_24 {
+                let is_optimal = ch.channel == report.recommended_channel_24;
+                let tile_accent = if is_optimal {
+                    CustomStyles::accent_emerald()
+                } else if ch.networks_count == 0 {
+                    CustomStyles::accent_cyan()
+                } else {
+                    CustomStyles::accent_amber()
+                };
+
                 let ch_card = container(
                     column![
-                        text(Translations::wifi_channel_box_title(ch.channel, self.language)).size(12).color(CustomStyles::accent_amber()),
-                        text(Translations::wifi_networks_count(ch.networks_count, self.language)).size(14).color(CustomStyles::text_primary()),
-                        text(Translations::wifi_max_signal(ch.max_signal, self.language)).size(10).color(CustomStyles::text_muted()),
+                        text(Translations::wifi_channel_box_title(
+                            ch.channel,
+                            self.language
+                        ))
+                        .size(11)
+                        .color(tile_accent),
+                        text(Translations::wifi_networks_count(
+                            ch.networks_count,
+                            self.language
+                        ))
+                        .size(13)
+                        .color(CustomStyles::text_primary()),
+                        text(Translations::wifi_max_signal(ch.max_signal, self.language))
+                            .size(9)
+                            .color(CustomStyles::text_muted()),
                     ]
                     .spacing(2),
                 )
                 .padding(8)
                 .width(Length::FillPortion(1))
-                .style(|_| CustomStyles::card_container());
+                .style(move |_| {
+                    if is_optimal {
+                        CustomStyles::tinted_badge_box(CustomStyles::accent_emerald())
+                    } else {
+                        CustomStyles::inset_container()
+                    }
+                });
 
                 ch24_row = ch24_row.push(ch_card);
             }
-            modal_body = modal_body.push(ch24_row);
 
-            // Detected Wi-Fi Networks
             modal_body = modal_body.push(
-                text(Translations::wifi_detected_networks_header(report.networks.len(), self.language))
-                    .size(12)
-                    .color(CustomStyles::text_primary()),
+                container(
+                    column![
+                        text(Translations::wifi_occupancy_24_title(self.language))
+                            .size(12)
+                            .color(CustomStyles::accent_amber()),
+                        ch24_row,
+                    ]
+                    .spacing(8),
+                )
+                .padding(12)
+                .width(Length::Fill)
+                .style(|_| CustomStyles::card_container()),
             );
 
-            for net in &report.networks {
-                let freq_label = if net.frequency_mhz >= 5000 { "5 GHz" } else { "2.4 GHz" };
+            // Detected Wi-Fi Networks Table-style Card
+            let mut nets_col = column![
+                text(Translations::wifi_detected_networks_header(
+                    report.networks.len(),
+                    self.language
+                ))
+                .size(12)
+                .color(CustomStyles::accent_cyan()),
+            ]
+            .spacing(6);
+
+            for (idx, net) in report.networks.iter().enumerate() {
+                let freq_label = if net.frequency_mhz >= 5000 {
+                    "5 GHz"
+                } else {
+                    "2.4 GHz"
+                };
                 let is_curr = net.is_current;
+                let sig_color = if net.signal_percent >= 70 {
+                    CustomStyles::accent_emerald()
+                } else if net.signal_percent >= 45 {
+                    CustomStyles::accent_amber()
+                } else {
+                    Color::from_rgb8(239, 68, 68)
+                };
 
                 let mut row_items = row![
+                    container(text("📶").size(13))
+                        .width(28)
+                        .height(28)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center)
+                        .style(move |_| CustomStyles::modal_icon_badge(sig_color)),
                     column![
-                        row![
-                            text(&net.ssid).size(13).color(if is_curr { CustomStyles::accent_emerald() } else { CustomStyles::text_primary() }),
-                        ]
-                        .spacing(6)
-                        .align_y(Alignment::Center),
-                        text(format!("BSSID: {} | Seg: {}", net.bssid, net.security)).size(10).color(CustomStyles::text_muted()),
+                        text(&net.ssid).size(12).color(if is_curr {
+                            CustomStyles::accent_emerald()
+                        } else {
+                            CustomStyles::text_primary()
+                        }),
+                        text(format!("BSSID: {}  •  Seg: {}", net.bssid, net.security))
+                            .size(10)
+                            .color(CustomStyles::text_muted()),
                     ]
-                    .spacing(2)
+                    .spacing(1)
                     .width(Length::Fill),
-                ].align_y(Alignment::Center).spacing(8);
+                ]
+                .align_y(Alignment::Center)
+                .spacing(10);
 
                 if is_curr {
                     row_items = row_items.push(
@@ -7885,35 +8842,58 @@ impl App {
                                 .align_y(alignment::Vertical::Center),
                         )
                         .center(Length::Shrink)
-                        .padding(Padding::from([1, 5]))
-                        .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 45, 30), CustomStyles::accent_emerald())),
+                        .padding(Padding::from([2, 7]))
+                        .style(|_| {
+                            CustomStyles::badge_pill(
+                                Color::from_rgb8(15, 45, 30),
+                                CustomStyles::accent_emerald(),
+                            )
+                        }),
                     );
                 }
 
-                row_items = row_items.push(
-                    container(
-                        text(format!("Ch {} ({})", net.channel, freq_label))
-                            .size(10)
-                            .color(CustomStyles::accent_cyan())
-                            .align_x(alignment::Horizontal::Center)
-                            .align_y(alignment::Vertical::Center),
+                row_items = row_items
+                    .push(
+                        container(
+                            text(format!("Ch {} ({})", net.channel, freq_label))
+                                .size(10)
+                                .color(CustomStyles::accent_cyan())
+                                .align_x(alignment::Horizontal::Center)
+                                .align_y(alignment::Vertical::Center),
+                        )
+                        .center(Length::Shrink)
+                        .padding(Padding::from([2, 8]))
+                        .style(|_| {
+                            CustomStyles::badge_pill(
+                                Color::from_rgb8(15, 30, 45),
+                                CustomStyles::accent_cyan(),
+                            )
+                        }),
                     )
-                    .center(Length::Shrink)
-                    .padding(Padding::from([2, 6]))
-                    .style(|_| CustomStyles::badge_pill(Color::from_rgb8(15, 30, 45), CustomStyles::accent_cyan())),
-                );
-
-                row_items = row_items.push(
-                    text(format!("{}%", net.signal_percent)).size(12).color(CustomStyles::accent_amber()),
-                );
+                    .push(
+                        container(
+                            text(format!("{}%", net.signal_percent))
+                                .size(11)
+                                .color(sig_color),
+                        )
+                        .width(48)
+                        .align_x(Alignment::End),
+                    );
 
                 let row_item = container(row_items)
-                    .padding(8)
+                    .padding(Padding::from([6, 10]))
                     .width(Length::Fill)
-                    .style(|_| CustomStyles::card_container());
+                    .style(move |_| CustomStyles::storage_file_row(idx));
 
-                modal_body = modal_body.push(row_item);
+                nets_col = nets_col.push(row_item);
             }
+
+            modal_body = modal_body.push(
+                container(nets_col)
+                    .padding(12)
+                    .width(Length::Fill)
+                    .style(|_| CustomStyles::card_container()),
+            );
         } else {
             modal_body = modal_body.push(
                 container(
@@ -7921,9 +8901,10 @@ impl App {
                         .size(12)
                         .color(CustomStyles::text_muted()),
                 )
-                .padding(20)
+                .padding(28)
                 .align_x(Alignment::Center)
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(|_| CustomStyles::inset_container()),
             );
         }
 
@@ -7931,32 +8912,21 @@ impl App {
             scrollable(modal_body)
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new()
-                        .width(6.0)
-                        .scroller_width(6.0)
+                        .width(5.0)
+                        .scroller_width(5.0)
                         .margin(2.0)
-                        .spacing(8.0),
+                        .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
                 .height(Length::Shrink),
         )
         .width(Length::Fill)
-        .max_height(440.0);
-
-        let close_row = row![
-            space::horizontal(),
-            button(text(Translations::close(self.language)).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 18]))
-                .on_press(Message::CloseWifiAnalyzer),
-        ]
-        .align_y(Alignment::Center);
+        .max_height(475.0);
 
         let content = column![
             title_row,
-            subtitle,
-            action_row,
+            action_bar,
             scrollable_area,
-            close_row,
         ]
         .spacing(12);
 
@@ -7970,25 +8940,37 @@ impl App {
 
     /// Modal: Universal Router UPnP / IGD & Port Forwarding
     fn view_upnp_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("🌐").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::upnp_modal_title(self.language))
-                .size(20)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::upnp_modal_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::upnp_modal_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseUpnpModal),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
-
-        let subtitle = text(Translations::upnp_modal_desc(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
 
         let gw_ip_str = self
             .network
@@ -7997,16 +8979,28 @@ impl App {
             .unwrap_or_else(|| Translations::not_detected(self.language).to_string());
 
         let refresh_btn = button(text(Translations::upnp_query_btn(false, self.language)).size(12))
-            .style(|_, _| CustomStyles::secondary_button())
-            .padding(Padding::from([5, 12]))
+            .style(|_, status| {
+                CustomStyles::storage_action_button(
+                    crate::theme::StorageActionTone::Primary,
+                    status,
+                )
+            })
+            .padding(Padding::from([5, 14]))
             .on_press(Message::QueryUpnpRouter);
 
-        let action_row = row![
-            text(format!("{}: {}", Translations::gateway_label(self.language), gw_ip_str)).size(12).color(CustomStyles::text_secondary()),
-            space::horizontal(),
-            refresh_btn,
-        ]
-        .align_y(Alignment::Center);
+        let action_row = container(
+            row![
+                text(format!("{}: {}", Translations::gateway_label(self.language), gw_ip_str))
+                    .size(12)
+                    .color(CustomStyles::text_secondary()),
+                space::horizontal(),
+                refresh_btn,
+            ]
+            .align_y(Alignment::Center),
+        )
+        .padding(Padding::from([8, 12]))
+        .width(Length::Fill)
+        .style(|_| CustomStyles::card_highlighted());
 
         let mut modal_body = Column::new().spacing(10).padding(Padding {
             top: 4.0,
@@ -8162,32 +9156,21 @@ impl App {
             scrollable(modal_body)
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new()
-                        .width(6.0)
-                        .scroller_width(6.0)
+                        .width(5.0)
+                        .scroller_width(5.0)
                         .margin(2.0)
-                        .spacing(8.0),
+                        .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
                 .height(Length::Shrink),
         )
         .width(Length::Fill)
-        .max_height(440.0);
-
-        let close_row = row![
-            space::horizontal(),
-            button(text(Translations::close(self.language)).size(12))
-                .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([6, 18]))
-                .on_press(Message::CloseUpnpModal),
-        ]
-        .align_y(Alignment::Center);
+        .max_height(475.0);
 
         let content = column![
             title_row,
-            subtitle,
             action_row,
             scrollable_area,
-            close_row,
         ]
         .spacing(12);
 
@@ -8201,27 +9184,39 @@ impl App {
 
     /// Router USB Storage / NAS Explorer
     fn view_storage_explorer_modal(&self) -> Element<'_, Message> {
+        let accent = CustomStyles::accent_cyan();
+        let header_badge = container(text("💾").size(16))
+            .width(34)
+            .height(34)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(move |_| CustomStyles::modal_icon_badge(accent));
+
         let title_row = row![
-            text(Translations::storage_modal_title(self.language))
-                .size(18)
-                .color(CustomStyles::accent_cyan()),
+            header_badge,
+            column![
+                text(strip_title_icon(Translations::storage_modal_title(self.language)))
+                    .size(19)
+                    .color(CustomStyles::text_primary()),
+                text(Translations::storage_modal_desc(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
+            ]
+            .spacing(1),
             space::horizontal(),
             self.tip(
-                button(text("✕").size(14))
-                    .style(|_, _| CustomStyles::secondary_button())
-                    .padding(Padding::from([2, 8]))
+                button(text("✕").size(13))
+                    .style(|_, status| CustomStyles::modal_close_button(status))
+                    .padding(Padding::from([4, 9]))
                     .on_press(Message::CloseStorageExplorer),
                 Translations::tip_close(self.language),
                 tooltip::Position::Left,
             ),
         ]
+        .spacing(10)
         .align_y(Alignment::Center);
 
-        let subtitle = text(Translations::storage_modal_desc(self.language))
-            .size(11)
-            .color(CustomStyles::text_muted());
-
-        // Row 1: Connection Control, Target IP, Credentials, and Demo Mode
+        // Row 1: Connection Control, Target IP, Credentials, and Demo Mode inside a clean top control card
         let ip_input = text_input("192.168.1.1", &self.storage_target_ip)
             .on_input(Message::StorageTargetIpChanged)
             .padding(Padding::from([4, 8]))
@@ -8230,16 +9225,24 @@ impl App {
         let refresh_btn = self.tip(
             button(text(Translations::storage_refresh(self.language)).size(11))
                 .style(|_, _| CustomStyles::primary_button())
-                .padding(Padding::from([4, 10]))
+                .padding(Padding::from([4, 11]))
                 .on_press(Message::RefreshStorageShares),
             Translations::tip_storage_refresh(self.language),
             tooltip::Position::Bottom,
         );
 
+        let creds_open = self.is_storage_creds_open;
         let creds_btn = self.tip(
             button(text(Translations::storage_btn_credentials(self.language)).size(11))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([4, 10]))
+                .style(move |_, status| {
+                    let tone = if creds_open {
+                        crate::theme::StorageActionTone::Primary
+                    } else {
+                        crate::theme::StorageActionTone::Neutral
+                    };
+                    CustomStyles::storage_action_button(tone, status)
+                })
+                .padding(Padding::from([4, 11]))
                 .on_press(Message::ToggleStorageCredentialsModal),
             Translations::tip_storage_creds(self.language),
             tooltip::Position::Bottom,
@@ -8248,118 +9251,74 @@ impl App {
         let is_demo = self.is_storage_demo_mode;
         let demo_btn = self.tip(
             button(text(Translations::storage_demo_mode_btn(self.language)).size(11))
-                .style(move |_, _| {
-                    if is_demo {
-                        CustomStyles::primary_button()
+                .style(move |_, status| {
+                    let tone = if is_demo {
+                        crate::theme::StorageActionTone::Success
                     } else {
-                        CustomStyles::secondary_button()
-                    }
+                        crate::theme::StorageActionTone::Neutral
+                    };
+                    CustomStyles::storage_action_button(tone, status)
                 })
-                .padding(Padding::from([4, 10]))
+                .padding(Padding::from([4, 11]))
                 .on_press(Message::StorageToggleDemoMode),
             Translations::tip_storage_demo(self.language),
             tooltip::Position::Bottom,
         );
 
-        let connection_bar = row![
-            text(Translations::storage_target_label(self.language)).size(11).color(CustomStyles::text_secondary()),
-            ip_input,
-            refresh_btn,
-            creds_btn,
-            space::horizontal(),
-            demo_btn,
+        let mut top_control_col = column![
+            row![
+                text(Translations::storage_target_label(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_secondary()),
+                ip_input,
+                refresh_btn,
+                creds_btn,
+                space::horizontal(),
+                demo_btn,
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
         ]
-        .spacing(8)
-        .align_y(Alignment::Center);
+        .spacing(8);
 
-        let mut modal_body = column![connection_bar].spacing(10);
-
-        // SMB / NAS Credentials dialog if open
-        if self.is_storage_creds_open {
-            let user_in = text_input(Translations::storage_creds_user_placeholder(self.language), &self.storage_credentials.username)
-                .on_input(Message::StorageCredentialsUserChanged)
-                .padding(Padding::from([4, 8]))
-                .width(180);
-
-            let pass_in = text_input(Translations::storage_creds_pass_placeholder(self.language), &self.storage_credentials.password)
-                .on_input(Message::StorageCredentialsPassChanged)
-                .secure(true)
-                .padding(Padding::from([4, 8]))
-                .width(180);
-
-            let wg_in = text_input("WORKGROUP", &self.storage_credentials.workgroup)
-                .on_input(Message::StorageCredentialsWorkgroupChanged)
-                .padding(Padding::from([4, 8]))
-                .width(140);
-
-            let creds_card = container(
-                column![
-                    text(Translations::storage_creds_title(self.language)).size(12).color(CustomStyles::accent_cyan()),
-                    text(Translations::storage_creds_desc(self.language)).size(10).color(CustomStyles::text_muted()),
-                    row![
-                        text(Translations::storage_creds_user_label(self.language)).size(11).color(CustomStyles::text_secondary()),
-                        user_in,
-                        text(Translations::storage_creds_pass_label(self.language)).size(11).color(CustomStyles::text_secondary()),
-                        pass_in,
-                        text(Translations::storage_creds_group_label(self.language)).size(11).color(CustomStyles::text_secondary()),
-                        wg_in,
-                        button(text(Translations::storage_creds_save_btn(self.language)).size(11))
-                            .style(|_, _| CustomStyles::primary_button())
-                            .padding(Padding::from([4, 10]))
-                            .on_press(Message::StorageSaveCredentials),
-                        button(text(Translations::cancel(self.language)).size(11))
-                            .style(|_, _| CustomStyles::secondary_button())
-                            .padding(Padding::from([4, 10]))
-                            .on_press(Message::ToggleStorageCredentialsModal),
-                    ]
-                    .spacing(8)
-                    .align_y(Alignment::Center),
-                ]
-                .spacing(6),
-            )
-            .padding(10)
-            .width(Length::Fill)
-            .style(|_| CustomStyles::card_container());
-
-            modal_body = modal_body.push(creds_card);
-        }
-
-        // Capacity & Disk Space Bar (clean update without redundant badges)
+        // Capacity & Disk Space Bar embedded in the top control card
         if let Some(disk) = self.storage_disk_info {
             let used_str = format_file_size(disk.used_bytes());
             let total_str = format_file_size(disk.total_bytes);
             let free_str = format_file_size(disk.free_bytes);
             let percent = disk.used_percent();
 
-            let info_row = row![
-                text(Translations::storage_space_info(&free_str, &total_str, percent as f64, self.language))
+            let capacity_strip = container(
+                row![
+                    text(Translations::storage_space_info(
+                        &free_str,
+                        &total_str,
+                        percent as f64,
+                        self.language
+                    ))
                     .size(11)
                     .color(CustomStyles::accent_cyan()),
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center);
-
-            let capacity_card = container(
-                row![
-                    info_row,
-                    container(progress_bar(0.0..=100.0, percent))
-                        .width(Length::Fill),
-                    text(format!("{}/{}", used_str, total_str)).size(10).color(CustomStyles::text_muted()),
+                    container(progress_bar(0.0..=100.0, percent)).width(Length::Fill),
+                    text(format!("{} / {}", used_str, total_str))
+                        .size(10)
+                        .color(CustomStyles::text_secondary()),
                 ]
                 .spacing(12)
                 .align_y(Alignment::Center),
             )
-            .padding(Padding::from([6, 12]))
+            .padding(Padding::from([6, 10]))
             .width(Length::Fill)
-            .style(|_| CustomStyles::card_container());
+            .style(|_| CustomStyles::inset_container());
 
-            modal_body = modal_body.push(capacity_card);
+            top_control_col = top_control_col.push(capacity_strip);
         }
 
-        // Share / Resource Selector
+        // Share / Resource Selector embedded in the top control card
         if !self.storage_shares.is_empty() {
             let mut share_chips = row![
-                text(Translations::storage_share_select(self.language)).size(11).color(CustomStyles::text_muted()),
+                text(Translations::storage_share_select(self.language))
+                    .size(11)
+                    .color(CustomStyles::text_muted()),
             ]
             .spacing(6)
             .align_y(Alignment::Center);
@@ -8374,36 +9333,118 @@ impl App {
                 };
 
                 let btn = button(text(label).size(10))
-                    .style(move |_, _| {
+                    .style(move |_, status| {
                         if is_active {
                             CustomStyles::primary_button()
                         } else {
-                            CustomStyles::secondary_button()
+                            CustomStyles::storage_action_button(
+                                crate::theme::StorageActionTone::Neutral,
+                                status,
+                            )
                         }
                     })
-                    .padding(Padding::from([3, 8]))
+                    .padding(Padding::from([4, 10]))
                     .on_press(Message::StorageShareSelected(share_name));
 
                 share_chips = share_chips.push(btn);
             }
 
-            modal_body = modal_body.push(share_chips);
+            top_control_col = top_control_col.push(share_chips);
         }
 
-        // Navigation & Toolbar (Breadcrumbs, Upload, New Folder, Upload File, Filter)
+        let top_control_card = container(top_control_col)
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_container());
+
+        let mut modal_body = column![top_control_card].spacing(8);
+
+        // SMB / NAS Credentials dialog if open
+        if self.is_storage_creds_open {
+            let user_in = text_input(
+                Translations::storage_creds_user_placeholder(self.language),
+                &self.storage_credentials.username,
+            )
+            .on_input(Message::StorageCredentialsUserChanged)
+            .padding(Padding::from([4, 8]))
+            .width(180);
+
+            let pass_in = text_input(
+                Translations::storage_creds_pass_placeholder(self.language),
+                &self.storage_credentials.password,
+            )
+            .on_input(Message::StorageCredentialsPassChanged)
+            .secure(true)
+            .padding(Padding::from([4, 8]))
+            .width(180);
+
+            let wg_in = text_input("WORKGROUP", &self.storage_credentials.workgroup)
+                .on_input(Message::StorageCredentialsWorkgroupChanged)
+                .padding(Padding::from([4, 8]))
+                .width(140);
+
+            let creds_card = container(
+                column![
+                    text(Translations::storage_creds_title(self.language))
+                        .size(12)
+                        .color(CustomStyles::accent_cyan()),
+                    text(Translations::storage_creds_desc(self.language))
+                        .size(10)
+                        .color(CustomStyles::text_muted()),
+                    row![
+                        text(Translations::storage_creds_user_label(self.language))
+                            .size(11)
+                            .color(CustomStyles::text_secondary()),
+                        user_in,
+                        text(Translations::storage_creds_pass_label(self.language))
+                            .size(11)
+                            .color(CustomStyles::text_secondary()),
+                        pass_in,
+                        text(Translations::storage_creds_group_label(self.language))
+                            .size(11)
+                            .color(CustomStyles::text_secondary()),
+                        wg_in,
+                        button(text(Translations::storage_creds_save_btn(self.language)).size(11))
+                            .style(|_, _| CustomStyles::primary_button())
+                            .padding(Padding::from([4, 10]))
+                            .on_press(Message::StorageSaveCredentials),
+                        button(text(Translations::cancel(self.language)).size(11))
+                            .style(|_, status| {
+                                CustomStyles::storage_action_button(
+                                    crate::theme::StorageActionTone::Neutral,
+                                    status,
+                                )
+                            })
+                            .padding(Padding::from([4, 10]))
+                            .on_press(Message::ToggleStorageCredentialsModal),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(6),
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(|_| CustomStyles::card_highlighted());
+
+            modal_body = modal_body.push(creds_card);
+        }
+
+        // Navigation & Toolbar (Breadcrumbs inside recessed address bar, Upload, New Folder, Filter)
         let is_root = self.storage_current_path.trim_matches('/').is_empty();
         let up_btn = self.tip(
             button(text(Translations::storage_up_level(self.language)).size(10))
-                .style(move |_, _| {
-                    if is_root {
-                        CustomStyles::secondary_button()
+                .style(move |_, status| {
+                    let tone = if is_root {
+                        crate::theme::StorageActionTone::Neutral
                     } else {
-                        CustomStyles::primary_button()
-                    }
+                        crate::theme::StorageActionTone::Primary
+                    };
+                    CustomStyles::storage_action_button(tone, status)
                 })
-                .padding(Padding::from([3, 8]))
+                .padding(Padding::from([4, 8]))
                 .on_press(if is_root {
-                    Message::CloseStorageExplorer // No-op when at root
+                    Message::CloseStorageExplorer
                 } else {
                     Message::StorageNavigateUp
                 }),
@@ -8411,25 +9452,23 @@ impl App {
             tooltip::Position::Bottom,
         );
 
-        // Generate Breadcrumbs
         let root_btn = self.tip(
             button(text(Translations::storage_btn_root(self.language)).size(11))
-                .style(|_, _| CustomStyles::secondary_button())
+                .style(|_, status| CustomStyles::storage_name_button(true, status))
                 .padding(Padding::from([2, 6]))
                 .on_press(Message::StorageNavigateTo(String::new())),
             Translations::tip_storage_root(self.language),
             tooltip::Position::Bottom,
         );
 
-        let mut breadcrumbs = row![
-            up_btn,
-            root_btn,
-        ]
-        .spacing(4)
-        .align_y(Alignment::Center);
+        let mut breadcrumbs = row![root_btn].spacing(2).align_y(Alignment::Center);
 
         if !is_root {
-            let parts: Vec<&str> = self.storage_current_path.trim_matches('/').split('/').collect();
+            let parts: Vec<&str> = self
+                .storage_current_path
+                .trim_matches('/')
+                .split('/')
+                .collect();
             let mut accum = String::new();
             for part in parts {
                 if !accum.is_empty() {
@@ -8442,17 +9481,27 @@ impl App {
                     .push(text("/").size(11).color(CustomStyles::text_muted()))
                     .push(
                         button(text(part).size(11))
-                            .style(|_, _| CustomStyles::secondary_button())
+                            .style(|_, status| CustomStyles::storage_name_button(true, status))
                             .padding(Padding::from([2, 6]))
                             .on_press(Message::StorageNavigateTo(path_target)),
                     );
             }
         }
 
+        let breadcrumb_bar = container(breadcrumbs)
+            .padding(Padding::from([3, 8]))
+            .width(Length::Fill)
+            .style(|_| CustomStyles::inset_container());
+
         let new_folder_btn = self.tip(
             button(text(Translations::storage_new_folder(self.language)).size(10))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([3, 8]))
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Neutral,
+                        status,
+                    )
+                })
+                .padding(Padding::from([4, 9]))
                 .on_press(Message::StorageStartCreateFolder),
             Translations::tip_storage_new_folder(self.language),
             tooltip::Position::Bottom,
@@ -8460,8 +9509,13 @@ impl App {
 
         let upload_file_btn = self.tip(
             button(text(Translations::storage_upload_btn(self.language)).size(10))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([3, 8]))
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Primary,
+                        status,
+                    )
+                })
+                .padding(Padding::from([4, 9]))
                 .on_press(Message::StoragePickFileAndUpload),
             Translations::tip_storage_upload_file(self.language),
             tooltip::Position::Bottom,
@@ -8469,27 +9523,35 @@ impl App {
 
         let upload_folder_btn = self.tip(
             button(text(Translations::storage_upload_folder_btn(self.language)).size(10))
-                .style(|_, _| CustomStyles::secondary_button())
-                .padding(Padding::from([3, 8]))
+                .style(|_, status| {
+                    CustomStyles::storage_action_button(
+                        crate::theme::StorageActionTone::Success,
+                        status,
+                    )
+                })
+                .padding(Padding::from([4, 9]))
                 .on_press(Message::StoragePickFolderAndUpload),
             Translations::tip_storage_upload_folder(self.language),
             tooltip::Position::Bottom,
         );
 
-        let filter_in = text_input(Translations::storage_filter_placeholder(self.language), &self.storage_filter_query)
-            .on_input(Message::StorageFilterQueryChanged)
-            .padding(Padding::from([3, 8]))
-            .width(180);
+        let filter_in = text_input(
+            Translations::storage_filter_placeholder(self.language),
+            &self.storage_filter_query,
+        )
+        .on_input(Message::StorageFilterQueryChanged)
+        .padding(Padding::from([4, 8]))
+        .width(180);
 
         let toolbar = row![
-            breadcrumbs,
-            space::horizontal(),
+            up_btn,
+            breadcrumb_bar,
             new_folder_btn,
             upload_file_btn,
             upload_folder_btn,
             filter_in,
         ]
-        .spacing(8)
+        .spacing(6)
         .align_y(Alignment::Center);
 
         modal_body = modal_body.push(toolbar);
@@ -9057,22 +10119,11 @@ impl App {
         let summary_text = Translations::storage_summary_counts(total_count, dirs_count, regular_count, self.language);
 
         let footer = row![
-            column![
-                text(summary_text).size(11).color(CustomStyles::text_muted()),
-                text(format!("💡 {}", Translations::storage_drag_drop_hint(self.language)))
-                    .size(10)
-                    .color(CustomStyles::accent_cyan()),
-            ]
-            .spacing(2),
+            text(summary_text).size(11).color(CustomStyles::text_muted()),
             space::horizontal(),
-            self.tip(
-                button(text(Translations::close(self.language)).size(12))
-                    .style(|_, _| CustomStyles::primary_button())
-                    .padding(Padding::from([6, 18]))
-                    .on_press(Message::CloseStorageExplorer),
-                Translations::tip_close(self.language),
-                tooltip::Position::Top,
-            ),
+            text(format!("💡 {}", Translations::storage_drag_drop_hint(self.language)))
+                .size(10)
+                .color(CustomStyles::accent_cyan()),
         ]
         .align_y(Alignment::Center);
 
@@ -9080,10 +10131,9 @@ impl App {
 
         let content = column![
             title_row,
-            subtitle,
             modal_body,
         ]
-        .spacing(12);
+        .spacing(10);
 
         container(content)
             .padding(20)

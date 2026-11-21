@@ -762,4 +762,139 @@ impl CustomStyles {
             snap: false,
         }
     }
+
+    /// Accent-tinted icon container for modal headers and KPI badges
+    pub fn modal_icon_badge(accent: Color) -> container::Style {
+        container::Style {
+            text_color: Some(accent),
+            background: Some(Background::Color(Color { a: 0.14, ..accent })),
+            border: Border {
+                color: Color { a: 0.32, ..accent },
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Subtle tinted card/tile for metrics, channels, and status banners
+    pub fn tinted_badge_box(accent: Color) -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color { a: 0.09, ..accent })),
+            border: Border {
+                color: Color { a: 0.26, ..accent },
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Sleek close button ('✕') for modal headers with red hover highlight
+    pub fn modal_close_button(status: button::Status) -> button::Style {
+        let (bg, border_col, text_col) = match status {
+            button::Status::Active | button::Status::Disabled => (
+                Color::from_rgba8(51, 65, 85, 0.45),
+                Color::from_rgba8(71, 85, 105, 0.55),
+                Self::text_secondary(),
+            ),
+            button::Status::Hovered => (
+                Color::from_rgba8(239, 68, 68, 0.22),
+                Color::from_rgb8(248, 113, 113),
+                Color::WHITE,
+            ),
+            button::Status::Pressed => (
+                Color::from_rgb8(220, 38, 38),
+                Color::from_rgb8(248, 113, 113),
+                Color::WHITE,
+            ),
+        };
+
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color: text_col,
+            border: Border {
+                color: border_col,
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Recessed command-dock container for the top navigation toolbar
+    pub fn nav_toolbar_container() -> container::Style {
+        container::Style {
+            text_color: Some(Self::text_primary()),
+            background: Some(Background::Color(Color::from_rgb8(17, 25, 43))),
+            border: Border {
+                color: Color::from_rgb8(42, 56, 80),
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+
+    /// Interactive navigation pill button with per-tool accent color and active/hover states
+    pub fn nav_tool_button(
+        is_active: bool,
+        accent: Color,
+        status: button::Status,
+    ) -> button::Style {
+        let (bg, border_color, border_width, text_color, shadow) = if is_active {
+            (
+                Color { a: 0.24, ..accent },
+                accent,
+                1.2,
+                Color::WHITE,
+                Shadow {
+                    color: Color { a: 0.25, ..accent },
+                    offset: Vector::new(0.0, 2.0),
+                    blur_radius: 8.0,
+                },
+            )
+        } else {
+            match status {
+                button::Status::Active | button::Status::Disabled => (
+                    Color::from_rgba8(30, 41, 59, 0.65),
+                    Color::from_rgba8(51, 65, 85, 0.80),
+                    1.0,
+                    Color::from_rgb8(226, 232, 240),
+                    Shadow::default(),
+                ),
+                button::Status::Hovered => (
+                    Color { a: 0.16, ..accent },
+                    Color { a: 0.48, ..accent },
+                    1.0,
+                    Color::WHITE,
+                    Shadow::default(),
+                ),
+                button::Status::Pressed => (
+                    Color { a: 0.26, ..accent },
+                    accent,
+                    1.0,
+                    Color::WHITE,
+                    Shadow::default(),
+                ),
+            }
+        };
+
+        button::Style {
+            background: Some(Background::Color(bg)),
+            text_color,
+            border: Border {
+                color: border_color,
+                width: border_width,
+                radius: 8.0.into(),
+            },
+            shadow,
+            snap: false,
+        }
+    }
 }
