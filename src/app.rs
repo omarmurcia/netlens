@@ -4456,32 +4456,32 @@ impl App {
         };
 
         let top_right_actions = row![
-            self.tip(
-                button(text("📊 CSV").size(11))
-                    .style(|_, status| {
-                        CustomStyles::storage_action_button(
-                            crate::theme::StorageActionTone::Neutral,
-                            status,
-                        )
-                    })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(Message::ExportCsv),
-                Translations::tip_export_csv(self.language),
-                tooltip::Position::Bottom,
-            ),
-            self.tip(
-                button(text("📥 JSON").size(11))
-                    .style(|_, status| {
-                        CustomStyles::storage_action_button(
-                            crate::theme::StorageActionTone::Neutral,
-                            status,
-                        )
-                    })
-                    .padding(Padding::from([5, 10]))
-                    .on_press(Message::ExportJson),
-                Translations::tip_export_json(self.language),
-                tooltip::Position::Bottom,
-            ),
+            // self.tip(
+            //     button(text("📊 CSV").size(11))
+            //         .style(|_, status| {
+            //             CustomStyles::storage_action_button(
+            //                 crate::theme::StorageActionTone::Neutral,
+            //                 status,
+            //             )
+            //         })
+            //         .padding(Padding::from([5, 10]))
+            //         .on_press(Message::ExportCsv),
+            //     Translations::tip_export_csv(self.language),
+            //     tooltip::Position::Bottom,
+            // ),
+            // self.tip(
+            //     button(text("📥 JSON").size(11))
+            //         .style(|_, status| {
+            //             CustomStyles::storage_action_button(
+            //                 crate::theme::StorageActionTone::Neutral,
+            //                 status,
+            //             )
+            //         })
+            //         .padding(Padding::from([5, 10]))
+            //         .on_press(Message::ExportJson),
+            //     Translations::tip_export_json(self.language),
+            //     tooltip::Position::Bottom,
+            // ),
             self.tip(
                 scan_btn,
                 Translations::tip_scan_network(self.language),
