@@ -946,7 +946,7 @@ impl App {
             | Message::StorageToggleDemoMode
             | Message::StorageUploadEventReceived(_)
             | Message::StorageDismissUploadProgress
-            | Message::StorageSharesLoaded(_)
+            | Message::StorageSharesLoaded(_, _)
             | Message::StorageDirectoryLoaded(_)
             | Message::StorageOperationCompleted(_) => self.update_storage(message),
 

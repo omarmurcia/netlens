@@ -46,7 +46,7 @@ impl App {
 
                 if self.is_storage_demo_mode {
                     let shares = RouterStorageManager::get_demo_shares();
-                    return Task::done(Message::StorageSharesLoaded(Ok(shares)));
+                    return Task::done(Message::StorageSharesLoaded(None, Ok(shares)));
                 }
 
                 let target_ip: Ipv4Addr = match self.storage_target_ip.trim().parse() {
@@ -61,11 +61,18 @@ impl App {
                 let creds = self.storage_credentials.clone();
                 Task::future(async move {
                     let res = RouterStorageManager::list_shares(target_ip, &creds).await;
-                    Message::StorageSharesLoaded(res)
+                    Message::StorageSharesLoaded(Some(target_ip), res)
                 })
             }
 
-            Message::StorageSharesLoaded(res) => {
+            Message::StorageSharesLoaded(req_ip, res) => {
+                // Ignore stale responses from a previous IP or when switched to demo mode
+                if let Some(ip) = req_ip {
+                    let current_ip = self.storage_target_ip.trim().parse::<Ipv4Addr>().ok();
+                    if self.is_storage_demo_mode || current_ip != Some(ip) {
+                        return Task::none();
+                    }
+                }
                 self.is_storage_loading = false;
                 match res {
                     Ok(shares) => {
