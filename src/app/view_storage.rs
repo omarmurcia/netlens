@@ -918,9 +918,9 @@ impl App {
                 .spacing(10)
                 .align_x(Alignment::Center),
             )
-            .padding(40)
+            .padding(20)
             .width(Length::Fill)
-            .height(Length::Fixed(310.0))
+            .height(Length::Fill)
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
             .style(|_| CustomStyles::drop_zone_active())
@@ -928,7 +928,7 @@ impl App {
         } else {
             container(scrollable_files)
                 .width(Length::Fill)
-                .height(Length::Fixed(310.0))
+                .height(Length::Fill)
                 .padding(Padding {
                     top: 0.0,
                     right: 2.0,
@@ -966,8 +966,8 @@ impl App {
 
         container(content)
             .padding(20)
-            .width(1080)
-            .max_height(685)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }

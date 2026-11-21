@@ -78,14 +78,14 @@ impl Translations {
 
     pub fn about_role(lang: Language) -> &'static str {
         match lang {
-            Language::Spanish => "Ingeniero de Software y Arquitectura de Sistemas",
-            Language::English => "Software Engineer & Systems Architect",
+            Language::Spanish => "Ingeniero de Software",
+            Language::English => "Software Engineer",
             Language::Chinese => "软件工程师与系统架构师",
             Language::Hindi => "सॉफ्टवेयर इंजीनियर और सिस्टम्स आर्किटेक्ट",
             Language::Arabic => "مهندس برمجيات ومهندس أنظمة",
-            Language::French => "Ingénieur Logiciel et Architecte Systèmes",
+            Language::French => "Ingénieur Logiciel",
             Language::Bengali => "সফটওয়্যার ইঞ্জিনিয়ার এবং সিস্টেম আর্কিটেক্ট",
-            Language::Portuguese => "Engenheiro de Software e Arquiteto de Sistemas",
+            Language::Portuguese => "Engenheiro de Software",
             Language::Russian => "Инженер-программист и системный архитектор",
             Language::Urdu => "سافٹ ویئر انجینئر اور سسٹمز آرکیٹیکٹ",
         }

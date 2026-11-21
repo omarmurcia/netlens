@@ -306,7 +306,7 @@ impl App {
                 .align_x(Alignment::Center),
             );
         } else {
-            for (idx, test) in self.speed_test_history.iter().take(5).enumerate() {
+            for (idx, test) in self.speed_test_history.iter().take(100).enumerate() {
                 hist_rows = hist_rows.push(
                     container(
                         row![
@@ -350,8 +350,20 @@ impl App {
             }
         }
 
-        let hist_table_body = container(hist_rows)
+        let hist_scrollable = scrollable(hist_rows)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(5.0)
+                    .scroller_width(5.0)
+                    .margin(2.0)
+                    .spacing(4.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fill);
+
+        let hist_table_body = container(hist_scrollable)
             .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::drop_zone_idle());
 
         let history_section = column![
@@ -373,8 +385,8 @@ impl App {
 
         container(content)
             .padding(22)
-            .width(860)
-            .max_height(680)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -447,7 +459,7 @@ impl App {
                     .size(28)
                     .color(score_color),
                 text(format!(
-                    "{}: {}",
+                    "{} {}",
                     Translations::audit_score_label(self.language),
                     grade_str
                 ))
@@ -661,10 +673,10 @@ impl App {
                         .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
-                .height(Length::Shrink),
+                .height(Length::Fill),
         )
         .width(Length::Fill)
-        .max_height(430.0);
+        .height(Length::Fill);
 
         let actions_row = row![
             space::horizontal(),
@@ -690,8 +702,8 @@ impl App {
 
         container(content)
             .padding(22)
-            .width(960)
-            .max_height(680)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -896,10 +908,10 @@ impl App {
                         .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
-                .height(Length::Shrink),
+                .height(Length::Fill),
         )
         .width(Length::Fill)
-        .max_height(475.0);
+        .height(Length::Fill);
 
         let content = column![
             title_row,
@@ -910,8 +922,8 @@ impl App {
 
         container(content)
             .padding(22)
-            .width(960)
-            .max_height(680)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_purple()))
             .into()
     }
