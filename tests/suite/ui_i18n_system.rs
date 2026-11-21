@@ -390,6 +390,7 @@ async fn test_single_instance_lifecycle_and_secondary_detection() {
         InstanceStatus::SecondaryNotified => panic!("First instance must be Primary"),
     };
 
+    #[cfg(not(windows))]
     assert!(guard.socket_path.exists(), "Socket path should exist for primary instance");
 
     // 2. Secondary instance attempts acquisition -> should be SecondaryNotified
@@ -404,17 +405,20 @@ async fn test_single_instance_lifecycle_and_secondary_detection() {
     assert!(!temp_dir.join("netlens.sock").exists(), "Socket file must be removed when guard is dropped");
 
     // 4. Stale socket recovery: create empty file to simulate ungraceful crash
-    let stale_socket = temp_dir.join("netlens.sock");
-    std::fs::write(&stale_socket, b"stale").expect("Failed to write dummy stale socket file");
-    assert!(stale_socket.exists());
+    #[cfg(not(windows))]
+    {
+        let stale_socket = temp_dir.join("netlens.sock");
+        std::fs::write(&stale_socket, b"stale").expect("Failed to write dummy stale socket file");
+        assert!(stale_socket.exists());
 
-    let status3 = acquire_single_instance(false, false).await;
-    match status3 {
-        InstanceStatus::Primary(g3) => {
-            assert!(g3.socket_path.exists());
-            drop(g3);
+        let status3 = acquire_single_instance(false, false).await;
+        match status3 {
+            InstanceStatus::Primary(g3) => {
+                assert!(g3.socket_path.exists());
+                drop(g3);
+            }
+            InstanceStatus::SecondaryNotified => panic!("Should recover from stale socket without listener"),
         }
-        InstanceStatus::SecondaryNotified => panic!("Should recover from stale socket without listener"),
     }
 
     // Cleanup environment
@@ -478,6 +482,7 @@ fn test_performance_optimizations_and_bugfixes() {
     use netlens::app::{App, Message, SortOption};
     use netlens::storage::{AppState, AppStateRef, Storage};
     use netlens::telemetry::WifiStatus;
+    #[cfg(not(windows))]
     use netlens::tray::get_icon_argb;
     use netlens::widget::CachedSparkline;
     use std::collections::{HashMap, VecDeque};
@@ -502,10 +507,17 @@ fn test_performance_optimizations_and_bugfixes() {
     assert_eq!(wifi_24.band_label(), "2.4 GHz");
 
     // 2. Compact 64x64 tray icon reduces D-Bus pixmap footprint
-    let tray_icon = get_icon_argb().expect("Tray icon should load");
-    assert_eq!(tray_icon.width, 64);
-    assert_eq!(tray_icon.height, 64);
-    assert_eq!(tray_icon.data.len(), 64 * 64 * 4);
+    #[cfg(not(windows))]
+    {
+        let tray_icon = get_icon_argb().expect("Tray icon should load");
+        assert_eq!(tray_icon.width, 64);
+        assert_eq!(tray_icon.height, 64);
+        assert_eq!(tray_icon.data.len(), 64 * 64 * 4);
+    }
+    #[cfg(windows)]
+    {
+        assert!(netlens::tray::get_window_icon().is_some());
+    }
 
     // 3. Zero-clone AppStateRef serializes identically to AppState
     let meta = HashMap::new();

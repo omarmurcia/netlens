@@ -422,10 +422,13 @@ pub fn default_window_settings() -> iced::window::Settings {
         size: Size::new(1220.0, 820.0),
         position: iced::window::Position::Centered,
         icon,
+        #[cfg(not(windows))]
         platform_specific: iced::window::settings::PlatformSpecific {
             application_id: "netlens".to_string(),
             override_redirect: false,
         },
+        #[cfg(windows)]
+        platform_specific: iced::window::settings::PlatformSpecific::default(),
         exit_on_close_request: false,
         ..Default::default()
     }

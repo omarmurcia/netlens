@@ -836,9 +836,10 @@ impl RouterStorageManager {
     pub async fn pick_path_with_file_dialog(is_directory: bool, title: &str) -> Option<PathBuf> {
         #[cfg(windows)]
         {
-            return Self::win_pick_path(is_directory, title).await;
+            Self::win_pick_path(is_directory, title).await
         }
-
+        #[cfg(not(windows))]
+        {
         // 1. Try with zenity (GTK / GNOME / Cinnamon / XFCE / MATE environments)
         let mut cmd = crate::procutil::NoWindow::no_window(Command::new("zenity"));
         cmd.arg("--file-selection");
@@ -883,6 +884,7 @@ impl RouterStorageManager {
         }
 
         None
+        }
     }
 
     /// Recursively collects all local files within a directory
