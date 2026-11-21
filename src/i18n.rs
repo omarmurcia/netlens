@@ -123,16 +123,16 @@ impl Translations {
 
     pub fn scanning(lang: Language) -> &'static str {
         match lang {
-            Language::Spanish => "⏳ Escaneando...",
-            Language::English => "⏳ Scanning...",
-            Language::Chinese => "⏳ 正在扫描...",
-            Language::Hindi => "⏳ स्कैनिंग जारी है...",
-            Language::Arabic => "⏳ جاري الفحص...",
-            Language::French => "⏳ Scan en cours...",
-            Language::Bengali => "⏳ স্ক্যান হচ্ছে...",
-            Language::Portuguese => "⏳ Escaneando...",
-            Language::Russian => "⏳ Сканирование...",
-            Language::Urdu => "⏳ اسکیننگ جاری ہے...",
+            Language::Spanish => "Escaneando...",
+            Language::English => "Scanning...",
+            Language::Chinese => "正在扫描...",
+            Language::Hindi => "स्कैनिंग जारी है...",
+            Language::Arabic => "جاري الفحص...",
+            Language::French => "Scan en cours...",
+            Language::Bengali => "স্ক্যান হচ্ছে...",
+            Language::Portuguese => "Escaneando...",
+            Language::Russian => "Сканирование...",
+            Language::Urdu => "اسکیننگ جاری ہے...",
         }
     }
 
