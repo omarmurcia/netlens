@@ -45,50 +45,52 @@ impl App {
 
         // Setting 1 & 2: UI Theme & Application Language grouped in a clean card
         let theme_box = container(
-            row![
-                column![
+            column![
+                row![
                     text(Translations::theme_label(self.language))
                         .size(13)
-                        .color(CustomStyles::text_primary()),
-                    text(Translations::theme_desc(self.language))
-                        .size(10)
-                        .color(CustomStyles::text_muted()),
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    pick_list(
+                        AVAILABLE_THEMES,
+                        Some(&self.current_theme),
+                        |t| Message::ThemeChanged(t.clone()),
+                    ),
                 ]
-                .spacing(2)
-                .width(Length::Fill),
-                pick_list(
-                    AVAILABLE_THEMES,
-                    Some(&self.current_theme),
-                    |t| Message::ThemeChanged(t.clone()),
-                ),
+                .align_y(Alignment::Center)
+                .spacing(8),
+                text(Translations::theme_desc(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted())
+                    .width(Length::Fill),
             ]
-            .align_y(Alignment::Center)
-            .spacing(10),
+            .spacing(6),
         )
         .padding(10)
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::inset_container());
 
         let lang_box = container(
-            row![
-                column![
+            column![
+                row![
                     text(Translations::language_label(self.language))
                         .size(13)
-                        .color(CustomStyles::text_primary()),
-                    text(Translations::language_desc(self.language))
-                        .size(10)
-                        .color(CustomStyles::text_muted()),
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    pick_list(
+                        Language::ALL,
+                        Some(self.language),
+                        Message::LanguageChanged,
+                    ),
                 ]
-                .spacing(2)
-                .width(Length::Fill),
-                pick_list(
-                    Language::ALL,
-                    Some(self.language),
-                    Message::LanguageChanged,
-                ),
+                .align_y(Alignment::Center)
+                .spacing(8),
+                text(Translations::language_desc(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted())
+                    .width(Length::Fill),
             ]
-            .align_y(Alignment::Center)
-            .spacing(10),
+            .spacing(6),
         )
         .padding(10)
         .width(Length::FillPortion(1))
@@ -190,42 +192,44 @@ impl App {
         .on_press(Message::ToggleMinimizeOnClose(!self.minimize_on_close));
 
         let autostart_tile = container(
-            row![
-                column![
+            column![
+                row![
                     text(Translations::autostart_title(self.language))
                         .size(12)
-                        .color(CustomStyles::text_primary()),
-                    text(Translations::autostart_desc(self.language))
-                        .size(10)
-                        .color(CustomStyles::text_muted()),
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    autostart_btn,
                 ]
-                .spacing(2)
-                .width(Length::Fill),
-                autostart_btn,
+                .align_y(Alignment::Center)
+                .spacing(8),
+                text(Translations::autostart_desc(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted())
+                    .width(Length::Fill),
             ]
-            .align_y(Alignment::Center)
-            .spacing(10),
+            .spacing(6),
         )
         .padding(10)
         .width(Length::FillPortion(1))
         .style(|_| CustomStyles::inset_container());
 
         let minimize_tile = container(
-            row![
-                column![
+            column![
+                row![
                     text(Translations::minimize_on_close_title(self.language))
                         .size(12)
-                        .color(CustomStyles::text_primary()),
-                    text(Translations::minimize_on_close_desc(self.language))
-                        .size(10)
-                        .color(CustomStyles::text_muted()),
+                        .color(CustomStyles::text_primary())
+                        .width(Length::Fill),
+                    minimize_btn,
                 ]
-                .spacing(2)
-                .width(Length::Fill),
-                minimize_btn,
+                .align_y(Alignment::Center)
+                .spacing(8),
+                text(Translations::minimize_on_close_desc(self.language))
+                    .size(10)
+                    .color(CustomStyles::text_muted())
+                    .width(Length::Fill),
             ]
-            .align_y(Alignment::Center)
-            .spacing(10),
+            .spacing(6),
         )
         .padding(10)
         .width(Length::FillPortion(1))
@@ -823,20 +827,22 @@ impl App {
                     .spacing(6.0),
             ))
             .style(CustomStyles::scrollbar_style())
-            .height(Length::Shrink);
+            .height(Length::Fill);
 
         let panel_layout = column![
             title_row,
             container(scrollable_body)
                 .width(Length::Fill)
-                .max_height(565.0),
+                .height(Length::Fill),
         ]
         .spacing(12);
 
         container(panel_layout)
             .padding(22)
-            .width(860)
-            .max_height(685)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .max_width(820)
+            .max_height(680)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }

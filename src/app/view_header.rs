@@ -3,7 +3,7 @@ use crate::i18n::Translations;
 use crate::theme::CustomStyles;
 use crate::updater::UpdateStatus;
 use iced::widget::{
-    button, center, column, container, progress_bar, row, scrollable, space, text, tooltip, Column,
+    button, column, container, progress_bar, row, scrollable, space, text, tooltip, Column,
 };
 use iced::{Alignment, Color, Element, Length, Padding};
 
@@ -28,127 +28,61 @@ impl App {
             content = content.push(self.view_notification(msg, *is_success));
         }
 
-        // If update modal open, show update instructions modal view (top priority overlay)
-        if self.is_update_modal_open {
-            content = content.push(
-                container(center(self.view_update_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
+        // Modal Overlays: When any modal is active, display it as a responsive scrollable overlay
+        // so that in low resolution displays (720p, laptops, non-maximized windows) content is NEVER cut off.
+        let modal_element: Option<Element<'_, Message>> = if self.is_update_modal_open {
+            Some(self.view_update_modal())
+        } else if self.is_settings_open {
+            Some(self.view_settings_panel())
+        } else if self.is_about_open {
+            Some(self.view_about_modal())
+        } else if self.is_speed_test_open {
+            Some(self.view_speed_test_modal())
+        } else if self.is_audit_open {
+            Some(self.view_security_audit_modal())
+        } else if self.is_timeline_open {
+            Some(self.view_timeline_modal())
+        } else if self.is_wifi_analyzer_open {
+            Some(self.view_wifi_analyzer_modal())
+        } else if self.is_upnp_open {
+            Some(self.view_upnp_modal())
+        } else if self.is_storage_explorer_open {
+            Some(self.view_storage_explorer_modal())
+        } else {
+            None
+        };
 
-            return container(content)
-                .width(Length::Fill)
+        if let Some(modal) = modal_element {
+            // Modals occupy an 80% x 80% envelope (1:8:1 both axes), centered horizontally and vertically.
+            // Full-screen tools (Speed Test, Security, UPnP, Storage, Wi-Fi) expand to fill the 80% area.
+            // Dialogs (Settings, About, Update) use responsive max_width and max_height so they never
+            // look excessively large on big screens, while scaling down safely on smaller screens.
+            let (h_margin, h_body, v_margin, v_body) = (1, 8, 1, 8);
+
+            let modal_box = container(modal)
+                .width(Length::FillPortion(h_body))
                 .height(Length::Fill)
-                .into();
-        }
+                .align_x(Alignment::Center)
+                .align_y(Alignment::Center);
 
-        // If settings open, show configuration view
-        if self.is_settings_open {
-            content = content.push(
-                container(center(self.view_settings_panel()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
+            let modal_row = row![
+                space::horizontal().width(Length::FillPortion(h_margin)),
+                modal_box,
+                space::horizontal().width(Length::FillPortion(h_margin)),
+            ]
+            .height(Length::FillPortion(v_body))
+            .align_y(Alignment::Center);
 
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
+            let modal_wrapper = column![
+                space::vertical().height(Length::FillPortion(v_margin)),
+                modal_row,
+                space::vertical().height(Length::FillPortion(v_margin)),
+            ]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center);
 
-        // If about open, show classic About dialog view
-        if self.is_about_open {
-            content = content.push(
-                container(center(self.view_about_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If speed test open, show speed test modal view
-        if self.is_speed_test_open {
-            content = content.push(
-                container(center(self.view_speed_test_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If security audit open, show audit modal view
-        if self.is_audit_open {
-            content = content.push(
-                container(center(self.view_security_audit_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If event history open, show event history modal view
-        if self.is_timeline_open {
-            content = content.push(
-                container(center(self.view_timeline_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If Wi-Fi analyzer open, show Wi-Fi spectrum modal view
-        if self.is_wifi_analyzer_open {
-            content = content.push(
-                container(center(self.view_wifi_analyzer_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If router UPnP panel open, show UPnP modal view
-        if self.is_upnp_open {
-            content = content.push(
-                container(center(self.view_upnp_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into();
-        }
-
-        // If router USB storage explorer open, show storage modal view
-        if self.is_storage_explorer_open {
-            content = content.push(
-                container(center(self.view_storage_explorer_modal()))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-            );
-
-            return container(content)
+            return container(modal_wrapper)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into();

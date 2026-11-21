@@ -3,7 +3,7 @@ use crate::i18n::{Language, Translations};
 use crate::theme::CustomStyles;
 use crate::updater::{InAppUpdateProgress, UpdateChecker, UpdateStatus};
 use iced::widget::{
-    button, column, container, pick_list, row, space, text, tooltip,
+    button, column, container, pick_list, row, scrollable, space, text, tooltip,
 };
 use iced::{alignment, Alignment, Color, Element, Length, Padding};
 
@@ -45,10 +45,10 @@ impl App {
         // 1. App Header Card with official Logo inside a framed container
         let app_icon = container(
             iced::widget::image(self.logo_handle.clone())
-                .width(64)
-                .height(64),
+                .width(52)
+                .height(52),
         )
-        .padding(8)
+        .padding(6)
         .style(|_| CustomStyles::inset_container());
 
         let update_status_element: Element<'_, Message> = match &self.update_status {
@@ -159,7 +159,7 @@ impl App {
 
         let app_info = column![
             row![
-                text("NetLens").size(24).color(CustomStyles::accent_cyan()),
+                text("NetLens").size(21).color(CustomStyles::accent_cyan()),
                 container(
                     text(format!(
                         "v{}-{}",
@@ -212,10 +212,10 @@ impl App {
 
         let branding_card = container(
             row![app_icon, app_info]
-                .spacing(16)
+                .spacing(12)
                 .align_y(Alignment::Center),
         )
-        .padding(14)
+        .padding(12)
         .width(Length::Fill)
         .style(|_| CustomStyles::card_highlighted());
 
@@ -227,28 +227,32 @@ impl App {
             container(
                 row![
                     container(text("👨‍💻").size(18))
-                        .width(36)
-                        .height(36)
+                        .width(34)
+                        .height(34)
                         .align_x(Alignment::Center)
                         .align_y(Alignment::Center)
                         .style(|_| CustomStyles::modal_icon_badge(CustomStyles::accent_cyan())),
                     column![
-                        text("Omar Murcia")
-                            .size(15)
-                            .color(CustomStyles::text_primary()),
-                        text(Translations::about_role(self.language))
-                            .size(11)
-                            .color(CustomStyles::text_muted()),
-                    ]
-                    .spacing(1)
-                    .width(Length::Fill),
-                    row![
+                        row![
+                            text("Omar Murcia")
+                                .size(14)
+                                .color(CustomStyles::text_primary()),
+                            text(format!("• {}", Translations::about_role(self.language)))
+                                .size(11)
+                                .color(CustomStyles::text_muted()),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
                         text(format!(
                             "✉️ {}: ing.omarmurcia@gmail.com",
                             Translations::about_email_label(self.language)
                         ))
                         .size(11)
                         .color(CustomStyles::text_secondary()),
+                    ]
+                    .spacing(2)
+                    .width(Length::Fill),
+                    row![
                         button(
                             text(format!(
                                 "📋 {}",
@@ -288,17 +292,17 @@ impl App {
                     .spacing(6)
                     .align_y(Alignment::Center),
                 ]
-                .spacing(12)
+                .spacing(10)
                 .align_y(Alignment::Center),
             )
-            .padding(10)
+            .padding(9)
             .width(Length::Fill)
             .style(|_| CustomStyles::inset_container()),
         ]
-        .spacing(8);
+        .spacing(6);
 
         let author_card = container(author_col)
-            .padding(12)
+            .padding(10)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
@@ -381,7 +385,7 @@ impl App {
         .spacing(6);
 
         let repos_card = container(repos_col)
-            .padding(12)
+            .padding(10)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
@@ -439,7 +443,7 @@ impl App {
         .spacing(6);
 
         let specs_card = container(specs_col)
-            .padding(12)
+            .padding(10)
             .width(Length::Fill)
             .style(|_| CustomStyles::card_container());
 
@@ -461,19 +465,46 @@ impl App {
         .spacing(10)
         .align_y(Alignment::Center);
 
-        let content = column![
-            title_row,
+        let body_cards = column![
             branding_card,
             author_card,
             repos_card,
             specs_card,
             footer_row,
         ]
-        .spacing(10);
+        .spacing(8)
+        .padding(Padding {
+            top: 2.0,
+            right: 2.0,
+            bottom: 4.0,
+            left: 2.0,
+        });
+
+        let scrollable_body = scrollable(body_cards)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(5.0)
+                    .scroller_width(5.0)
+                    .margin(2.0)
+                    .spacing(6.0),
+            ))
+            .style(CustomStyles::scrollbar_style())
+            .height(Length::Fill);
+
+        let content = column![
+            title_row,
+            container(scrollable_body)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        ]
+        .spacing(8);
 
         container(content)
-            .padding(22)
-            .width(790)
+            .padding(20)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .max_width(760)
+            .max_height(620)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
@@ -702,7 +733,10 @@ impl App {
 
         container(layout)
             .padding(24)
-            .width(720)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .max_width(740)
+            .max_height(580)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }

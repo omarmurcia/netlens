@@ -87,8 +87,8 @@ impl App {
                     self.speed_test_upload = Some(result.upload_mbps);
                     self.speed_test_result = Some(result.clone());
                     self.speed_test_history.insert(0, result);
-                    if self.speed_test_history.len() > 30 {
-                        self.speed_test_history.truncate(30);
+                    if self.speed_test_history.len() > 100 {
+                        self.speed_test_history.truncate(100);
                     }
                     self.save_state();
                     Task::none()

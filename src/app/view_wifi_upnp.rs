@@ -324,10 +324,10 @@ impl App {
                         .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
-                .height(Length::Shrink),
+                .height(Length::Fill),
         )
         .width(Length::Fill)
-        .max_height(475.0);
+        .height(Length::Fill);
 
         let content = column![
             title_row,
@@ -338,8 +338,8 @@ impl App {
 
         container(content)
             .padding(22)
-            .width(980)
-            .max_height(680)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_amber()))
             .into()
     }
@@ -568,10 +568,10 @@ impl App {
                         .spacing(6.0),
                 ))
                 .style(CustomStyles::scrollbar_style())
-                .height(Length::Shrink),
+                .height(Length::Fill),
         )
         .width(Length::Fill)
-        .max_height(475.0);
+        .height(Length::Fill);
 
         let content = column![
             title_row,
@@ -582,8 +582,8 @@ impl App {
 
         container(content)
             .padding(22)
-            .width(980)
-            .max_height(680)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .style(|_| CustomStyles::modal_panel(CustomStyles::accent_cyan()))
             .into()
     }
